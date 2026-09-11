@@ -1,0 +1,18 @@
+# infrastructure/docker/Dockerfile.frontend
+FROM node:20-alpine AS builder
+
+WORKDIR /app
+
+COPY ../../frontend/portal-a/package*.json ./
+RUN npm ci
+
+COPY ../../frontend/portal-a ./
+RUN npm run build
+
+FROM nginx:alpine
+COPY --from=builder /app/dist /usr/share/nginx/html
+COPY ../../infrastructure/nginx/portal-a.conf /etc/nginx/conf.d/default.conf
+
+EXPOSE 80
+
+CMD ["nginx", "-g", "daemon off;"]

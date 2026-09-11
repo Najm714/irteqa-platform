@@ -1,3 +1,4 @@
+require('dotenv').config();
 const Model = require('./models/Model');
 const express = require('express');
 const dotenv = require('dotenv');
@@ -6,6 +7,7 @@ const path = require('path');
 const connectDB = require('./config/db');
 const { protect, authorize } = require('./middleware/auth');
 const upload = require('./middleware/upload');
+const mongoose = require('mongoose');
 
 dotenv.config();
 connectDB();
