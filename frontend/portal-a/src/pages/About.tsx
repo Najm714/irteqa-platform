@@ -1,8 +1,6 @@
 // frontend/portal-a/src/pages/About.tsx
 import React, { useState, useEffect, useCallback } from 'react';
 import { useAuth } from '../context/AuthContext';
-import AOS from 'aos';
-import 'aos/dist/aos.css';
 
 // أيقونات
 import {
@@ -48,11 +46,6 @@ const About: React.FC = () => {
       setLoading(false);
     }
   }, [token]);
-
-  useEffect(() => {
-    AOS.init({ duration: 600, once: true });
-    fetchAbout();
-  }, [fetchAbout]);
 
   // ===== تنسيق التاريخ =====
   const formatDate = (date: string) => {

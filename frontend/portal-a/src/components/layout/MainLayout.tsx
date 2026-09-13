@@ -30,6 +30,8 @@ const MainLayout: React.FC<MainLayoutProps> = ({ children }) => {
     { to: '/infographics', label: '📊 الانفوجرافيك' },
     { to: '/offers', label: '🎯 العروض' },
     { to: '/about', label: 'ℹ️ نبذة عنا' },
+    { to: '/login', label: 'ℹ️ تسجيل الدخول ' },
+
   ];
 
   // إضافة روابط لوحة التحكم حسب الدور

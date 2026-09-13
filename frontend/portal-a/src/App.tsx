@@ -1,8 +1,6 @@
 // src/App.tsx
-import React, { useEffect } from 'react';
+import React from 'react';
 import { BrowserRouter, Routes, Route, useLocation } from 'react-router-dom';
-import AOS from 'aos';
-import 'aos/dist/aos.css';
 
 // Pages
 import Home from './pages/Home';
