@@ -358,6 +358,84 @@ export const requirePermission = (permission) => {
     }
   };
 };
+// ============================================================
+// ✅ ✅ دالة مصادقة اختيارية (للصفحات العامة)
+// ============================================================
+export const optionalAuth = async (req, res, next) => {
+  try {
+    // ✅ استخراج التوكن (إن وُجد)
+    let token = null;
+
+    if (req.headers?.authorization) {
+      const authHeader = req.headers.authorization;
+      if (authHeader.startsWith('Bearer ')) {
+        token = authHeader.substring(7);
+      } else {
+        token = authHeader;
+      }
+    }
+
+    if (!token && req.query?.token) {
+      token = req.query.token;
+    }
+
+    if (!token && req.cookies?.token) {
+      token = req.cookies.token;
+    }
+
+    // ✅ إذا لم يوجد توكن، تابع كزائر
+    if (!token) {
+      req.user = null;
+      req.account = null;
+      req.accountId = null;
+      req.isGuest = true;
+      console.log('👤 Guest access:', req.method, req.originalUrl);
+      return next();
+    }
+
+    // ✅ حاول التحقق من التوكن
+    try {
+      const decoded = verifyToken(token);
+      if (!decoded) {
+        req.isGuest = true;
+        return next();
+      }
+
+      const account = await Account.findById(decoded.id || decoded._id)
+        .select('-passwordHash')
+        .populate('portalId', 'name slug');
+
+      if (account && account.isActive) {
+        req.account = account;
+        req.accountId = account._id;
+        req.user = {
+          id: account._id,
+          _id: account._id,
+          portalId: account.portalId?._id || account.portalId,
+          role: account.role,
+          email: account.email,
+          username: account.username,
+          fullName: account.profile?.fullName,
+        };
+        req.portalId = account.portalId?._id || account.portalId;
+        req.isGuest = false;
+        console.log('✅ Authenticated access:', account.email);
+      } else {
+        req.isGuest = true;
+      }
+    } catch (err) {
+      // ⚠️ توكن غير صالح → تابع كزائر
+      console.log('⚠️ Optional auth: invalid token, continuing as guest');
+      req.isGuest = true;
+    }
+
+    next();
+  } catch (error) {
+    console.error('❌ Optional auth error:', error);
+    req.isGuest = true;
+    next();
+  }
+};
 
 // ✅ ✅ دالة مساعدة للتحقق من التوكن في Socket.IO
 export const getSocketAccount = async (token) => {
@@ -386,6 +464,7 @@ export const getSocketAccount = async (token) => {
 
 export default {
   authenticate,
+  optionalAuth,        // ✅ أضف هذه
   authenticateSocket,
   requireRole,
   requirePermission,
