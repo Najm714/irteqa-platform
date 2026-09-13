@@ -1,5 +1,5 @@
 // src/context/SidebarContext.tsx
-import React, { createContext, useContext, useState, useEffect, ReactNode } from 'react';
+import React, { createContext, useContext, useState, useEffect, useMemo, useCallback, ReactNode } from 'react';
 
 type SidebarType = 'main' | 'dashboard' | 'specialist' | 'admin';
 
@@ -20,43 +20,44 @@ export const SidebarProvider: React.FC<{ children: ReactNode }> = ({ children })
   const [isMobile, setIsMobile] = useState(false);
   const [sidebarType, setSidebarType] = useState<SidebarType>('main');
 
-  // التحقق من حجم الشاشة
+  // ✅ التحقق من حجم الشاشة - مرة واحدة فقط
   useEffect(() => {
     const checkMobile = () => {
       const mobile = window.innerWidth < 768;
       setIsMobile(mobile);
       
-      // على الموبايل: السايدبار مغلق افتراضياً
-      // على الديسكتوب: السايدبار مفتوح افتراضياً (للداشبورد)
+      // على الموبايل: السايدبار مغلق
       if (mobile) {
         setIsOpen(false);
-      } else {
-        // على الديسكتوب، نفتح السايدبار إذا كان من نوع dashboard/specialist/admin
-        if (sidebarType === 'dashboard' || sidebarType === 'specialist' || sidebarType === 'admin') {
-          setIsOpen(true);
-        }
       }
     };
     
     checkMobile();
     window.addEventListener('resize', checkMobile);
     return () => window.removeEventListener('resize', checkMobile);
-  }, [sidebarType]);
+  }, []);  // ✅ فارغ
 
-  const toggle = () => setIsOpen(prev => !prev);
-  const close = () => setIsOpen(false);
-  const open = () => setIsOpen(true);
+  // ✅ دوال ثابتة
+  const toggle = useCallback(() => setIsOpen(prev => !prev), []);
+  const close = useCallback(() => setIsOpen(false), []);
+  const open = useCallback(() => setIsOpen(true), []);
+  const handleSetSidebarType = useCallback((type: SidebarType) => {
+    setSidebarType(type);
+  }, []);
+
+  // ✅ value ثابت
+  const value = useMemo(() => ({
+    isOpen,
+    toggle,
+    close,
+    open,
+    isMobile,
+    sidebarType,
+    setSidebarType: handleSetSidebarType,
+  }), [isOpen, toggle, close, open, isMobile, sidebarType, handleSetSidebarType]);
 
   return (
-    <SidebarContext.Provider value={{ 
-      isOpen, 
-      toggle, 
-      close, 
-      open, 
-      isMobile, 
-      sidebarType, 
-      setSidebarType 
-    }}>
+    <SidebarContext.Provider value={value}>
       {children}
     </SidebarContext.Provider>
   );

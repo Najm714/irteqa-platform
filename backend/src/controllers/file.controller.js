@@ -10,9 +10,40 @@ import jwt from 'jsonwebtoken';
 import { PDFDocument, rgb, degrees } from 'pdf-lib';
 
 // ============================================================
+// ✅ دالة مساعدة: هل المستخدم مدير؟
+// ============================================================
+const isAdmin = (account) => {
+  return account?.role === 'portal_admin' || account?.role === 'super_admin';
+};
+
+// ============================================================
+// ✅ دالة مساعدة: التحقق من البوابة (مع استثناء المدير)
+// ============================================================
+const checkPortalAccess = (file, account, portalId) => {
+  // ✅ المدير له صلاحية مطلقة
+  if (isAdmin(account)) {
+    console.log('✅ Admin access - skipping portal check');
+    return true;
+  }
+
+  const accountPortalId = account.portalId?.toString() || account.portalId;
+  const filePortalId = file.portalId.toString();
+
+  if (filePortalId !== (portalId || accountPortalId)) {
+    console.log('❌ Portal mismatch:', {
+      filePortalId,
+      accountPortalId,
+      headerPortalId: portalId,
+    });
+    return false;
+  }
+
+  return true;
+};
+
+// ============================================================
 // ✅ دالة مساعدة لحفظ الملف
 // ============================================================
-
 const saveFile = async ({ file, portalId, accountId, category = 'user', metadata = {}, requestId = null }) => {
   console.log('💾 saveFile called...');
   console.log('  - portalId:', portalId);
@@ -38,10 +69,9 @@ const saveFile = async ({ file, portalId, accountId, category = 'user', metadata
 // ============================================================
 // ✅ دالة مساعدة للتحقق من الصلاحية مع الاشتراك
 // ============================================================
-
 const canAccessFileWithSubscription = async (file, account) => {
   // 1. المدير لديه صلاحية مطلقة
-  if (account?.role === 'portal_admin' || account?.role === 'super_admin') {
+  if (isAdmin(account)) {
     return true;
   }
 
@@ -72,9 +102,8 @@ const canAccessFileWithSubscription = async (file, account) => {
 };
 
 // ============================================================
-// ✅ ✅ إضافة علامة مائية على ملف PDF (النص الإنجليزي)
+// ✅ إضافة علامة مائية على ملف PDF
 // ============================================================
-
 const addWatermarkToPDF = async (pdfBuffer, watermarkText, accountName = '') => {
   try {
     console.log('📝 Adding watermark to PDF...');
@@ -87,7 +116,6 @@ const addWatermarkToPDF = async (pdfBuffer, watermarkText, accountName = '') => 
     const opacity = 0.15;
     const color = rgb(0.2, 0.2, 0.2);
     
-    // ✅ استخدام النص الإنجليزي لتجنب مشاكل الترميز
     const fullWatermark = accountName 
       ? `${watermarkText} - ${accountName}`
       : watermarkText;
@@ -96,7 +124,6 @@ const addWatermarkToPDF = async (pdfBuffer, watermarkText, accountName = '') => 
       const page = pages[i];
       const { width, height } = page.getSize();
       
-      // ✅ العلامة المائية الرئيسية
       page.drawText(fullWatermark, {
         x: width / 2 - 150,
         y: height / 2 - 20,
@@ -106,7 +133,6 @@ const addWatermarkToPDF = async (pdfBuffer, watermarkText, accountName = '') => 
         rotate: degrees(-45),
       });
 
-      // ✅ تاريخ المشاهدة بالإنجليزية
       const dateTime = new Date().toLocaleString('en-US', {
         year: 'numeric',
         month: 'long',
@@ -124,7 +150,6 @@ const addWatermarkToPDF = async (pdfBuffer, watermarkText, accountName = '') => 
         opacity: 0.5,
       });
 
-      // ✅ رقم الصفحة
       page.drawText(`Page ${i + 1} of ${totalPages}`, {
         x: width - 120,
         y: 20,
@@ -143,9 +168,40 @@ const addWatermarkToPDF = async (pdfBuffer, watermarkText, accountName = '') => 
 };
 
 // ============================================================
+// ✅ دالة مساعدة: استخراج الحساب من التوكن
+// ============================================================
+const getAccountFromRequest = async (req) => {
+  let account = req.account;
+
+  if (!account && req.query.token) {
+    try {
+      const decoded = jwt.verify(req.query.token, process.env.JWT_SECRET);
+      if (decoded) {
+        account = await Account.findById(decoded.id || decoded._id);
+      }
+    } catch (err) {
+      console.log('⚠️ Token from query invalid:', err.message);
+    }
+  }
+
+  if (!account && req.headers.authorization) {
+    try {
+      const token = req.headers.authorization.replace('Bearer ', '');
+      const decoded = jwt.verify(token, process.env.JWT_SECRET);
+      if (decoded) {
+        account = await Account.findById(decoded.id || decoded._id);
+      }
+    } catch (err) {
+      console.log('⚠️ Token from headers invalid:', err.message);
+    }
+  }
+
+  return account;
+};
+
+// ============================================================
 // ✅ رفع ملف
 // ============================================================
-
 export const uploadFile = async (req, res) => {
   try {
     const portalId = req.portal?._id || req.portalId || req.headers['x-portal-id'] || req.body.portalId;
@@ -173,7 +229,6 @@ export const uploadFile = async (req, res) => {
       });
     }
 
-    // ✅ قائمة الفئات المسموحة
     const allowedCategories = [
       'payment_proof', 'user', 'request_file', 'request',
       'proof', 'delivery', 'modification', 'support',
@@ -185,11 +240,10 @@ export const uploadFile = async (req, res) => {
 
     const finalCategory = category || 'user';
 
-    // ✅ التحقق من صلاحيات الفئة حسب الدور
     if (role === 'customer' && !allowedCategories.includes(finalCategory)) {
       return res.status(403).json({
         success: false,
-        message: `Category "${finalCategory}" is not allowed for customers. Allowed: ${allowedCategories.join(', ')}`,
+        message: `Category "${finalCategory}" is not allowed for customers.`,
         allowed: allowedCategories,
       });
     }
@@ -198,20 +252,11 @@ export const uploadFile = async (req, res) => {
     if (role === 'specialist' && !specialistAllowed.includes(finalCategory)) {
       return res.status(403).json({
         success: false,
-        message: `Category "${finalCategory}" is not allowed for specialists. Allowed: ${specialistAllowed.join(', ')}`,
+        message: `Category "${finalCategory}" is not allowed for specialists.`,
         allowed: specialistAllowed,
       });
     }
 
-    // ✅ المديرين لديهم صلاحية مطلقة
-    if ((role === 'portal_admin' || role === 'super_admin') && !allowedCategories.includes(finalCategory)) {
-      return res.status(403).json({
-        success: false,
-        message: `Category "${finalCategory}" is not allowed for admins.`,
-      });
-    }
-
-    // ✅ رفع الملف
     const file = await saveFile({
       file: req.file,
       portalId,
@@ -238,52 +283,16 @@ export const uploadFile = async (req, res) => {
 };
 
 // ============================================================
-// ✅ ✅ معاينة ملف (View) - مع العلامة المائية الإنجليزية
+// ✅ معاينة ملف (مع علامة مائية)
 // ============================================================
-
 export const viewFile = async (req, res) => {
   try {
     const fileId = req.params.id;
     const portalId = req.headers['x-portal-id'] || req.query.portalId;
-    let account = req.account;
 
     console.log('👁️ Viewing file:', fileId);
-    console.log('  - Query token:', req.query.token ? 'Present' : 'Missing');
-    console.log('  - Headers token:', req.headers.authorization ? 'Present' : 'Missing');
 
-    // ✅ محاولة الحصول على التوكن من Query String
-    const tokenFromQuery = req.query.token;
-    
-    if (!account && tokenFromQuery) {
-      try {
-        const decoded = jwt.verify(tokenFromQuery, process.env.JWT_SECRET);
-        console.log('✅ Token decoded from query');
-        if (decoded) {
-          account = await Account.findById(decoded.id || decoded._id);
-          console.log('✅ Account found via query token:', account?._id);
-        }
-      } catch (err) {
-        console.log('⚠️ Token from query invalid:', err.message);
-      }
-    }
-
-    // ✅ إذا كان التوكن في الـ Headers، استخدمه
-    if (!account && req.headers.authorization) {
-      try {
-        const token = req.headers.authorization.replace('Bearer ', '');
-        const decoded = jwt.verify(token, process.env.JWT_SECRET);
-        console.log('✅ Token decoded from headers');
-        if (decoded) {
-          account = await Account.findById(decoded.id || decoded._id);
-          console.log('✅ Account found via headers token:', account?._id);
-        }
-      } catch (err) {
-        console.log('⚠️ Token from headers invalid:', err.message);
-      }
-    }
-
-    console.log('  - Final Account:', account?._id);
-    console.log('  - Role:', account?.role);
+    const account = await getAccountFromRequest(req);
 
     if (!account) {
       return res.status(401).json({
@@ -293,7 +302,8 @@ export const viewFile = async (req, res) => {
       });
     }
 
-    // ✅ البحث عن الملف
+    console.log('  - Account:', account._id, '| Role:', account.role);
+
     const file = await File.findOne({ _id: fileId, isDeleted: { $ne: true } });
     if (!file) {
       return res.status(404).json({
@@ -302,9 +312,8 @@ export const viewFile = async (req, res) => {
       });
     }
 
-    // ✅ التحقق من البوابة
-    const accountPortalId = account.portalId?.toString() || account.portalId;
-    if (file.portalId.toString() !== (portalId || accountPortalId)) {
+    // ✅ التحقق من البوابة (مع استثناء المدير)
+    if (!checkPortalAccess(file, account, portalId)) {
       return res.status(403).json({
         success: false,
         message: 'Access denied - Invalid portal',
@@ -322,10 +331,8 @@ export const viewFile = async (req, res) => {
       });
     }
 
-    // ✅ تحميل الملف
     let fileBuffer = await storageService.getFile(file);
     
-    // ✅ ✅ إضافة العلامة المائية (PDF فقط - بالنص الإنجليزي)
     if (file.mimeType === 'application/pdf') {
       try {
         const userName = account.profile?.fullName || account.email || 'User';
@@ -334,11 +341,9 @@ export const viewFile = async (req, res) => {
         console.log('✅ Watermark added to PDF');
       } catch (watermarkError) {
         console.error('⚠️ Failed to add watermark:', watermarkError.message);
-        // استمر بدون علامة مائية (لا نوقف المعاينة)
       }
     }
 
-    // ✅ إرسال الملف للمعاينة
     const filename = encodeURIComponent(file.originalName);
     res.setHeader('Content-Type', file.mimeType);
     res.setHeader('Content-Disposition', `inline; filename="${filename}"`);
@@ -362,49 +367,14 @@ export const viewFile = async (req, res) => {
 // ============================================================
 // ✅ تحميل ملف مباشرة
 // ============================================================
-
 export const downloadFileDirect = async (req, res) => {
   try {
     const fileId = req.params.id;
     const portalId = req.headers['x-portal-id'] || req.query.portalId;
-    let account = req.account;
 
     console.log('📥 Downloading file directly:', fileId);
-    console.log('  - Query token:', req.query.token ? 'Present' : 'Missing');
-    console.log('  - Headers token:', req.headers.authorization ? 'Present' : 'Missing');
 
-    // ✅ محاولة الحصول على التوكن من Query String
-    const tokenFromQuery = req.query.token;
-    
-    if (!account && tokenFromQuery) {
-      try {
-        const decoded = jwt.verify(tokenFromQuery, process.env.JWT_SECRET);
-        console.log('✅ Token decoded from query');
-        if (decoded) {
-          account = await Account.findById(decoded.id || decoded._id);
-          console.log('✅ Account found via query token:', account?._id);
-        }
-      } catch (err) {
-        console.log('⚠️ Token from query invalid:', err.message);
-      }
-    }
-
-    if (!account && req.headers.authorization) {
-      try {
-        const token = req.headers.authorization.replace('Bearer ', '');
-        const decoded = jwt.verify(token, process.env.JWT_SECRET);
-        console.log('✅ Token decoded from headers');
-        if (decoded) {
-          account = await Account.findById(decoded.id || decoded._id);
-          console.log('✅ Account found via headers token:', account?._id);
-        }
-      } catch (err) {
-        console.log('⚠️ Token from headers invalid:', err.message);
-      }
-    }
-
-    console.log('  - Final Account:', account?._id);
-    console.log('  - Role:', account?.role);
+    const account = await getAccountFromRequest(req);
 
     if (!account) {
       return res.status(401).json({
@@ -414,6 +384,8 @@ export const downloadFileDirect = async (req, res) => {
       });
     }
 
+    console.log('  - Account:', account._id, '| Role:', account.role);
+
     const file = await File.findOne({ _id: fileId, isDeleted: { $ne: true } });
     if (!file) {
       return res.status(404).json({
@@ -422,8 +394,8 @@ export const downloadFileDirect = async (req, res) => {
       });
     }
 
-    const accountPortalId = account.portalId?.toString() || account.portalId;
-    if (file.portalId.toString() !== (portalId || accountPortalId)) {
+    // ✅ التحقق من البوابة (مع استثناء المدير)
+    if (!checkPortalAccess(file, account, portalId)) {
       return res.status(403).json({
         success: false,
         message: 'Access denied - Invalid portal',
@@ -464,51 +436,16 @@ export const downloadFileDirect = async (req, res) => {
 // ============================================================
 // ✅ تشغيل فيديو مباشرة (Streaming)
 // ============================================================
-
 export const streamVideo = async (req, res) => {
   try {
     const fileId = req.params.id;
     const portalId = req.headers['x-portal-id'] || req.query.portalId;
-    let account = req.account;
 
     console.log('🎬 Streaming video:', fileId);
-    console.log('  - Query token:', req.query.token ? 'Present' : 'Missing');
-    console.log('  - Headers token:', req.headers.authorization ? 'Present' : 'Missing');
 
-    const tokenFromQuery = req.query.token;
-    
-    if (!account && tokenFromQuery) {
-      try {
-        const decoded = jwt.verify(tokenFromQuery, process.env.JWT_SECRET);
-        console.log('✅ Token decoded from query');
-        if (decoded) {
-          account = await Account.findById(decoded.id || decoded._id);
-          console.log('✅ Account found via query token:', account?._id);
-        }
-      } catch (err) {
-        console.log('⚠️ Token from query invalid:', err.message);
-      }
-    }
-
-    if (!account && req.headers.authorization) {
-      try {
-        const token = req.headers.authorization.replace('Bearer ', '');
-        const decoded = jwt.verify(token, process.env.JWT_SECRET);
-        console.log('✅ Token decoded from headers');
-        if (decoded) {
-          account = await Account.findById(decoded.id || decoded._id);
-          console.log('✅ Account found via headers token:', account?._id);
-        }
-      } catch (err) {
-        console.log('⚠️ Token from headers invalid:', err.message);
-      }
-    }
-
-    console.log('  - Final Account:', account?._id);
-    console.log('  - Role:', account?.role);
+    const account = await getAccountFromRequest(req);
 
     if (!account) {
-      console.log('❌ No account found, unauthorized');
       return res.status(401).json({
         success: false,
         message: 'Unauthorized - Please login',
@@ -524,8 +461,7 @@ export const streamVideo = async (req, res) => {
       });
     }
 
-    const accountPortalId = account.portalId?.toString() || account.portalId;
-    if (file.portalId.toString() !== (portalId || accountPortalId)) {
+    if (!checkPortalAccess(file, account, portalId)) {
       return res.status(403).json({
         success: false,
         message: 'Access denied - Invalid portal',
@@ -562,9 +498,102 @@ export const streamVideo = async (req, res) => {
 };
 
 // ============================================================
+// ✅ تشغيل فيديو آمن (مع دعم التوكن)
+// ============================================================
+export const streamVideoSecure = async (req, res) => {
+  try {
+    const fileId = req.params.id;
+    const portalId = req.headers['x-portal-id'] || req.query.portalId;
+
+    console.log('🎬 Streaming video (secure):', fileId);
+
+    const account = await getAccountFromRequest(req);
+
+    if (!account) {
+      return res.status(401).json({
+        success: false,
+        message: 'Unauthorized - Please login',
+        code: 'NO_TOKEN',
+      });
+    }
+
+    const file = await File.findOne({ _id: fileId, isDeleted: { $ne: true } });
+    if (!file) {
+      return res.status(404).json({
+        success: false,
+        message: 'File not found',
+      });
+    }
+
+    if (!checkPortalAccess(file, account, portalId)) {
+      return res.status(403).json({
+        success: false,
+        message: 'Access denied - Invalid portal',
+        code: 'ACCESS_DENIED',
+      });
+    }
+
+    const hasAccess = await canAccessFileWithSubscription(file, account);
+    if (!hasAccess) {
+      return res.status(403).json({
+        success: false,
+        message: 'You do not have permission to view this video',
+        code: 'ACCESS_DENIED',
+      });
+    }
+
+    const fileBuffer = await storageService.getFile(file);
+    const fileSize = fileBuffer.length;
+    const range = req.headers.range;
+
+    const headers = {
+      'Content-Type': file.mimeType || 'video/mp4',
+      'Accept-Ranges': 'bytes',
+      'Cache-Control': 'no-store, no-cache, must-revalidate, private',
+      'Pragma': 'no-cache',
+      'Expires': '0',
+      'Access-Control-Allow-Origin': '*',
+      'Access-Control-Allow-Methods': 'GET, OPTIONS',
+      'Access-Control-Allow-Headers': 'Authorization, Content-Type, X-Portal-Id, Range',
+      'Content-Disposition': 'inline',
+      'X-Content-Type-Options': 'nosniff',
+      'Referrer-Policy': 'strict-origin-when-cross-origin',
+    };
+
+    if (range) {
+      const parts = range.replace(/bytes=/, "").split("-");
+      const start = parseInt(parts[0], 10);
+      const end = parts[1] ? parseInt(parts[1], 10) : fileSize - 1;
+      const chunksize = (end - start) + 1;
+      const chunk = fileBuffer.slice(start, end + 1);
+
+      res.writeHead(206, {
+        ...headers,
+        'Content-Range': `bytes ${start}-${end}/${fileSize}`,
+        'Content-Length': chunksize,
+      });
+      res.end(chunk);
+    } else {
+      res.writeHead(200, {
+        ...headers,
+        'Content-Length': fileSize,
+      });
+      res.end(fileBuffer);
+    }
+
+    console.log('✅ Video streamed securely:', fileId);
+  } catch (error) {
+    console.error('❌ Stream video error:', error);
+    res.status(500).json({
+      success: false,
+      message: error.message || 'Failed to stream video',
+    });
+  }
+};
+
+// ============================================================
 // ✅ الحصول على معلومات الملف
 // ============================================================
-
 export const getFileInfo = async (req, res) => {
   try {
     const fileId = req.params.id;
@@ -580,7 +609,7 @@ export const getFileInfo = async (req, res) => {
     }
 
     const fileRecord = await File.findOne({ _id: fileId, portalId });
-    if (!fileRecord) {
+    if (!fileRecord && !isAdmin(req.account)) {
       return res.status(404).json({
         success: false,
         message: 'File not found in this portal',
@@ -603,13 +632,12 @@ export const getFileInfo = async (req, res) => {
 // ============================================================
 // ✅ الحصول على ملف
 // ============================================================
-
 export const getFile = async (req, res) => {
   try {
     const fileId = req.params.id;
     const portalId = req.portal?._id || req.portalId || req.headers['x-portal-id'];
 
-    const file = await File.findOne({ _id: fileId, portalId, isDeleted: { $ne: true } })
+    const file = await File.findOne({ _id: fileId, isDeleted: { $ne: true } })
       .populate('accountId', 'profile.fullName email')
       .populate('requestId', 'title status');
 
@@ -617,6 +645,13 @@ export const getFile = async (req, res) => {
       return res.status(404).json({
         success: false,
         message: 'File not found',
+      });
+    }
+
+    if (!isAdmin(req.account) && file.portalId.toString() !== portalId) {
+      return res.status(403).json({
+        success: false,
+        message: 'Access denied',
       });
     }
 
@@ -644,7 +679,6 @@ export const getFile = async (req, res) => {
 // ============================================================
 // ✅ حذف ملف
 // ============================================================
-
 export const deleteFile = async (req, res) => {
   try {
     const fileId = req.params.id;
@@ -666,9 +700,8 @@ export const deleteFile = async (req, res) => {
 };
 
 // ============================================================
-// ✅ إعادة رفع ملف مفقود (للمدير)
+// ✅ إعادة رفع ملف مفقود
 // ============================================================
-
 export const reuploadFile = async (req, res) => {
   try {
     const { id } = req.params;
@@ -682,7 +715,7 @@ export const reuploadFile = async (req, res) => {
       });
     }
 
-    const file = await File.findOne({ _id: id, portalId, isDeleted: { $ne: true } });
+    const file = await File.findOne({ _id: id, isDeleted: { $ne: true } });
     if (!file) {
       return res.status(404).json({
         success: false,
@@ -690,14 +723,11 @@ export const reuploadFile = async (req, res) => {
       });
     }
 
-    console.log('🔄 Re-uploading file:');
-    console.log('  - File ID:', file._id);
-    console.log('  - Original name:', file.originalName);
-    console.log('  - Old storage key:', file.storageKey);
+    console.log('🔄 Re-uploading file:', file._id);
 
     const result = await storageService.uploadFile(
       req.file,
-      portalId,
+      portalId || file.portalId,
       accountId,
       file.category || 'request',
       file.requestId || null,
@@ -712,26 +742,7 @@ export const reuploadFile = async (req, res) => {
     file.updatedAt = new Date();
     await file.save();
 
-    console.log('✅ File re-uploaded successfully:');
-    console.log('  - New storage key:', result.key);
-    console.log('  - Old storage key (replaced):', oldKey);
-
-    if (file.requestId) {
-      const request = await Request.findById(file.requestId);
-      if (request) {
-        request.files?.forEach(f => {
-          if (f.fileId?.toString() === file._id.toString()) {
-            f.fileId = file._id;
-          }
-        });
-        request.paymentProofs?.forEach(p => {
-          if (p.fileId?.toString() === file._id.toString()) {
-            p.fileId = file._id;
-          }
-        });
-        await request.save();
-      }
-    }
+    console.log('✅ File re-uploaded successfully');
 
     res.json({
       success: true,
@@ -757,9 +768,8 @@ export const reuploadFile = async (req, res) => {
 };
 
 // ============================================================
-// ✅ ✅ جلب ملفات المختص (محدث)
+// ✅ جلب ملفات المختص
 // ============================================================
-
 export const getSpecialistFiles = async (req, res) => {
   try {
     const accountId = req.accountId;
@@ -768,8 +778,7 @@ export const getSpecialistFiles = async (req, res) => {
 
     console.log('📤 Fetching specialist files for:', accountId);
 
-    // التحقق من أن المستخدم مختص
-    if (req.account?.role !== 'specialist' && req.account?.role !== 'portal_admin' && req.account?.role !== 'super_admin') {
+    if (!isAdmin(req.account) && req.account?.role !== 'specialist') {
       return res.status(403).json({
         success: false,
         message: 'Only specialists can access this endpoint',
@@ -835,154 +844,15 @@ export const getSpecialistFiles = async (req, res) => {
     });
   }
 };
-// backend/src/controllers/file.controller.js
 
-// ============================================================
-// ✅ ✅ تشغيل فيديو آمن (مع دعم التوكن)
-// ============================================================
-
-export const streamVideoSecure = async (req, res) => {
-  try {
-    const fileId = req.params.id;
-    const portalId = req.headers['x-portal-id'] || req.query.portalId;
-    let account = req.account;
-
-    console.log('🎬 Streaming video (secure):', fileId);
-    console.log('  - Query token:', req.query.token ? 'Present' : 'Missing');
-    console.log('  - Headers token:', req.headers.authorization ? 'Present' : 'Missing');
-
-    // ✅ محاولة الحصول على التوكن من Query String
-    const tokenFromQuery = req.query.token;
-    
-    if (!account && tokenFromQuery) {
-      try {
-        const decoded = jwt.verify(tokenFromQuery, process.env.JWT_SECRET);
-        console.log('✅ Token decoded from query');
-        if (decoded) {
-          account = await Account.findById(decoded.id || decoded._id);
-          console.log('✅ Account found via query token:', account?._id);
-        }
-      } catch (err) {
-        console.log('⚠️ Token from query invalid:', err.message);
-      }
-    }
-
-    // ✅ إذا كان التوكن في الـ Headers، استخدمه
-    if (!account && req.headers.authorization) {
-      try {
-        const token = req.headers.authorization.replace('Bearer ', '');
-        const decoded = jwt.verify(token, process.env.JWT_SECRET);
-        console.log('✅ Token decoded from headers');
-        if (decoded) {
-          account = await Account.findById(decoded.id || decoded._id);
-          console.log('✅ Account found via headers token:', account?._id);
-        }
-      } catch (err) {
-        console.log('⚠️ Token from headers invalid:', err.message);
-      }
-    }
-
-    console.log('  - Final Account:', account?._id);
-    console.log('  - Role:', account?.role);
-
-    if (!account) {
-      console.log('❌ No account found, unauthorized');
-      return res.status(401).json({
-        success: false,
-        message: 'Unauthorized - Please login',
-        code: 'NO_TOKEN',
-      });
-    }
-
-    // ✅ البحث عن الملف
-    const file = await File.findOne({ _id: fileId, isDeleted: { $ne: true } });
-    if (!file) {
-      return res.status(404).json({
-        success: false,
-        message: 'File not found',
-      });
-    }
-
-    // ✅ التحقق من البوابة
-    const accountPortalId = account.portalId?.toString() || account.portalId;
-    if (file.portalId.toString() !== (portalId || accountPortalId)) {
-      return res.status(403).json({
-        success: false,
-        message: 'Access denied - Invalid portal',
-        code: 'ACCESS_DENIED',
-      });
-    }
-
-    // ✅ التحقق من الصلاحية
-    const hasAccess = await canAccessFileWithSubscription(file, account);
-    if (!hasAccess) {
-      return res.status(403).json({
-        success: false,
-        message: 'You do not have permission to view this video',
-        code: 'ACCESS_DENIED',
-      });
-    }
-
-    // ✅ تحميل الفيديو
-    const fileBuffer = await storageService.getFile(file);
-    const fileSize = fileBuffer.length;
-    const range = req.headers.range;
-
-    // ✅ إعداد رؤوس الأمان
-    const headers = {
-      'Content-Type': file.mimeType || 'video/mp4',
-      'Accept-Ranges': 'bytes',
-      'Cache-Control': 'no-store, no-cache, must-revalidate, private',
-      'Pragma': 'no-cache',
-      'Expires': '0',
-      'Access-Control-Allow-Origin': '*',
-      'Access-Control-Allow-Methods': 'GET, OPTIONS',
-      'Access-Control-Allow-Headers': 'Authorization, Content-Type, X-Portal-Id, Range',
-      'Content-Disposition': 'inline',
-      'X-Content-Type-Options': 'nosniff',
-      'Referrer-Policy': 'strict-origin-when-cross-origin',
-    };
-
-    // ✅ دعم البث الجزئي
-    if (range) {
-      const parts = range.replace(/bytes=/, "").split("-");
-      const start = parseInt(parts[0], 10);
-      const end = parts[1] ? parseInt(parts[1], 10) : fileSize - 1;
-      const chunksize = (end - start) + 1;
-      const chunk = fileBuffer.slice(start, end + 1);
-
-      res.writeHead(206, {
-        ...headers,
-        'Content-Range': `bytes ${start}-${end}/${fileSize}`,
-        'Content-Length': chunksize,
-      });
-      res.end(chunk);
-    } else {
-      res.writeHead(200, {
-        ...headers,
-        'Content-Length': fileSize,
-      });
-      res.end(fileBuffer);
-    }
-
-    console.log('✅ Video streamed securely:', fileId);
-  } catch (error) {
-    console.error('❌ Stream video error:', error);
-    res.status(500).json({
-      success: false,
-      message: error.message || 'Failed to stream video',
-    });
-  }
-};
 // ============================================================
 // ✅ تصدير جميع الدوال
 // ============================================================
-
 export default {
   uploadFile,
   downloadFileDirect,
   streamVideo,
-  streamVideoSecure,  // ✅ أضف هذا
+  streamVideoSecure,
   viewFile,
   getFile,
   getFileInfo,

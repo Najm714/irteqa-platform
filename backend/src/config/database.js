@@ -16,15 +16,33 @@ export const connectDB = async () => {
     console.log(`  - URI: ${sanitizedUri}`);
 
     await mongoose.connect(config.mongodbUri, {
+      // ✅ تحسينات الأداء
+      maxPoolSize: 50,              // 50 اتصال متوازي (افتراضي: 5)
+      minPoolSize: 5,               // 5 اتصالات جاهزة دائماً
+      maxIdleTimeMS: 30000,         // إغلاق الخامل بعد 30s
+      waitQueueTimeoutMS: 10000,    // انتظار 10s لاتصال متاح
+      
+      // ✅ Timeouts
+      serverSelectionTimeoutMS: 10000,
+      socketTimeoutMS: 45000,
+      connectTimeoutMS: 10000,
+      
+      // ✅ Heartbeat
+      heartbeatFrequencyMS: 10000,
+      
+      // ✅ خيارات إضافية
+      retryWrites: true,
+      retryReads: true,
+      
+      // ⚠️ deprecated لكن موجودة للتوافق
       useNewUrlParser: true,
       useUnifiedTopology: true,
-      serverSelectionTimeoutMS: 5000,
-      socketTimeoutMS: 45000,
     });
 
     console.log('✅ MongoDB connected successfully');
     console.log(`  - Database: ${mongoose.connection.name}`);
     console.log(`  - Host: ${mongoose.connection.host}`);
+    console.log(`  - Pool Size: 50`);
   } catch (error) {
     console.error('❌ MongoDB connection error:');
     console.error(`  - Message: ${error.message}`);

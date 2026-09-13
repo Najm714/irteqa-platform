@@ -22,21 +22,35 @@ const app = express();
 app.use(helmet({
   crossOriginResourcePolicy: { policy: "cross-origin" },
   crossOriginOpenerPolicy: { policy: "same-origin" },
-  crossOriginEmbedderPolicy: { policy: "require-corp" },
+  crossOriginEmbedderPolicy: false,  // ✅ عطّلناه لأنه يمنع R2 images
   contentSecurityPolicy: {
     directives: {
       defaultSrc: ["'self'"],
       scriptSrc: ["'self'", "'unsafe-inline'", "cdnjs.cloudflare.com"],
       styleSrc: ["'self'", "'unsafe-inline'", "fonts.googleapis.com"],
-      imgSrc: ["'self'", "data:", "*.r2.cloudflarestorage.com"],
-      fontSrc: ["'self'", "fonts.gstatic.com"],
+      imgSrc: [
+        "'self'",
+        "data:",
+        "blob:",
+        "*.r2.cloudflarestorage.com",
+        "*.r2.dev",              // ✅ أضفنا
+        "https:",
+      ],
+      fontSrc: ["'self'", "fonts.gstatic.com", "data:"],
       connectSrc: [
-        "'self'", 
-        "ws://localhost:5001", 
+        "'self'",
+        "ws://localhost:5001",
         "wss://localhost:5001",
         "ws://localhost:5173",
-        "wss://*.render.com"
+        "ws://localhost:5174",
+        "ws://localhost:8080",
+        "http://localhost:5001",
+        "https://*.r2.cloudflarestorage.com",
+        "https://*.r2.dev",
+        "wss://*.render.com",
       ],
+      mediaSrc: ["'self'", "blob:", "data:", "https:"],
+      frameSrc: ["'self'", "blob:"],
     },
   },
 }));
@@ -44,21 +58,38 @@ app.use(helmet({
 // ============================================================
 // ✅ CORS - إعدادات شاملة
 // ============================================================
-
 const corsOptions = {
-  origin: [
-    'http://localhost',
-    'http://localhost:80',
-    'http://localhost:5173',
-    'http://localhost:5174',
-    'http://localhost:8080',
-    'http://127.0.0.1',
-    'http://127.0.0.1:5173',
-    'http://127.0.0.1:5174',
-    'http://127.0.0.1:8080',
-    'http://localhost:5001',
-    'https://*.render.com',
-  ],
+  origin: function (origin, callback) {
+    // ✅ السماح بدون origin (Postman, curl, mobile apps)
+    if (!origin) return callback(null, true);
+
+    const allowedOrigins = [
+      'http://localhost',
+      'http://localhost:80',
+      'http://localhost:5173',
+      'http://localhost:5174',
+      'http://localhost:8080',
+      'http://127.0.0.1',
+      'http://127.0.0.1:5173',
+      'http://127.0.0.1:5174',
+      'http://127.0.0.1:8080',
+      'http://localhost:5001',
+    ];
+
+    // ✅ السماح بـ wildcards
+    const isAllowed = 
+      allowedOrigins.includes(origin) ||
+      /\.onrender\.com$/.test(origin) ||
+      /\.vercel\.app$/.test(origin) ||
+      /\.netlify\.app$/.test(origin);
+
+    if (isAllowed) {
+      callback(null, true);
+    } else {
+      console.log('❌ CORS blocked:', origin);
+      callback(new Error('Not allowed by CORS'));
+    }
+  },
   methods: ['GET', 'POST', 'PUT', 'DELETE', 'PATCH', 'OPTIONS'],
   allowedHeaders: [
     'Content-Type',
@@ -67,30 +98,36 @@ const corsOptions = {
     'X-Portal-Id',
     'Accept',
     'Origin',
-    'Access-Control-Allow-Origin',
-    'Access-Control-Allow-Headers',
-    'Access-Control-Allow-Methods',
+    'Range',
+    'Content-Range',
+  ],
+  exposedHeaders: [
+    'Content-Range',
+    'Accept-Ranges',
+    'Content-Length',
+    'Content-Disposition',
   ],
   credentials: true,
   maxAge: 86400,
   preflightContinue: false,
   optionsSuccessStatus: 204,
 };
-
-// ✅ تطبيق CORS قبل كل شيء
 app.use(cors(corsOptions));
-
-// ✅ معالجة طلبات OPTIONS (Preflight) يدوياً
 app.options('*', cors(corsOptions));
 
-// ✅ إضافة CORS headers يدوياً لجميع الردود
+// ✅ CORS headers يدوياً
 app.use((req, res, next) => {
-  res.header('Access-Control-Allow-Origin', '*');
+  const origin = req.headers.origin;
+  if (origin) {
+    res.header('Access-Control-Allow-Origin', origin);
+  } else {
+    res.header('Access-Control-Allow-Origin', '*');
+  }
   res.header('Access-Control-Allow-Methods', 'GET, POST, PUT, DELETE, PATCH, OPTIONS');
-  res.header('Access-Control-Allow-Headers', 'Content-Type, Authorization, X-Requested-With, X-Portal-Id, Accept, Origin');
+  res.header('Access-Control-Allow-Headers', 'Content-Type, Authorization, X-Requested-With, X-Portal-Id, Accept, Origin, Range');
   res.header('Access-Control-Allow-Credentials', 'true');
-  
-  // معالجة طلبات OPTIONS مباشرة
+  res.header('Access-Control-Expose-Headers', 'Content-Range, Accept-Ranges, Content-Length, Content-Disposition');
+
   if (req.method === 'OPTIONS') {
     return res.sendStatus(204);
   }
@@ -98,61 +135,76 @@ app.use((req, res, next) => {
 });
 
 // ============================================================
-// ✅ إضافة الأمان
+// ✅ الأمان
 // ============================================================
 
-// منع هجمات XSS
 app.use(xss());
-
-// منع هجمات NoSQL Injection (MongoDB)
 app.use(mongoSanitize());
-
-// منع Parameter Pollution
 app.use(hpp());
-
-// ضغط الردود
 app.use(compression());
 
 // ============================================================
-// ✅ Rate Limiting - منع هجمات DDoS
+// ✅ Body Parser (قبل Rate Limit)
 // ============================================================
 
-const limiter = rateLimit({
-  windowMs: 15 * 60 * 1000,
-  max: 100,
-  message: {
-    success: false,
-    message: 'Too many requests from this IP, please try again later.',
-  },
-  standardHeaders: true,
-  legacyHeaders: false,
-  skip: (req) => req.path === '/health',
-});
-
-app.use('/api', limiter);
-
-const authLimiter = rateLimit({
-  windowMs: 15 * 60 * 1000,
-  max: 10,
-  message: {
-    success: false,
-    message: 'Too many authentication attempts, please try again later.',
-  },
-  standardHeaders: true,
-  legacyHeaders: false,
-  skipSuccessfulRequests: true,
-});
-
-app.use('/api/auth/login', authLimiter);
-app.use('/api/auth/register', authLimiter);
+app.use(express.json({ limit: '50mb' }));
+app.use(express.urlencoded({ extended: true, limit: '50mb' }));
 
 // ============================================================
-// ✅ Middleware العامة
+// ✅ Rate Limiting - للإنتاج فقط
 // ============================================================
 
-app.use(express.json({ limit: '10mb' }));
-app.use(express.urlencoded({ extended: true, limit: '10mb' }));
-app.use(morgan('dev'));
+if (config.nodeEnv === 'production') {
+  const limiter = rateLimit({
+    windowMs: 15 * 60 * 1000,
+    max: 500,
+    message: {
+      success: false,
+      message: 'Too many requests from this IP, please try again later.',
+    },
+    standardHeaders: true,
+    legacyHeaders: false,
+    skip: (req) => req.path === '/health' || req.path === '/api/health',
+  });
+
+  app.use('/api', limiter);
+
+  const authLimiter = rateLimit({
+    windowMs: 15 * 60 * 1000,
+    max: 20,
+    message: {
+      success: false,
+      message: 'Too many authentication attempts, please try again later.',
+    },
+    standardHeaders: true,
+    legacyHeaders: false,
+    skipSuccessfulRequests: true,
+  });
+
+  app.use('/api/auth/login', authLimiter);
+  app.use('/api/auth/register', authLimiter);
+
+  console.log('✅ Rate limiting ENABLED (production mode)');
+} else {
+  console.log('⚠️  Rate limiting DISABLED (development mode)');
+}
+
+// ============================================================
+// ✅ Logging (مخفّف)
+// ============================================================
+
+if (config.nodeEnv === 'production') {
+  app.use(morgan('combined'));
+} else {
+  // ✅ تجاهل الطلبات المتكررة والمزعجة
+  app.use(morgan('dev', {
+    skip: (req) => {
+      return req.url.includes('/socket.io/') ||
+             req.url.includes('/notifications/unread') ||
+             req.url === '/health';
+    },
+  }));
+}
 
 // ✅ Headers الأمان المخصصة
 app.use(securityHeaders);

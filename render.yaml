@@ -1,0 +1,45 @@
+services:
+  # Backend Web Service
+  - type: web
+    name: irteqa-backend
+    runtime: node
+    region: frankfurt
+    plan: free
+    branch: main
+    rootDir: backend
+    buildCommand: npm install
+    startCommand: npm start
+    healthCheckPath: /health
+    autoDeploy: true
+    envVars:
+      - key: NODE_ENV
+        value: production
+      - key: PORT
+        value: 10000
+      - key: STORAGE_PROVIDER
+        value: r2
+      - key: R2_BUCKET
+        value: irteqa--platform
+      - key: JWT_EXPIRES_IN
+        value: 7d
+      - key: LOG_LEVEL
+        value: info
+      - key: SUPER_ADMIN_EMAILS
+        value: admin@irteqa.com
+
+  # Frontend Static Site
+  - type: web
+    name: irteqa-portal-a
+    runtime: static
+    branch: main
+    rootDir: frontend/portal-a
+    buildCommand: npm install && npm run build
+    staticPublishPath: dist
+    autoDeploy: true
+    routes:
+      - type: rewrite
+        source: /*
+        destination: /index.html
+    envVars:
+      - key: VITE_API_URL
+        value: https://irteqa-backend.onrender.com/api
