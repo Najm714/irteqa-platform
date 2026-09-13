@@ -255,7 +255,7 @@ const Explanations: React.FC = () => {
     const storedPortalId = localStorage.getItem('portalId');
     if (storedPortalId) return storedPortalId;
     if (user?.portalId) return user.portalId;
-    return '6a8e3dab1175e7015f452904';
+    return '6aa45ad70a89ed89eeb18e41';
   }, [user]);
 
   // ===== دالة للحصول على التوكن =====

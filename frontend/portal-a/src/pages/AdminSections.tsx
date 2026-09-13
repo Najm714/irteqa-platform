@@ -51,7 +51,7 @@ const AdminSections: React.FC = () => {
   });
 
   const API_URL = import.meta.env.VITE_API_URL || 'http://localhost:5001/api';
-  const PORTAL_ID = '6a8e3dab1175e7015f452904';
+  const PORTAL_ID = '6aa45ad70a89ed89eeb18e41';
 
   useEffect(() => {
     AOS.init({ duration: 600, once: true });

@@ -226,7 +226,7 @@ const AdminExplanations: React.FC = () => {
   const fileInputRef = useRef<HTMLInputElement>(null);
 
   const API_URL = import.meta.env.VITE_API_URL || 'http://localhost:5001/api';
-  const PORTAL_ID = '6a8e3dab1175e7015f452904';
+  const PORTAL_ID = '6aa45ad70a89ed89eeb18e41';
 
   // ===== دالة توليد slug =====
   const generateSlug = (text: string): string => {
@@ -1045,7 +1045,7 @@ const ExplanationForm: React.FC<{
       const formDataFile = new FormData();
       formDataFile.append('file', file);
       formDataFile.append('category', 'learning_content');
-      formDataFile.append('portalId', '6a8e3dab1175e7015f452904');
+      formDataFile.append('portalId', '6aa45ad70a89ed89eeb18e41');
 
       const response = await fetch(`${import.meta.env.VITE_API_URL || 'http://localhost:5001/api'}/files/upload`, {
         method: 'POST',
@@ -1083,7 +1083,7 @@ const ExplanationForm: React.FC<{
       const formDataFile = new FormData();
       formDataFile.append('file', file);
       formDataFile.append('category', 'learning_content');
-      formDataFile.append('portalId', '6a8e3dab1175e7015f452904');
+      formDataFile.append('portalId', '6aa45ad70a89ed89eeb18e41');
 
       const response = await fetch(`${import.meta.env.VITE_API_URL || 'http://localhost:5001/api'}/files/upload`, {
         method: 'POST',

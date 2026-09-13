@@ -131,7 +131,7 @@ const AdminServices: React.FC = () => {
   const fileInputRef = useRef<HTMLInputElement>(null);
 
   const API_URL = import.meta.env.VITE_API_URL || 'http://localhost:5001/api';
-  const PORTAL_ID = '6a8e3dab1175e7015f452904';
+  const PORTAL_ID = '6aa45ad70a89ed89eeb18e41';
 
   // ===== دالة توليد slug =====
   const generateSlug = (text: string): string => {

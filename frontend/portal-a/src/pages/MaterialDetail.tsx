@@ -201,7 +201,7 @@ const MaterialDetail: React.FC = () => {
     if (material?.portalId) return material.portalId;
     const stored = localStorage.getItem('portalId');
     if (stored) return stored;
-    return '6a8e3dab1175e7015f452904';
+    return '6aa45ad70a89ed89eeb18e41';
   }, [material]);
 
   // ===== دالة للحصول على التوكن =====

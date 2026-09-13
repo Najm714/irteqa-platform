@@ -179,7 +179,7 @@ const CustomerDashboard: React.FC = () => {
   const [notifications, setNotifications] = useState<Notification[]>([]);
 
   const API_URL = import.meta.env.VITE_API_URL || 'http://localhost:5001/api';
-  const PORTAL_ID = '6a8e3dab1175e7015f452904';
+  const PORTAL_ID = '6aa45ad70a89ed89eeb18e41';
 
   // ✅ السايدبار يظهر فقط إذا كان النوع 'dashboard' ومفتوح
   const showDashboardSidebar = isOpen && sidebarType === 'dashboard';
@@ -570,7 +570,7 @@ const RequestsTab: React.FC<RequestsTabProps> = ({ token, onNavigate }) => {
   const [filter, setFilter] = useState('all');
   const [searchTerm, setSearchTerm] = useState('');
   const API_URL = import.meta.env.VITE_API_URL || 'http://localhost:5001/api';
-  const PORTAL_ID = '6a8e3dab1175e7015f452904';
+  const PORTAL_ID = '6aa45ad70a89ed89eeb18e41';
 
   useEffect(() => {
     const fetchRequests = async () => {
@@ -721,7 +721,7 @@ const SubscriptionsTab: React.FC<SubscriptionsTabProps> = ({ token, onNavigate }
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const API_URL = import.meta.env.VITE_API_URL || 'http://localhost:5001/api';
-  const PORTAL_ID = '6a8e3dab1175e7015f452904';
+  const PORTAL_ID = '6aa45ad70a89ed89eeb18e41';
 
   useEffect(() => {
     const fetchSubscriptions = async () => {
@@ -878,7 +878,7 @@ const PaymentsTab: React.FC<PaymentsTabProps> = ({ token }) => {
   const [error, setError] = useState<string | null>(null);
 
   const API_URL = import.meta.env.VITE_API_URL || 'http://localhost:5001/api';
-  const PORTAL_ID = '6a8e3dab1175e7015f452904';
+  const PORTAL_ID = '6aa45ad70a89ed89eeb18e41';
 
   useEffect(() => {
     if (!token) {
@@ -1145,7 +1145,7 @@ const ProfileTab: React.FC<ProfileTabProps> = ({ token, user }) => {
   const [message, setMessage] = useState<{ type: 'success' | 'error'; text: string } | null>(null);
 
   const API_URL = import.meta.env.VITE_API_URL || 'http://localhost:5001/api';
-  const PORTAL_ID = '6a8e3dab1175e7015f452904';
+  const PORTAL_ID = '6aa45ad70a89ed89eeb18e41';
 
   const getAvatarUrl = (avatarId: string | undefined) => {
     if (!avatarId) return null;
@@ -1436,7 +1436,7 @@ const SettingsTab: React.FC<SettingsTabProps> = ({ token }) => {
   const [saving, setSaving] = useState(false);
   const [message, setMessage] = useState<{ type: 'success' | 'error'; text: string } | null>(null);
   const API_URL = import.meta.env.VITE_API_URL || 'http://localhost:5001/api';
-  const PORTAL_ID = '6a8e3dab1175e7015f452904';
+  const PORTAL_ID = '6aa45ad70a89ed89eeb18e41';
 
   useEffect(() => {
     const fetchSettings = async () => {
