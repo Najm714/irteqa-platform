@@ -22,23 +22,32 @@ router.use(authenticate);
 router.use(requirePortalContext);
 
 // ============================================================
-// ✅ مسارات المستخدم
+// ✅ مسارات محددة أولاً (قبل /:id)
 // ============================================================
 
 // ✅ جلب الإشعارات
 router.get('/', getNotifications);
 
-// ✅ جلب عدد الإشعارات غير المقروءة
+// ✅ جلب عدد الإشعارات غير المقروءة (قبل /:id)
 router.get('/unread/count', getUnreadCount);
+
+// ✅ تحديد جميع الإشعارات كمقروءة (قبل /:id)
+router.put('/read-all', markAllAsRead);
+router.patch('/read-all', markAllAsRead);  // ✅ للتوافق
+
+// ✅ إرسال إشعارات جماعية (قبل /:id)
+router.post('/bulk', requirePermission(['manage_notifications']), sendBulkNotifications);
+
+// ============================================================
+// ✅ مسارات /:id (بعد المسارات المحددة)
+// ============================================================
 
 // ✅ جلب إشعار محدد
 router.get('/:id', getNotificationById);
 
 // ✅ تحديد إشعار كمقروء
-router.patch('/:id/read', markAsRead);
-
-// ✅ تحديد جميع الإشعارات كمقروءة
-router.patch('/read-all', markAllAsRead);
+router.put('/:id/read', markAsRead);      // ✅ PUT
+router.patch('/:id/read', markAsRead);    // ✅ PATCH (للتوافق)
 
 // ✅ حذف إشعار
 router.delete('/:id', deleteNotification);
@@ -47,13 +56,10 @@ router.delete('/:id', deleteNotification);
 router.delete('/', deleteAllNotifications);
 
 // ============================================================
-// ✅ مسارات الإدارة (للمديرين فقط)
+// ✅ مسارات الإدارة
 // ============================================================
 
 // ✅ إنشاء إشعار (للمدير)
 router.post('/', requirePermission(['manage_notifications']), createNotification);
-
-// ✅ إرسال إشعارات جماعية (للمدير)
-router.post('/bulk', requirePermission(['manage_notifications']), sendBulkNotifications);
 
 export default router;
