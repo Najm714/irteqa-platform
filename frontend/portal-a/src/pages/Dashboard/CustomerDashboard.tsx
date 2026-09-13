@@ -1298,7 +1298,7 @@ const ProfileTab: React.FC<ProfileTabProps> = ({ token, user }) => {
   const avatarSrc = avatarPreview || getAvatarUrl(user?.profile?.avatar);
 
   return (
-    <div className="space-y-6" data-aos="fade-up">
+    <div className="space-y-6">
       <h3 className="text-lg font-bold text-gray-900 dark:text-white">👤 الملف الشخصي</h3>
       {message && (
         <div
@@ -1498,7 +1498,7 @@ const SettingsTab: React.FC<SettingsTabProps> = ({ token }) => {
   };
 
   return (
-    <div className="space-y-6" data-aos="fade-up">
+    <div className="space-y-6">
       <h3 className="text-lg font-bold text-gray-900 dark:text-white">⚙️ الإعدادات</h3>
       {message && (
         <div
