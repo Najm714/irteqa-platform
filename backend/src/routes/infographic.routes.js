@@ -10,32 +10,48 @@ import {
   downloadInfographic,
   getInfographicStats,
 } from '../controllers/infographic.controller.js';
-import { authenticate } from '../middleware/auth.js';
+import { authenticate, optionalAuth } from '../middleware/auth.js';
 import { requirePortalContext } from '../middleware/portalContext.js';
 import { requirePermission } from '../middleware/authorization.js';
 
 const router = express.Router();
 
-// ✅ مسارات العرض والتحميل - عامة (تقرأ التوكن من Query)
-router.get('/:id/view', viewInfographic);
-router.get('/:id/download', downloadInfographic);
-
-// ✅ جميع المسارات الأخرى تتطلب مصادقة
-router.use(authenticate);
-router.use(requirePortalContext);
+// ============================================================
+// ✅ مسارات العرض والتحميل العامة (للزوار)
+// ============================================================
+router.get('/:id/view', optionalAuth, viewInfographic);
+router.get('/:id/download', optionalAuth, downloadInfographic);
 
 // ============================================================
-// ✅ مسارات العميل
+// ✅ مسارات القراءة العامة
 // ============================================================
-router.get('/', getInfographics);
-router.get('/stats', getInfographicStats);
-router.get('/:id', getInfographicById);
+router.get('/', optionalAuth, requirePortalContext, getInfographics);
+router.get('/stats', optionalAuth, requirePortalContext, getInfographicStats);
+router.get('/:id', optionalAuth, requirePortalContext, getInfographicById);
 
 // ============================================================
-// ✅ مسارات المدير
+// ✅ مسارات الإدارة
 // ============================================================
-router.post('/', requirePermission(['manage_infographics']), addInfographic);
-router.put('/:id', requirePermission(['manage_infographics']), updateInfographic);
-router.delete('/:id', requirePermission(['manage_infographics']), deleteInfographic);
+router.post(
+  '/',
+  authenticate,
+  requirePortalContext,
+  requirePermission(['manage_infographics']),
+  addInfographic
+);
+router.put(
+  '/:id',
+  authenticate,
+  requirePortalContext,
+  requirePermission(['manage_infographics']),
+  updateInfographic
+);
+router.delete(
+  '/:id',
+  authenticate,
+  requirePortalContext,
+  requirePermission(['manage_infographics']),
+  deleteInfographic
+);
 
 export default router;

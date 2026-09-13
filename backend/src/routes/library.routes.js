@@ -9,29 +9,43 @@ import {
   downloadLibraryFile,
   getLibraryStats,
 } from '../controllers/library.controller.js';
-import { authenticate } from '../middleware/auth.js';
+import { authenticate, optionalAuth } from '../middleware/auth.js';
 import { requirePortalContext } from '../middleware/portalContext.js';
 import { requirePermission } from '../middleware/authorization.js';
 
 const router = express.Router();
 
-// ✅ جميع المسارات تتطلب مصادقة
-router.use(authenticate);
-router.use(requirePortalContext);
+// ============================================================
+// ✅ مسارات القراءة العامة (للزوار)
+// ============================================================
+router.get('/', optionalAuth, requirePortalContext, getLibraryFiles);
+router.get('/stats', optionalAuth, requirePortalContext, getLibraryStats);
+router.get('/:id', optionalAuth, requirePortalContext, getLibraryFileById);
+router.get('/:id/download', optionalAuth, requirePortalContext, downloadLibraryFile);
 
 // ============================================================
-// ✅ مسارات العميل
+// ✅ مسارات الإدارة
 // ============================================================
-router.get('/', getLibraryFiles);
-router.get('/stats', getLibraryStats);
-router.get('/:id', getLibraryFileById);
-router.get('/:id/download', downloadLibraryFile);
-
-// ============================================================
-// ✅ مسارات المدير
-// ============================================================
-router.post('/', requirePermission(['manage_library']), addLibraryFile);
-router.put('/:id', requirePermission(['manage_library']), updateLibraryFile);
-router.delete('/:id', requirePermission(['manage_library']), deleteLibraryFile);
+router.post(
+  '/',
+  authenticate,
+  requirePortalContext,
+  requirePermission(['manage_library']),
+  addLibraryFile
+);
+router.put(
+  '/:id',
+  authenticate,
+  requirePortalContext,
+  requirePermission(['manage_library']),
+  updateLibraryFile
+);
+router.delete(
+  '/:id',
+  authenticate,
+  requirePortalContext,
+  requirePermission(['manage_library']),
+  deleteLibraryFile
+);
 
 export default router;
