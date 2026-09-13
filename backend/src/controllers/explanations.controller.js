@@ -1100,7 +1100,12 @@ export const getVideos = async (req, res) => {
       .sort({ order: 1, createdAt: -1 });
 
     // ✅ إضافة رابط الفيديو الصحيح
-    const baseUrl = `${req.protocol}://${req.get('host')}`;
+// ✅ استخدم x-forwarded-proto (بعد trust proxy يعمل تلقائياً)
+const protocol = req.get('x-forwarded-proto')?.split(',')[0]?.trim() 
+  || req.protocol 
+  || 'https';
+const host = req.get('host');
+const baseUrl = `${protocol}://${host}`;
     const videosWithUrls = videos.map(video => {
       const videoObj = video.toObject();
       

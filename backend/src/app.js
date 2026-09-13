@@ -16,13 +16,18 @@ import { config } from './config/env.js';
 const app = express();
 
 // ============================================================
+// ✅ ✅ مهم جداً: الثقة بالـ Proxy (Render/Heroku/Cloudflare)
+// ============================================================
+app.set('trust proxy', 1);
+
+// ============================================================
 // ✅ الأمان - إعدادات Helmet المتقدمة
 // ============================================================
 
 app.use(helmet({
   crossOriginResourcePolicy: { policy: "cross-origin" },
   crossOriginOpenerPolicy: { policy: "same-origin" },
-  crossOriginEmbedderPolicy: false,  // ✅ عطّلناه لأنه يمنع R2 images
+  crossOriginEmbedderPolicy: false,
   contentSecurityPolicy: {
     directives: {
       defaultSrc: ["'self'"],
@@ -33,7 +38,7 @@ app.use(helmet({
         "data:",
         "blob:",
         "*.r2.cloudflarestorage.com",
-        "*.r2.dev",              // ✅ أضفنا
+        "*.r2.dev",
         "https:",
       ],
       fontSrc: ["'self'", "fonts.gstatic.com", "data:"],
@@ -48,6 +53,7 @@ app.use(helmet({
         "https://*.r2.cloudflarestorage.com",
         "https://*.r2.dev",
         "wss://*.render.com",
+        "https://*.onrender.com",
       ],
       mediaSrc: ["'self'", "blob:", "data:", "https:"],
       frameSrc: ["'self'", "blob:"],
@@ -60,7 +66,6 @@ app.use(helmet({
 // ============================================================
 const corsOptions = {
   origin: function (origin, callback) {
-    // ✅ السماح بدون origin (Postman, curl, mobile apps)
     if (!origin) return callback(null, true);
 
     const allowedOrigins = [
@@ -76,7 +81,6 @@ const corsOptions = {
       'http://localhost:5001',
     ];
 
-    // ✅ السماح بـ wildcards
     const isAllowed = 
       allowedOrigins.includes(origin) ||
       /\.onrender\.com$/.test(origin) ||
@@ -196,7 +200,6 @@ if (config.nodeEnv === 'production') {
 if (config.nodeEnv === 'production') {
   app.use(morgan('combined'));
 } else {
-  // ✅ تجاهل الطلبات المتكررة والمزعجة
   app.use(morgan('dev', {
     skip: (req) => {
       return req.url.includes('/socket.io/') ||
