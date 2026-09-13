@@ -16,6 +16,80 @@ import {
 } from 'react-icons/fa';
 
 // ============================================================
+// ✅ دالة تحويل الأيقونة إلى emoji
+// ============================================================
+const getServiceIcon = (icon: string | undefined): string => {
+  if (!icon) return '📁';
+
+  // ✅ تطبيع النص: احذف المسافات، fa-، fas ، إلخ
+  const normalized = icon
+    .toString()
+    .trim()
+    .toLowerCase()
+    .replace(/^(fa[srb]?\s+|fa-)/, '');
+
+  const icons: { [key: string]: string } = {
+    'cog': '⚙️',
+    'book': '📚',
+    'graduation-cap': '🎓',
+    'briefcase': '💼',
+    'search': '🔍',
+    'pen': '✏️',
+    'chart': '📊',
+    'chart-line': '📊',
+    'code': '💻',
+    'heart': '❤️',
+    'star': '⭐',
+    'flask': '🧪',
+    'file-alt': '📄',
+    'file': '📄',
+    'language': '🌐',
+    'spell-check': '✅',
+    'users': '👥',
+    'user': '👤',
+    'home': '🏠',
+    'folder': '📁',
+    'folder-open': '📂',
+    'clipboard': '📋',
+    'laptop': '💻',
+    'lightbulb': '💡',
+    'microscope': '🔬',
+    'calculator': '🧮',
+    'pen-fancy': '🖊️',
+    'pencil-alt': '✏️',
+    'university': '🏛️',
+    'award': '🏆',
+    'trophy': '🏆',
+    'envelope': '✉️',
+    'phone': '📞',
+    'calendar': '📅',
+    'clock': '⏰',
+    'check': '✅',
+    'times': '❌',
+    'plus': '➕',
+    'edit': '✏️',
+    'trash': '🗑️',
+    'eye': '👁️',
+    'download': '⬇️',
+    'upload': '⬆️',
+    'camera': '📷',
+    'image': '🖼️',
+    'video': '🎬',
+    'music': '🎵',
+    'map': '🗺️',
+    'globe': '🌍',
+    'shield': '🛡️',
+    'lock': '🔒',
+    'key': '🔑',
+  };
+
+  return icons[normalized]
+    || icons[icon.trim().toLowerCase()]
+    || icons[icon.trim()]
+    || '📁';
+};
+
+// ============================================================
 // واجهات البيانات
 // ============================================================
 
@@ -108,7 +182,6 @@ const ServiceDetails: React.FC = () => {
         },
       });
 
-      // ✅ معالجة 404 - عرض رسالة واضحة
       if (response.status === 404) {
         setError('لا توجد تفاصيل لهذه الخدمة. يمكنك إضافة التفاصيل من لوحة التحكم.');
         return;
@@ -154,63 +227,57 @@ const ServiceDetails: React.FC = () => {
     });
   }, [fetchServiceDetail, fetchServiceForms]);
 
-// frontend/portal-a/src/pages/ServiceDetails.tsx
+  // ===== تحميل ملف النموذج =====
+  const handleDownloadFile = async (fileId: string, filename: string) => {
+    if (!fileId) {
+      alert('⚠️ لا يوجد معرف للملف');
+      return;
+    }
 
-// ===== تحميل ملف النموذج =====
-const handleDownloadFile = async (fileId: string, filename: string) => {
-  if (!fileId) {
-    alert('⚠️ لا يوجد معرف للملف');
-    return;
-  }
-
-  // ✅ التحقق من وجود التوكن
-  const token = localStorage.getItem('token');
-  if (!token) {
-    alert('⚠️ يرجى تسجيل الدخول أولاً');
-    navigate('/login');
-    return;
-  }
-
-  try {
-    console.log('📥 Downloading file:', fileId, filename);
-    
-    const response = await fetch(`${API_URL}/files/${fileId}/download-direct`, {
-      headers: {
-        'Authorization': `Bearer ${token}`,
-        'X-Portal-Id': PORTAL_ID,
-      },
-    });
-
-    // ✅ معالجة خطأ 401
-    if (response.status === 401) {
-      alert('⚠️ انتهت صلاحية الجلسة. يرجى تسجيل الدخول مرة أخرى.');
-      localStorage.removeItem('token');
+    const token = localStorage.getItem('token');
+    if (!token) {
+      alert('⚠️ يرجى تسجيل الدخول أولاً');
       navigate('/login');
       return;
     }
 
-    if (!response.ok) {
-      throw new Error(`HTTP ${response.status}`);
+    try {
+      console.log('📥 Downloading file:', fileId, filename);
+
+      const response = await fetch(`${API_URL}/files/${fileId}/download-direct`, {
+        headers: {
+          'Authorization': `Bearer ${token}`,
+          'X-Portal-Id': PORTAL_ID,
+        },
+      });
+
+      if (response.status === 401) {
+        alert('⚠️ انتهت صلاحية الجلسة. يرجى تسجيل الدخول مرة أخرى.');
+        localStorage.removeItem('token');
+        navigate('/login');
+        return;
+      }
+
+      if (!response.ok) {
+        throw new Error(`HTTP ${response.status}`);
+      }
+
+      const blob = await response.blob();
+      const url = window.URL.createObjectURL(blob);
+      const a = document.createElement('a');
+      a.href = url;
+      a.download = filename || 'file';
+      document.body.appendChild(a);
+      a.click();
+      document.body.removeChild(a);
+      window.URL.revokeObjectURL(url);
+
+      console.log('✅ File downloaded successfully');
+    } catch (error) {
+      console.error('❌ Download error:', error);
+      alert('حدث خطأ في تحميل الملف');
     }
-
-    const blob = await response.blob();
-    const url = window.URL.createObjectURL(blob);
-    const a = document.createElement('a');
-    a.href = url;
-    a.download = filename || 'file';
-    document.body.appendChild(a);
-    a.click();
-    document.body.removeChild(a);
-    window.URL.revokeObjectURL(url);
-    
-    console.log('✅ File downloaded successfully');
-  } catch (error) {
-    console.error('❌ Download error:', error);
-    alert('حدث خطأ في تحميل الملف');
-  }
-};
-
-
+  };
 
   // ===== طلب الخدمة =====
   const handleRequestService = () => {
@@ -249,7 +316,7 @@ const handleDownloadFile = async (fileId: string, filename: string) => {
     );
   }
 
-  // ===== عرض الخطأ مع حلول =====
+  // ===== عرض الخطأ =====
   if (error) {
     return (
       <div className="min-h-screen flex items-center justify-center bg-gray-50 dark:bg-gray-900 p-4">
@@ -319,15 +386,14 @@ const handleDownloadFile = async (fileId: string, filename: string) => {
   const serviceName = service.serviceId?.nameAr || service.serviceId?.name || 'خدمة';
   const sectionName = service.sectionId?.nameAr || service.sectionId?.name || 'قسم';
 
-  // ===== التحقق من وجود تفاصيل كاملة =====
-  const hasCompleteDetails = service.whatIsServiceAr || service.whatIsService || 
-                            service.whoBenefitsAr || service.whoBenefits || 
+  const hasCompleteDetails = service.whatIsServiceAr || service.whatIsService ||
+                            service.whoBenefitsAr || service.whoBenefits ||
                             service.methodologiesAr || service.methodologies;
 
   return (
     <div className="min-h-screen bg-gray-50 dark:bg-gray-900 py-8">
       <div className="container-custom">
-        {/* ===== Breadcrumb ===== */}
+        {/* Breadcrumb */}
         <div className="flex items-center gap-2 text-sm text-gray-500 dark:text-gray-400 mb-6 flex-wrap">
           <Link to="/" className="hover:text-purple-600 transition">الرئيسية</Link>
           <span>›</span>
@@ -340,12 +406,12 @@ const handleDownloadFile = async (fileId: string, filename: string) => {
           <span className="text-gray-700 dark:text-gray-300 font-medium truncate">{serviceName}</span>
         </div>
 
-        {/* ===== Header ===== */}
+        {/* Header */}
         <div className="bg-white dark:bg-gray-800 rounded-2xl p-6 shadow-sm border border-gray-200 dark:border-gray-700 mb-6">
           <div className="flex flex-col md:flex-row items-start md:items-center gap-6">
-            {/* أيقونة الخدمة */}
+            {/* ✅ أيقونة الخدمة - الآن تستخدم getServiceIcon */}
             <div className="w-20 h-20 rounded-full bg-gradient-to-r from-purple-100 to-pink-100 dark:from-purple-900/30 dark:to-pink-900/30 flex items-center justify-center text-4xl flex-shrink-0">
-              {service.serviceId?.icon || '📁'}
+              {getServiceIcon(service.serviceId?.icon)}
             </div>
 
             {/* معلومات الخدمة */}
@@ -400,7 +466,7 @@ const handleDownloadFile = async (fileId: string, filename: string) => {
           </div>
         </div>
 
-        {/* ===== Tabs ===== */}
+        {/* Tabs */}
         <div className="flex flex-wrap gap-2 mb-6 bg-white dark:bg-gray-800 rounded-xl p-2 shadow-sm border border-gray-200 dark:border-gray-700 overflow-x-auto">
           {[
             { id: 'overview', label: '📋 نظرة عامة' },
@@ -422,7 +488,7 @@ const handleDownloadFile = async (fileId: string, filename: string) => {
           ))}
         </div>
 
-        {/* ===== تبويب نظرة عامة ===== */}
+        {/* تبويب نظرة عامة */}
         {activeTab === 'overview' && (
           <div className="bg-white dark:bg-gray-800 rounded-xl p-6 shadow-sm border border-gray-200 dark:border-gray-700">
             {!hasCompleteDetails ? (
@@ -438,7 +504,6 @@ const handleDownloadFile = async (fileId: string, filename: string) => {
             ) : (
               <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
                 <div className="lg:col-span-2 space-y-6">
-                  {/* ما هي الخدمة؟ */}
                   <div>
                     <h3 className="text-lg font-bold text-gray-900 dark:text-white mb-2 flex items-center gap-2">
                       <FaInfoCircle className="text-purple-600" />
@@ -449,7 +514,6 @@ const handleDownloadFile = async (fileId: string, filename: string) => {
                     </p>
                   </div>
 
-                  {/* من يستفيد؟ */}
                   <div>
                     <h3 className="text-lg font-bold text-gray-900 dark:text-white mb-2 flex items-center gap-2">
                       <FaUser className="text-blue-600" />
@@ -460,7 +524,6 @@ const handleDownloadFile = async (fileId: string, filename: string) => {
                     </p>
                   </div>
 
-                  {/* المنهجيات */}
                   <div>
                     <h3 className="text-lg font-bold text-gray-900 dark:text-white mb-2 flex items-center gap-2">
                       <FaShieldAlt className="text-green-600" />
@@ -471,7 +534,6 @@ const handleDownloadFile = async (fileId: string, filename: string) => {
                     </p>
                   </div>
 
-                  {/* أنواع الطلبات */}
                   {service.requestTypes && service.requestTypes.length > 0 && (
                     <div>
                       <h3 className="text-lg font-bold text-gray-900 dark:text-white mb-2 flex items-center gap-2">
@@ -492,7 +554,6 @@ const handleDownloadFile = async (fileId: string, filename: string) => {
                   )}
                 </div>
 
-                {/* Sidebar - معلومات سريعة */}
                 <div className="bg-gray-50 dark:bg-gray-700/30 rounded-xl p-4">
                   <h4 className="font-semibold text-gray-700 dark:text-gray-300 mb-3 text-center">📊 معلومات سريعة</h4>
                   <div className="space-y-3">
@@ -520,7 +581,6 @@ const handleDownloadFile = async (fileId: string, filename: string) => {
                     </div>
                   </div>
 
-                  {/* زر طلب الخدمة */}
                   <button
                     onClick={handleRequestService}
                     className="w-full mt-4 px-4 py-3 bg-gradient-to-r from-purple-600 to-pink-500 text-white rounded-lg font-bold hover:shadow-lg hover:shadow-purple-500/30 transition-all flex items-center justify-center gap-2"
@@ -534,7 +594,7 @@ const handleDownloadFile = async (fileId: string, filename: string) => {
           </div>
         )}
 
-        {/* ===== تبويب الأسئلة الشائعة ===== */}
+        {/* تبويب الأسئلة الشائعة */}
         {activeTab === 'faqs' && (
           <div className="bg-white dark:bg-gray-800 rounded-xl p-6 shadow-sm border border-gray-200 dark:border-gray-700">
             <h3 className="text-lg font-bold text-gray-900 dark:text-white mb-4 flex items-center gap-2">
@@ -572,7 +632,7 @@ const handleDownloadFile = async (fileId: string, filename: string) => {
           </div>
         )}
 
-        {/* ===== تبويب النماذج ===== */}
+        {/* تبويب النماذج */}
         {activeTab === 'forms' && (
           <div className="bg-white dark:bg-gray-800 rounded-xl p-6 shadow-sm border border-gray-200 dark:border-gray-700">
             <h3 className="text-lg font-bold text-gray-900 dark:text-white mb-4 flex items-center gap-2">
@@ -618,7 +678,7 @@ const handleDownloadFile = async (fileId: string, filename: string) => {
                         تحميل النموذج
                       </button>
                       <button
-                         onClick={() => window.open(`${API_URL}/files/${form.fileId?._id}/view?token=${localStorage.getItem('token')}`, '_blank')}
+                        onClick={() => window.open(`${API_URL}/files/${form.fileId?._id}/view?token=${localStorage.getItem('token')}`, '_blank')}
                         className="px-4 py-2 bg-gray-100 text-gray-600 hover:bg-gray-200 dark:bg-gray-700 dark:text-gray-400 rounded-lg text-sm font-semibold transition flex items-center justify-center gap-2"
                       >
                         <FaEye className="w-4 h-4" />
@@ -640,7 +700,7 @@ const handleDownloadFile = async (fileId: string, filename: string) => {
           </div>
         )}
 
-        {/* ===== تبويب طلب الخدمة ===== */}
+        {/* تبويب طلب الخدمة */}
         {activeTab === 'request' && (
           <div className="bg-white dark:bg-gray-800 rounded-xl p-6 shadow-sm border border-gray-200 dark:border-gray-700">
             <h3 className="text-lg font-bold text-gray-900 dark:text-white mb-4 flex items-center gap-2">

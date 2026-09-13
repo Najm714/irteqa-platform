@@ -9,7 +9,7 @@ import 'aos/dist/aos.css';
 import {
   FaSearch, FaSpinner, FaArrowLeft, FaStar,
   FaEye, FaFlask,
-  FaUsers, FaGraduationCap
+  FaUsers, FaGraduationCap,
 } from 'react-icons/fa';
 
 // ============================================================
