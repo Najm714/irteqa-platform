@@ -1,30 +1,36 @@
 // src/components/common/NotificationsList.tsx
 import React, { useState, useEffect, useCallback } from 'react';
 import { useAuth } from '../../context/AuthContext';
-import { 
-  FaBell, 
-  FaTimes, 
-  FaCheck, 
-  FaClipboardList, 
-  FaPhone, 
-  FaCreditCard, 
+import {
+  FaBell,
   FaSpinner,
+  FaClipboardList,
+  FaPhone,
+  FaCreditCard,
   FaFileAlt,
   FaUsers,
   FaInfoCircle,
   FaExclamationCircle,
 } from 'react-icons/fa';
 
-// ✅ واجهة الإشعارات المتطابقة مع الـ API
+// ============================================================
+// ✅ واجهة الإشعار — متطابقة مع Backend
+// ============================================================
 interface Notification {
   _id: string;
   title?: string;
-  message: string;
-  read: boolean;
+  titleAr?: string;
+  message?: string;
+  messageAr?: string;
+  isRead: boolean;            // ✅ isRead (وليس read)
+  isDelivered?: boolean;
   createdAt: string;
-  type?: 'request' | 'call' | 'payment' | 'subscription' | 'system' | 'message' | 'file';
+  type?: string;
+  priority?: string;
   data?: {
     requestId?: string;
+    messageId?: string;
+    callId?: string;
     paymentId?: string;
     subscriptionId?: string;
     url?: string;
@@ -37,7 +43,7 @@ interface NotificationsListProps {
   showViewAll?: boolean;
 }
 
-const NotificationsList: React.FC<NotificationsListProps> = ({ 
+const NotificationsList: React.FC<NotificationsListProps> = ({
   limit = 10,
   onNotificationClick,
   showViewAll = true,
@@ -49,12 +55,11 @@ const NotificationsList: React.FC<NotificationsListProps> = ({
   const [isMarkingAll, setIsMarkingAll] = useState(false);
 
   const API_URL = import.meta.env.VITE_API_URL || 'http://localhost:5001/api';
-  const PORTAL_ID = '6aa45ad70a89ed89eeb18e41';
+  const PORTAL_ID = import.meta.env.VITE_PORTAL_ID || '6aa45ad70a89ed89eeb18e41';
 
   // ============================================================
-  // ✅ جلب الإشعارات من الـ API
+  // ✅ جلب الإشعارات
   // ============================================================
-
   const fetchNotifications = useCallback(async () => {
     if (!token) {
       setLoading(false);
@@ -65,43 +70,7 @@ const NotificationsList: React.FC<NotificationsListProps> = ({
       setLoading(true);
       setError(null);
 
-      const response = await fetch(`${API_URL}/notifications`, {
-        headers: {
-          'Authorization': `Bearer ${token}`,
-          'X-Portal-Id': PORTAL_ID,
-          'Content-Type': 'application/json',
-        },
-      });
-
-      if (!response.ok) {
-        throw new Error(`HTTP ${response.status}: ${response.statusText}`);
-      }
-
-      const data = await response.json();
-
-      if (data.success) {
-        setNotifications(data.data || []);
-      } else {
-        setError(data.message || 'حدث خطأ في تحميل الإشعارات');
-      }
-    } catch (error) {
-      console.error('❌ Error fetching notifications:', error);
-      setError('حدث خطأ في تحميل الإشعارات');
-    } finally {
-      setLoading(false);
-    }
-  }, [token]);
-
-  // ============================================================
-  // ✅ تحديد الإشعار كمقروء
-  // ============================================================
-
-  const markAsRead = async (notificationId: string) => {
-    if (!token) return;
-
-    try {
-      const response = await fetch(`${API_URL}/notifications/${notificationId}/read`, {
-        method: 'PUT',
+      const response = await fetch(`${API_URL}/notifications?limit=${limit}`, {
         headers: {
           'Authorization': `Bearer ${token}`,
           'X-Portal-Id': PORTAL_ID,
@@ -116,23 +85,64 @@ const NotificationsList: React.FC<NotificationsListProps> = ({
       const data = await response.json();
 
       if (data.success) {
+        setNotifications(data.data || []);
+      } else {
+        setError(data.message || 'حدث خطأ في تحميل الإشعارات');
+      }
+    } catch (error: any) {
+      console.error('❌ Error fetching notifications:', error);
+      setError('حدث خطأ في تحميل الإشعارات');
+    } finally {
+      setLoading(false);
+    }
+  }, [token, API_URL, PORTAL_ID, limit]);
+
+  // ============================================================
+  // ✅ تعليم إشعار كمقروء
+  // ============================================================
+  const markAsRead = async (notificationId: string) => {
+    if (!token) return;
+
+    try {
+      const response = await fetch(
+        `${API_URL}/notifications/${notificationId}/read`,
+        {
+          method: 'PUT',
+          headers: {
+            'Authorization': `Bearer ${token}`,
+            'X-Portal-Id': PORTAL_ID,
+            'Content-Type': 'application/json',
+          },
+        }
+      );
+
+      if (!response.ok) {
+        throw new Error(`HTTP ${response.status}`);
+      }
+
+      const data = await response.json();
+
+      if (data.success) {
+        // ✅ استخدم isRead
         setNotifications(prev =>
           prev.map(n =>
-            n._id === notificationId ? { ...n, read: true } : n
+            n._id === notificationId ? { ...n, isRead: true } : n
           )
         );
       }
-    } catch (error) {
-      console.error('❌ Error marking notification as read:', error);
+    } catch (error: any) {
+      console.error('❌ Error marking as read:', error);
     }
   };
 
   // ============================================================
-  // ✅ تحديد الكل كمقروء
+  // ✅ تعليم الكل كمقروء
   // ============================================================
-
   const markAllAsRead = async () => {
-    if (!token || unreadCount === 0) return;
+    if (!token) return;
+
+    const unread = notifications.filter(n => !n.isRead).length;
+    if (unread === 0) return;
 
     setIsMarkingAll(true);
     try {
@@ -153,10 +163,10 @@ const NotificationsList: React.FC<NotificationsListProps> = ({
 
       if (data.success) {
         setNotifications(prev =>
-          prev.map(n => ({ ...n, read: true }))
+          prev.map(n => ({ ...n, isRead: true }))
         );
       }
-    } catch (error) {
+    } catch (error: any) {
       console.error('❌ Error marking all as read:', error);
     } finally {
       setIsMarkingAll(false);
@@ -164,55 +174,66 @@ const NotificationsList: React.FC<NotificationsListProps> = ({
   };
 
   // ============================================================
-  // ✅ جلب الإشعارات عند التحميل
+  // ✅ عند التحميل
   // ============================================================
-
   useEffect(() => {
     fetchNotifications();
 
-    // تحديث تلقائي كل 30 ثانية
-    const interval = setInterval(fetchNotifications, 30000);
+    // تحديث كل 60 ثانية (بدلاً من 30)
+    const interval = setInterval(() => {
+      if (document.visibilityState === 'visible') {
+        fetchNotifications();
+      }
+    }, 60000);
+
     return () => clearInterval(interval);
   }, [fetchNotifications]);
 
   // ============================================================
-  // ✅ الحصول على أيقونة حسب النوع
+  // ✅ أيقونة حسب النوع
   // ============================================================
-
   const getIcon = (type?: string) => {
     switch (type) {
-      case 'request': return FaClipboardList;
-      case 'call': return FaPhone;
-      case 'payment': return FaCreditCard;
-      case 'subscription': return FaUsers;
-      case 'file': return FaFileAlt;
-      case 'system': return FaInfoCircle;
-      case 'message': return FaExclamationCircle;
-      default: return FaBell;
+      case 'request_created':
+      case 'request_assigned':
+      case 'request_updated':
+        return FaClipboardList;
+      case 'call_scheduled':
+      case 'new_call':
+        return FaPhone;
+      case 'payment_received':
+      case 'payment_verified':
+      case 'payment_failed':
+        return FaCreditCard;
+      case 'subscription_created':
+      case 'subscription_expiring':
+        return FaUsers;
+      case 'system_alert':
+        return FaInfoCircle;
+      case 'new_message':
+        return FaExclamationCircle;
+      default:
+        return FaBell;
     }
   };
 
   // ============================================================
-  // ✅ الحصول على لون حسب النوع
+  // ✅ لون حسب النوع
   // ============================================================
-
   const getColor = (type?: string) => {
-    switch (type) {
-      case 'request': return 'text-blue-600 bg-blue-100 dark:bg-blue-900/30 dark:text-blue-400';
-      case 'call': return 'text-purple-600 bg-purple-100 dark:bg-purple-900/30 dark:text-purple-400';
-      case 'payment': return 'text-green-600 bg-green-100 dark:bg-green-900/30 dark:text-green-400';
-      case 'subscription': return 'text-indigo-600 bg-indigo-100 dark:bg-indigo-900/30 dark:text-indigo-400';
-      case 'file': return 'text-orange-600 bg-orange-100 dark:bg-orange-900/30 dark:text-orange-400';
-      case 'system': return 'text-yellow-600 bg-yellow-100 dark:bg-yellow-900/30 dark:text-yellow-400';
-      case 'message': return 'text-emerald-600 bg-emerald-100 dark:bg-emerald-900/30 dark:text-emerald-400';
-      default: return 'text-gray-600 bg-gray-100 dark:bg-gray-700/30 dark:text-gray-400';
-    }
+    if (!type) return 'text-gray-600 bg-gray-100 dark:bg-gray-700/30 dark:text-gray-400';
+    if (type.startsWith('request')) return 'text-blue-600 bg-blue-100 dark:bg-blue-900/30 dark:text-blue-400';
+    if (type.startsWith('payment')) return 'text-green-600 bg-green-100 dark:bg-green-900/30 dark:text-green-400';
+    if (type.startsWith('subscription')) return 'text-indigo-600 bg-indigo-100 dark:bg-indigo-900/30 dark:text-indigo-400';
+    if (type.startsWith('call')) return 'text-purple-600 bg-purple-100 dark:bg-purple-900/30 dark:text-purple-400';
+    if (type === 'system_alert') return 'text-yellow-600 bg-yellow-100 dark:bg-yellow-900/30 dark:text-yellow-400';
+    if (type === 'new_message') return 'text-emerald-600 bg-emerald-100 dark:bg-emerald-900/30 dark:text-emerald-400';
+    return 'text-gray-600 bg-gray-100 dark:bg-gray-700/30 dark:text-gray-400';
   };
 
   // ============================================================
   // ✅ تنسيق الوقت
   // ============================================================
-
   const formatTime = (date: string) => {
     try {
       const now = new Date();
@@ -237,37 +258,30 @@ const NotificationsList: React.FC<NotificationsListProps> = ({
   };
 
   // ============================================================
-  // ✅ معالجة النقر على الإشعار
+  // ✅ نقر على إشعار
   // ============================================================
-
   const handleNotificationClick = async (notification: Notification) => {
-    // تحديد الإشعار كمقروء
-    if (!notification.read) {
+    // ✅ استخدم isRead
+    if (!notification.isRead) {
       await markAsRead(notification._id);
     }
 
-    // استدعاء الدالة الخارجية إذا وجدت
     if (onNotificationClick) {
       onNotificationClick(notification);
     }
   };
 
   // ============================================================
-  // ✅ حساب الإشعارات غير المقروءة
+  // ✅ عدد غير المقروءة
   // ============================================================
+  const unreadCount = notifications.filter(n => !n.isRead).length;
 
-  const unreadCount = notifications.filter(n => !n.read).length;
-
-  // ============================================================
-  // ✅ عرض الإشعارات المحدودة
-  // ============================================================
-
-  const displayedNotifications = limit > 0 
-    ? notifications.slice(0, limit) 
+  const displayedNotifications = limit > 0
+    ? notifications.slice(0, limit)
     : notifications;
 
   // ============================================================
-  // ✅ حالة التحميل
+  // ✅ عرض
   // ============================================================
 
   if (loading) {
@@ -275,15 +289,13 @@ const NotificationsList: React.FC<NotificationsListProps> = ({
       <div className="bg-white dark:bg-gray-800 rounded-xl shadow-sm p-6">
         <div className="flex items-center justify-center py-8">
           <FaSpinner className="w-6 h-6 text-purple-600 animate-spin" />
-          <span className="mr-3 text-gray-500 dark:text-gray-400">جاري تحميل الإشعارات...</span>
+          <span className="mr-3 text-gray-500 dark:text-gray-400">
+            جاري تحميل الإشعارات...
+          </span>
         </div>
       </div>
     );
   }
-
-  // ============================================================
-  // ✅ حالة الخطأ
-  // ============================================================
 
   if (error) {
     return (
@@ -302,13 +314,9 @@ const NotificationsList: React.FC<NotificationsListProps> = ({
     );
   }
 
-  // ============================================================
-  // ✅ عرض قائمة الإشعارات
-  // ============================================================
-
   return (
     <div className="bg-white dark:bg-gray-800 rounded-xl shadow-sm p-4">
-      {/* رأس القائمة */}
+      {/* الرأس */}
       <div className="flex items-center justify-between mb-4">
         <div className="flex items-center gap-2">
           <h3 className="text-lg font-semibold text-gray-900 dark:text-white">
@@ -335,7 +343,7 @@ const NotificationsList: React.FC<NotificationsListProps> = ({
         )}
       </div>
 
-      {/* قائمة الإشعارات */}
+      {/* القائمة */}
       {notifications.length === 0 ? (
         <div className="text-center text-gray-500 dark:text-gray-400 py-8">
           <FaBell className="text-4xl mx-auto mb-3 opacity-30" />
@@ -347,55 +355,49 @@ const NotificationsList: React.FC<NotificationsListProps> = ({
           {displayedNotifications.map((notification) => {
             const Icon = getIcon(notification.type);
             const colorClass = getColor(notification.type);
-            
+
             return (
               <div
                 key={notification._id}
                 className={`p-3 rounded-lg transition-all cursor-pointer ${
-                  notification.read
+                  notification.isRead
                     ? 'bg-gray-50 dark:bg-gray-700/30 hover:bg-gray-100 dark:hover:bg-gray-700/50'
                     : 'bg-purple-50 dark:bg-purple-900/20 border border-purple-200 dark:border-purple-800 hover:bg-purple-100 dark:hover:bg-purple-900/30'
                 }`}
                 onClick={() => handleNotificationClick(notification)}
               >
                 <div className="flex items-start gap-3">
-                  {/* أيقونة */}
                   <div className={`w-8 h-8 rounded-full ${colorClass} flex items-center justify-center flex-shrink-0`}>
                     <Icon className="text-sm" />
                   </div>
-                  
-                  {/* المحتوى */}
+
                   <div className="flex-1 min-w-0">
                     <div className="flex items-start justify-between gap-2">
-                      <p className={`text-sm ${notification.read ? 'text-gray-700 dark:text-gray-300' : 'font-semibold text-gray-900 dark:text-white'}`}>
-                        {notification.title || notification.message.substring(0, 50)}
-                        {notification.message.length > 50 && '...'}
+                      <p className={`text-sm ${
+                        notification.isRead
+                          ? 'text-gray-700 dark:text-gray-300'
+                          : 'font-semibold text-gray-900 dark:text-white'
+                      }`}>
+                        {notification.titleAr || notification.title || notification.messageAr || notification.message || 'إشعار'}
                       </p>
-                      {!notification.read && (
+                      {!notification.isRead && (
                         <span className="w-2 h-2 bg-purple-500 rounded-full flex-shrink-0 mt-1.5"></span>
                       )}
                     </div>
-                    
-                    {notification.message && notification.title && (
+
+                    {(notification.messageAr || notification.message) && (notification.titleAr || notification.title) && (
                       <p className="text-xs text-gray-600 dark:text-gray-400 mt-0.5 line-clamp-2">
-                        {notification.message}
+                        {notification.messageAr || notification.message}
                       </p>
                     )}
-                    
+
                     <div className="flex items-center gap-2 mt-1 flex-wrap">
                       <span className="text-xs text-gray-400">
                         {formatTime(notification.createdAt)}
                       </span>
                       {notification.type && (
                         <span className="text-xs px-2 py-0.5 bg-gray-100 dark:bg-gray-700 rounded-full text-gray-500 dark:text-gray-400">
-                          {notification.type === 'request' ? 'طلب' :
-                           notification.type === 'payment' ? 'دفع' :
-                           notification.type === 'subscription' ? 'اشتراك' :
-                           notification.type === 'call' ? 'مكالمة' :
-                           notification.type === 'file' ? 'ملف' :
-                           notification.type === 'system' ? 'نظام' :
-                           notification.type === 'message' ? 'رسالة' :
-                           notification.type}
+                          {notification.type.replace(/_/g, ' ')}
                         </span>
                       )}
                     </div>
@@ -407,12 +409,11 @@ const NotificationsList: React.FC<NotificationsListProps> = ({
         </div>
       )}
 
-      {/* زر عرض الكل */}
+      {/* عرض الكل */}
       {showViewAll && notifications.length > limit && limit > 0 && (
         <div className="mt-3 pt-3 border-t border-gray-200 dark:border-gray-700">
           <button
             onClick={() => {
-              // التوجيه إلى صفحة الإشعارات
               window.location.href = '/dashboard/notifications';
             }}
             className="w-full py-2 text-sm text-purple-600 hover:text-purple-700 font-medium transition hover:bg-purple-50 dark:hover:bg-purple-900/20 rounded-lg"
