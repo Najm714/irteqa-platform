@@ -16,6 +16,45 @@ import {
 } from 'react-icons/fa';
 
 // ============================================================
+// ✅ دالة تحويل الأيقونة إلى emoji
+// ============================================================
+const getServiceIcon = (icon: string | undefined): string => {
+  if (!icon) return '📋';
+
+  const normalized = icon
+    .toString()
+    .trim()
+    .toLowerCase()
+    .replace(/^(fa[srb]?\s+|fa-)/, '');
+
+  const icons: { [key: string]: string } = {
+    'cog': '⚙️', 'book': '📚', 'graduation-cap': '🎓',
+    'briefcase': '💼', 'search': '🔍', 'pen': '✏️',
+    'chart': '📊', 'chart-line': '📊', 'code': '💻',
+    'heart': '❤️', 'star': '⭐', 'flask': '🧪',
+    'file-alt': '📄', 'file': '📄', 'language': '🌐',
+    'spell-check': '✅', 'users': '👥', 'user': '👤',
+    'home': '🏠', 'folder': '📁', 'folder-open': '📂',
+    'clipboard': '📋', 'laptop': '💻', 'lightbulb': '💡',
+    'microscope': '🔬', 'calculator': '🧮',
+    'pen-fancy': '🖊️', 'pencil-alt': '✏️',
+    'university': '🏛️', 'award': '🏆', 'trophy': '🏆',
+    'envelope': '✉️', 'phone': '📞', 'calendar': '📅',
+    'clock': '⏰', 'check': '✅', 'times': '❌',
+    'plus': '➕', 'edit': '✏️', 'trash': '🗑️',
+    'eye': '👁️', 'download': '⬇️', 'upload': '⬆️',
+    'camera': '📷', 'image': '🖼️', 'video': '🎬',
+    'music': '🎵', 'map': '🗺️', 'globe': '🌍',
+    'shield': '🛡️', 'lock': '🔒', 'key': '🔑',
+  };
+
+  return icons[normalized]
+    || icons[icon.trim().toLowerCase()]
+    || icons[icon.trim()]
+    || '📋';
+};
+
+// ============================================================
 // واجهات البيانات
 // ============================================================
 
@@ -59,7 +98,6 @@ const RequestService: React.FC = () => {
   const [success, setSuccess] = useState(false);
   const [requestId, setRequestId] = useState<string | null>(null);
 
-  // ✅ بيانات النموذج
   const [formData, setFormData] = useState<RequestForm>({
     title: '',
     description: '',
@@ -72,7 +110,6 @@ const RequestService: React.FC = () => {
     proofFiles: [],
   });
 
-  // ✅ مراجع لرفع الملفات
   const fileInputRef = useRef<HTMLInputElement>(null);
   const proofInputRef = useRef<HTMLInputElement>(null);
   const [uploading, setUploading] = useState(false);
@@ -96,7 +133,6 @@ const RequestService: React.FC = () => {
       const data = await response.json();
       if (data.success) {
         setService(data.data);
-        // ✅ تعبئة بيانات المستخدم تلقائياً
         if (user) {
           setFormData(prev => ({
             ...prev,
@@ -145,7 +181,6 @@ const RequestService: React.FC = () => {
     return data.data.file._id;
   };
 
-  // ===== معالجة رفع ملفات الطلب =====
   const handleFileUpload = (e: React.ChangeEvent<HTMLInputElement>) => {
     const files = e.target.files;
     if (files) {
@@ -164,7 +199,6 @@ const RequestService: React.FC = () => {
     }
   };
 
-  // ===== معالجة رفع ملفات إثبات الدفع =====
   const handleProofUpload = (e: React.ChangeEvent<HTMLInputElement>) => {
     const files = e.target.files;
     if (files) {
@@ -183,7 +217,6 @@ const RequestService: React.FC = () => {
     }
   };
 
-  // ===== حذف ملف =====
   const removeFile = (index: number, type: 'files' | 'proofFiles') => {
     setFormData(prev => ({
       ...prev,
@@ -191,7 +224,6 @@ const RequestService: React.FC = () => {
     }));
   };
 
-  // ===== الحصول على أيقونة الملف =====
   const getFileIcon = (file: File) => {
     const type = file.type;
     if (type === 'application/pdf') return <FaFilePdf className="text-red-500 w-5 h-5" />;
@@ -200,7 +232,6 @@ const RequestService: React.FC = () => {
     return <FaFile className="text-gray-500 w-5 h-5" />;
   };
 
-  // ===== تنسيق حجم الملف =====
   const formatFileSize = (bytes: number) => {
     if (bytes < 1024) return bytes + ' B';
     if (bytes < 1024 * 1024) return (bytes / 1024).toFixed(1) + ' KB';
@@ -215,21 +246,18 @@ const RequestService: React.FC = () => {
     setError(null);
 
     try {
-      // 1. رفع ملفات الطلب
       const uploadedFileIds: string[] = [];
       for (const file of formData.files) {
         const fileId = await uploadFile(file, 'request_file');
         uploadedFileIds.push(fileId);
       }
 
-      // 2. رفع ملفات إثبات الدفع
       const uploadedProofIds: string[] = [];
       for (const file of formData.proofFiles) {
         const fileId = await uploadFile(file, 'payment_proof');
         uploadedProofIds.push(fileId);
       }
 
-      // 3. إنشاء الطلب
       const requestData = {
         serviceId: id,
         formData: {
@@ -256,16 +284,11 @@ const RequestService: React.FC = () => {
       });
 
       const data = await response.json();
-      
-      // ✅ التحقق من هيكل الاستجابة
+
       if (data.success) {
         setSuccess(true);
-        
-        // ✅ قراءة requestId من المكان الصحيح
-        // هيكل الاستجابة المتوقع: { success: true, data: { _id: '...', ... } }
         const requestIdValue = data.data?._id || data.data?.id || data.requestId || null;
         setRequestId(requestIdValue);
-        
         window.scrollTo({ top: 0, behavior: 'smooth' });
       } else {
         setError(data.message || 'حدث خطأ في إنشاء الطلب');
@@ -278,7 +301,6 @@ const RequestService: React.FC = () => {
     }
   };
 
-  // ===== عرض حالة التحميل =====
   if (loading) {
     return (
       <div className="min-h-screen flex items-center justify-center bg-gray-50 dark:bg-gray-900">
@@ -290,7 +312,6 @@ const RequestService: React.FC = () => {
     );
   }
 
-  // ===== عرض الخطأ =====
   if (error || !service) {
     return (
       <div className="min-h-screen flex items-center justify-center bg-gray-50 dark:bg-gray-900 p-4">
@@ -306,7 +327,6 @@ const RequestService: React.FC = () => {
     );
   }
 
-  // ===== عرض رسالة النجاح =====
   if (success) {
     return (
       <div className="min-h-screen flex items-center justify-center bg-gray-50 dark:bg-gray-900 p-4">
@@ -336,12 +356,11 @@ const RequestService: React.FC = () => {
   }
 
   const serviceName = service.nameAr || service.name || 'خدمة';
-  const serviceIcon = service.icon || '📋';
 
   return (
     <div className="min-h-screen bg-gray-50 dark:bg-gray-900 py-8">
       <div className="container-custom max-w-3xl">
-        {/* ===== Breadcrumb ===== */}
+        {/* Breadcrumb */}
         <div className="flex items-center gap-2 text-sm text-gray-500 dark:text-gray-400 mb-6 flex-wrap">
           <Link to="/" className="hover:text-purple-600 transition">الرئيسية</Link>
           <span>›</span>
@@ -352,11 +371,12 @@ const RequestService: React.FC = () => {
           <span className="text-gray-700 dark:text-gray-300 font-medium">طلب الخدمة</span>
         </div>
 
-        {/* ===== Header ===== */}
+        {/* Header */}
         <div className="bg-white dark:bg-gray-800 rounded-2xl p-6 shadow-sm border border-gray-200 dark:border-gray-700 mb-6">
           <div className="flex items-start gap-4">
+            {/* ✅ استبدلنا serviceIcon بـ getServiceIcon */}
             <div className="w-16 h-16 rounded-full bg-purple-100 dark:bg-purple-900/30 flex items-center justify-center text-3xl flex-shrink-0">
-              {serviceIcon}
+              {getServiceIcon(service.icon)}
             </div>
             <div className="flex-1">
               <h1 className="text-2xl font-bold text-gray-900 dark:text-white">طلب الخدمة</h1>
@@ -370,10 +390,9 @@ const RequestService: React.FC = () => {
           </div>
         </div>
 
-        {/* ===== نموذج الطلب ===== */}
+        {/* نموذج الطلب */}
         <div className="bg-white dark:bg-gray-800 rounded-2xl p-6 shadow-sm border border-gray-200 dark:border-gray-700">
           <form onSubmit={handleSubmit} className="space-y-6">
-            {/* معلومات أساسية */}
             <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
               <div>
                 <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">
@@ -486,7 +505,7 @@ const RequestService: React.FC = () => {
               />
             </div>
 
-            {/* ===== رفع ملفات الطلب ===== */}
+            {/* رفع ملفات الطلب */}
             <div className="border-t border-gray-200 dark:border-gray-700 pt-6">
               <div className="flex justify-between items-center mb-2">
                 <label className="text-sm font-medium text-gray-700 dark:text-gray-300">
@@ -495,13 +514,7 @@ const RequestService: React.FC = () => {
                 <span className="text-xs text-gray-400">الحد الأقصى 10MB لكل ملف</span>
               </div>
               <div className="border-2 border-dashed border-gray-300 dark:border-gray-600 rounded-xl p-4 text-center hover:border-purple-400 transition">
-                <input
-                  type="file"
-                  ref={fileInputRef}
-                  onChange={handleFileUpload}
-                  multiple
-                  className="hidden"
-                />
+                <input type="file" ref={fileInputRef} onChange={handleFileUpload} multiple className="hidden" />
                 <button
                   type="button"
                   onClick={() => fileInputRef.current?.click()}
@@ -512,7 +525,6 @@ const RequestService: React.FC = () => {
                 <p className="text-xs text-gray-400 mt-1">PDF, Word, Excel, Images</p>
               </div>
 
-              {/* عرض الملفات المرفوعة */}
               {formData.files.length > 0 && (
                 <div className="mt-3 space-y-2">
                   {formData.files.map((file, index) => (
@@ -524,11 +536,7 @@ const RequestService: React.FC = () => {
                           <p className="text-xs text-gray-400">{formatFileSize(file.size)}</p>
                         </div>
                       </div>
-                      <button
-                        type="button"
-                        onClick={() => removeFile(index, 'files')}
-                        className="text-red-500 hover:text-red-700 transition"
-                      >
+                      <button type="button" onClick={() => removeFile(index, 'files')} className="text-red-500 hover:text-red-700 transition">
                         <FaTrash />
                       </button>
                     </div>
@@ -537,7 +545,7 @@ const RequestService: React.FC = () => {
               )}
             </div>
 
-            {/* ===== رفع إثبات الدفع ===== */}
+            {/* رفع إثبات الدفع */}
             <div className="border-t border-gray-200 dark:border-gray-700 pt-6">
               <div className="flex justify-between items-center mb-2">
                 <label className="text-sm font-medium text-gray-700 dark:text-gray-300">
@@ -546,14 +554,7 @@ const RequestService: React.FC = () => {
                 <span className="text-xs text-gray-400">الحد الأقصى 10MB لكل ملف</span>
               </div>
               <div className="border-2 border-dashed border-yellow-300 dark:border-yellow-600/30 rounded-xl p-4 text-center hover:border-yellow-400 transition bg-yellow-50/30 dark:bg-yellow-900/10">
-                <input
-                  type="file"
-                  ref={proofInputRef}
-                  onChange={handleProofUpload}
-                  multiple
-                  accept="image/*,.pdf,.doc,.docx"
-                  className="hidden"
-                />
+                <input type="file" ref={proofInputRef} onChange={handleProofUpload} multiple accept="image/*,.pdf,.doc,.docx" className="hidden" />
                 <button
                   type="button"
                   onClick={() => proofInputRef.current?.click()}
@@ -564,7 +565,6 @@ const RequestService: React.FC = () => {
                 <p className="text-xs text-gray-400 mt-1">صورة، PDF، وورد - إثبات التحويل البنكي</p>
               </div>
 
-              {/* عرض ملفات إثبات الدفع */}
               {formData.proofFiles.length > 0 && (
                 <div className="mt-3 space-y-2">
                   {formData.proofFiles.map((file, index) => (
@@ -576,11 +576,7 @@ const RequestService: React.FC = () => {
                           <p className="text-xs text-gray-400">{formatFileSize(file.size)}</p>
                         </div>
                       </div>
-                      <button
-                        type="button"
-                        onClick={() => removeFile(index, 'proofFiles')}
-                        className="text-red-500 hover:text-red-700 transition"
-                      >
+                      <button type="button" onClick={() => removeFile(index, 'proofFiles')} className="text-red-500 hover:text-red-700 transition">
                         <FaTrash />
                       </button>
                     </div>
@@ -592,7 +588,7 @@ const RequestService: React.FC = () => {
               </p>
             </div>
 
-            {/* ===== أزرار الإرسال ===== */}
+            {/* أزرار الإرسال */}
             <div className="flex gap-3 pt-4 border-t border-gray-200 dark:border-gray-700">
               <button
                 type="submit"
@@ -624,4 +620,3 @@ const RequestService: React.FC = () => {
 };
 
 export default RequestService;
-
