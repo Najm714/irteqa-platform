@@ -1,3 +1,4 @@
+// frontend/portal-a/vite.config.ts
 import { defineConfig } from 'vite';
 import react from '@vitejs/plugin-react';
 
@@ -5,40 +6,47 @@ import react from '@vitejs/plugin-react';
 export default defineConfig({
   plugins: [react()],
 
+  // ✅ مهم: مسار مجلد public
+  publicDir: 'public',
+
   build: {
+    // ✅ انسخ public/ إلى dist/
+    copyPublicDir: true,
+
     // ✅ زيادة حد التحذير إلى 1 ميجابايت
     chunkSizeWarningLimit: 1000,
 
-    // ✅ تقسيم الكود (Code Splitting) بالطريقة الصحيحة
+    // ✅ تقييم الكود (Code Splitting)
     rollupOptions: {
       output: {
         manualChunks(id) {
-          // فصل المكتبات الأساسية
+          // ✅ المكتبات الأساسية
           if (id.includes('node_modules/react/') ||
               id.includes('node_modules/react-dom/') ||
               id.includes('node_modules/react-router-dom/')) {
             return 'vendor';
           }
-          // فصل الأيقونات
+          // ✅ الأيقونات
           if (id.includes('node_modules/react-icons/')) {
             return 'icons';
           }
-          // فصل مكتبات الـ UI
-          if (id.includes('node_modules/aos/')) {
+          // ✅ مكتبات UI (aos, framer-motion, إلخ)
+          if (id.includes('node_modules/aos/') ||
+              id.includes('node_modules/framer-motion/')) {
             return 'ui';
           }
-          // فصل أي مكتبات أخرى كبيرة
+          // ✅ أي مكتبة أخرى كبيرة
           if (id.includes('node_modules/')) {
             return 'npm';
           }
-          // باقي الكود
+          // ✅ باقي الكود
           return 'main';
         },
       },
     },
   },
 
-  // ✅ تحسين الأداء في التطوير
+  // ✅ إعدادات التطوير
   server: {
     port: 5173,
     open: true,
