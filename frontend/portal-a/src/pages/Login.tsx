@@ -2,12 +2,13 @@
 import React, { useState } from 'react';
 import { Link, useNavigate } from 'react-router-dom';
 import { useAuth } from '../context/AuthContext';
-import { FaEnvelope, FaLock, FaSpinner, FaEye, FaEyeSlash } from 'react-icons/fa';
+import { FaEnvelope, FaLock, FaSpinner, FaEye, FaEyeSlash, FaUserSecret } from 'react-icons/fa';
 
 const Login: React.FC = () => {
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
   const [loading, setLoading] = useState(false);
+  const [guestLoading, setGuestLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [showPassword, setShowPassword] = useState(false);
   const { login } = useAuth();
@@ -38,6 +39,19 @@ const Login: React.FC = () => {
     } finally {
       setLoading(false);
     }
+  };
+
+  // ✅ الدخول كزائر — تصفح الصفحات العامة
+  const handleGuestBrowse = () => {
+    setGuestLoading(true);
+    // ✅ مسح أي بيانات تسجيل قديمة
+    localStorage.removeItem('token');
+    localStorage.removeItem('user');
+    // ✅ الانتقال للصفحة الرئيسية
+    setTimeout(() => {
+      navigate('/');
+      setGuestLoading(false);
+    }, 300);
   };
 
   return (
@@ -103,12 +117,45 @@ const Login: React.FC = () => {
 
           <button
             type="submit"
-            disabled={loading}
+            disabled={loading || guestLoading}
             className="w-full py-3 bg-gradient-to-r from-purple-600 to-pink-500 text-white rounded-lg font-bold hover:shadow-lg hover:shadow-purple-500/30 transition-all disabled:opacity-50"
           >
             {loading ? <FaSpinner className="animate-spin mx-auto" /> : 'تسجيل الدخول'}
           </button>
         </form>
+
+        {/* ✅ فاصل */}
+        <div className="relative my-6">
+          <div className="absolute inset-0 flex items-center">
+            <div className="w-full border-t border-gray-200 dark:border-gray-700"></div>
+          </div>
+          <div className="relative flex justify-center text-sm">
+            <span className="px-3 bg-white dark:bg-gray-800 text-gray-500 dark:text-gray-400">
+              أو
+            </span>
+          </div>
+        </div>
+
+        {/* ✅ زر تصفح كزائر */}
+        <button
+          type="button"
+          onClick={handleGuestBrowse}
+          disabled={loading || guestLoading}
+          className="w-full py-3 border-2 border-purple-600 dark:border-purple-400 text-purple-600 dark:text-purple-400 rounded-lg font-bold hover:bg-purple-50 dark:hover:bg-purple-900/20 transition-all disabled:opacity-50 flex items-center justify-center gap-2"
+        >
+          {guestLoading ? (
+            <FaSpinner className="animate-spin" />
+          ) : (
+            <>
+              <FaUserSecret />
+              تصفح كزائر
+            </>
+          )}
+        </button>
+
+        <p className="mt-3 text-xs text-center text-gray-500 dark:text-gray-400">
+          يمكنك تصفح الصفحات العامة والخدمات والشروحات بدون تسجيل دخول
+        </p>
 
         <div className="mt-6 text-center text-sm">
           <span className="text-gray-600 dark:text-gray-400">
