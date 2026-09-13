@@ -162,7 +162,7 @@ const MainSections: React.FC = () => {
     return (
       <section className="main-sections" id="sections">
         <div className="container-custom">
-          <div className="section-header" data-aos="fade-up">
+          <div className="section-header">
             <h2>الأقسام <span>الرئيسية</span></h2>
             <p>جاري تحميل الأقسام...</p>
           </div>
@@ -178,7 +178,7 @@ const MainSections: React.FC = () => {
   return (
     <section className="main-sections" id="sections">
       <div className="container-custom">
-        <div className="section-header" data-aos="fade-up">
+        <div className="section-header">
           <h2>الأقسام <span>الرئيسية</span></h2>
           <p>اختر القسم المناسب لاحتياجاتك واستكشف الخدمات المتخصصة</p>
         </div>
@@ -203,7 +203,6 @@ const MainSections: React.FC = () => {
                 <div
                   key={mainSection.id}
                   className="section-card main-section-card"
-                  data-aos="fade-up"
                   data-aos-delay={100 + index * 100}
                 >
                   <Link to={mainSection.link} className="main-section-link">
@@ -270,7 +269,6 @@ const MainSections: React.FC = () => {
                     key={section._id}
                     to={`/services?section=${section._id}`}
                     className="extra-section-card"
-                    data-aos="fade-up"
                   >
                     <div className="flex items-center gap-3">
                       <span style={{ fontSize: '1.5rem' }}>

@@ -31,7 +31,7 @@ const Hero: React.FC = () => {
       </div>
 
       <div className="container-custom">
-        <div className="hero-content" data-aos="fade-up" data-aos-duration="1000">
+        <div className="hero-content">
           <h1>منصة <span>ارتقاء</span></h1>
           <p>
             تقدم خدمات متخصصة تجمع بين الخبرة والجودة في بيئة رقمية متكاملة، صُممت لتواكب احتياجاتك.
