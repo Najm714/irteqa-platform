@@ -1,6 +1,7 @@
 // backend/src/controllers/request.controller.js
 import { Request } from '../models/Request.model.js';
 import { File } from '../models/File.model.js';
+import { Account } from '../models/Account.model.js';
 import { getNotificationService } from '../services/notification.service.js';
 
 // ============================================================
@@ -321,10 +322,6 @@ export const getRequestById = async (req, res) => {
     });
   }
 };
-
-// ============================================================
-// ✅ إنشاء طلب جديد
-// ============================================================
 export const createRequest = async (req, res) => {
   try {
     const accountId = req.accountId;
@@ -375,7 +372,7 @@ export const createRequest = async (req, res) => {
 
     console.log('✅ Request created successfully:', request._id);
 
-    // ✅ ✅ إرسال إشعار للمستخدم
+    // ✅ 1. إشعار للعميل (صاحب الطلب)
     await safeSendNotification(req, {
       portalId: request.portalId,
       accountId: request.accountId,
@@ -388,22 +385,54 @@ export const createRequest = async (req, res) => {
       priority: 'medium',
     });
 
-    // ✅ إشعار للمدير
+    // ✅ 2. إشعار لجميع المديرين (portal_admin + super_admin)
     try {
       const notificationService = getNotificationService(req.app?.get('io'));
-      await notificationService.sendNotificationToRole(
-        request.portalId,
-        'portal_admin',
-        {
-          type: 'request_created',
-          title: 'New request',
-          titleAr: 'طلب جديد',
-          message: `New request ${request.requestNumber} created`,
-          messageAr: `تم إنشاء طلب جديد رقم ${request.requestNumber}`,
-          data: { requestId: request._id },
-          priority: 'medium',
-        }
-      );
+
+      const adminNotification = {
+        type: 'request_created',
+        title: 'New request',
+        titleAr: 'طلب جديد',
+        message: `New request ${request.requestNumber} created`,
+        messageAr: `تم إنشاء طلب جديد رقم ${request.requestNumber}`,
+        data: { requestId: request._id },
+        priority: 'medium',
+      };
+
+      // 🎯 2a. إشعار لـ portal_admin في نفس البوابة
+      const portalAdmins = await Account.find({
+        portalId: request.portalId,
+        role: 'portal_admin',
+        isActive: true,
+      });
+
+      for (const admin of portalAdmins) {
+        await notificationService.sendNotification({
+          portalId: request.portalId,
+          accountId: admin._id,
+          ...adminNotification,
+        });
+      }
+
+      console.log(`✅ Notified ${portalAdmins.length} portal_admin(s)`);
+
+      // 🎯 2b. إشعار لـ super_admin (جميع المشرفين)
+      const superAdmins = await Account.find({
+        role: 'super_admin',
+        isActive: true,
+      });
+
+      for (const admin of superAdmins) {
+        await notificationService.sendNotification({
+          portalId: request.portalId,
+          accountId: admin._id,
+          ...adminNotification,
+          priority: 'high', // super_admin يحصل على أولوية أعلى
+        });
+      }
+
+      console.log(`✅ Notified ${superAdmins.length} super_admin(s)`);
+
     } catch (err) {
       console.error('⚠️ Admin notification error:', err.message);
     }
@@ -421,7 +450,6 @@ export const createRequest = async (req, res) => {
     });
   }
 };
-
 // ============================================================
 // ✅ تحديث الطلب
 // ============================================================
@@ -530,10 +558,6 @@ export const updateRequestStatus = async (req, res) => {
     });
   }
 };
-
-// ============================================================
-// ✅ إسناد مختص للطلب
-// ============================================================
 export const assignSpecialist = async (req, res) => {
   try {
     const request = req.request;
@@ -562,7 +586,7 @@ export const assignSpecialist = async (req, res) => {
 
     await request.save();
 
-    // ✅ ✅ إشعار للمختص
+    // ✅ 1. إشعار للمختص
     await safeSendNotification(req, {
       portalId: request.portalId,
       accountId: specialistId,
@@ -573,6 +597,19 @@ export const assignSpecialist = async (req, res) => {
       messageAr: `تم إسناد الطلب رقم ${request.requestNumber} إليك`,
       data: { requestId: request._id },
       priority: 'high',
+    });
+
+    // ✅ 2. إشعار للعميل (صاحب الطلب)
+    await safeSendNotification(req, {
+      portalId: request.portalId,
+      accountId: request.accountId,
+      type: 'request_updated',
+      title: 'Specialist assigned',
+      titleAr: 'تم تعيين مختص لطلبك',
+      message: `A specialist has been assigned to your request ${request.requestNumber}`,
+      messageAr: `تم تعيين مختص للطلب رقم ${request.requestNumber}`,
+      data: { requestId: request._id },
+      priority: 'medium',
     });
 
     res.json({
