@@ -59,10 +59,6 @@ export const getNotifications = async (req, res) => {
     });
   }
 };
-
-// ============================================================
-// ✅ جلب عدد الإشعارات غير المقروءة
-// ============================================================
 export const getUnreadCount = async (req, res) => {
   try {
     const portalId = req.portalId || req.headers['x-portal-id'];
@@ -89,9 +85,11 @@ export const getUnreadCount = async (req, res) => {
       { limit: 1 }
     );
 
+    // ✅ أعد count + unreadCount (backward compatible)
     res.status(200).json({
       success: true,
-      unreadCount: result.unreadCount,
+      count: result.unreadCount,        // ← للتوافق مع Header
+      unreadCount: result.unreadCount,  // ← للتوافق مع كود قديم
     });
   } catch (error) {
     console.error('❌ Get unread count error:', error);

@@ -5,35 +5,30 @@ import { useSidebar } from '../../context/SidebarContext';
 import { useAuth } from '../../context/AuthContext';
 import { useTheme } from '../../context/ThemeContext';
 import ThemeToggle from '../common/ThemeToggle';
-import NotificationsList from '../common/NotificationsList';
-import { 
-  FaBars, 
-  FaUserCircle, 
-  FaBell, 
+import {
+  FaBars,
+  FaUserCircle,
+  FaBell,
   FaSignOutAlt,
   FaTimes,
   FaSpinner,
 } from 'react-icons/fa';
 
-// ✅ واجهة الإشعار المتطابقة مع الـ Backend
+// ============================================================
+// ✅ واجهة الإشعار
+// ============================================================
 interface Notification {
   _id: string;
-  title: string;
-  titleAr: string;
-  message: string;
-  messageAr: string;
-  type: string;
-  isRead: boolean; // ✅ استخدام isRead بدلاً من read
+  title?: string;
+  titleAr?: string;
+  message?: string;
+  messageAr?: string;
+  type?: string;
+  isRead: boolean;
   isDelivered?: boolean;
   createdAt: string;
   expiresAt?: string;
   priority?: 'low' | 'medium' | 'high' | 'urgent';
-  channels?: {
-    email: boolean;
-    push: boolean;
-    sms: boolean;
-    inApp: boolean;
-  };
   data?: {
     requestId?: string;
     messageId?: string;
@@ -55,11 +50,12 @@ const Header: React.FC = () => {
   const location = useLocation();
   const navigate = useNavigate();
 
-  // ✅ حالة الإشعارات
+  // ✅ حالات
   const [showNotifications, setShowNotifications] = useState(false);
   const [unreadCount, setUnreadCount] = useState(0);
-  const [loading, setLoading] = useState(false);
   const [notifications, setNotifications] = useState<Notification[]>([]);
+  const [loadingCount, setLoadingCount] = useState(false);
+  const [loadingList, setLoadingList] = useState(false);
 
   const notificationRef = useRef<HTMLDivElement>(null);
   const buttonRef = useRef<HTMLButtonElement>(null);
@@ -68,14 +64,13 @@ const Header: React.FC = () => {
   const PORTAL_ID = '6a8e3dab1175e7015f452904';
 
   // ============================================================
-  // ✅ جلب عدد الإشعارات غير المقروءة (باستخدام isRead)
+  // ✅ جلب عدد الإشعارات غير المقروءة
   // ============================================================
-
   const fetchUnreadCount = useCallback(async () => {
     if (!token) return;
 
     try {
-      setLoading(true);
+      setLoadingCount(true);
       const response = await fetch(`${API_URL}/notifications/unread/count`, {
         headers: {
           'Authorization': `Bearer ${token}`,
@@ -85,30 +80,41 @@ const Header: React.FC = () => {
       });
 
       if (!response.ok) {
+        // ⚠️ 401 = جلسة منتهية
+        if (response.status === 401) {
+          console.warn('⚠️ Session expired, skipping count');
+          return;
+        }
         throw new Error(`HTTP ${response.status}`);
       }
-
-      const data = await response.json();
-
-      if (data.success) {
-        setUnreadCount(data.count || 0);
+const data = await response.json();
+if (data.success) {
+  // ✅ اقبل count أو unreadCount
+  setUnreadCount(data.count ?? data.unreadCount ?? 0);
+}
+    } catch (error: any) {
+      // ⚠️ تجاهل أخطاء الشبكة المؤقتة
+      if (error.message?.includes('Failed to fetch') ||
+          error.message?.includes('Network') ||
+          error.name === 'TypeError') {
+        console.warn('⚠️ Network error (ignored):', error.message);
+      } else {
+        console.error('❌ Error fetching unread count:', error);
       }
-    } catch (error) {
-      console.error('❌ Error fetching unread count:', error);
     } finally {
-      setLoading(false);
+      setLoadingCount(false);
     }
-  }, [token]);
+  }, [token, API_URL]);
 
   // ============================================================
-  // ✅ جلب الإشعارات للقائمة المنبثقة
+  // ✅ جلب قائمة الإشعارات (للـ dropdown)
   // ============================================================
-
   const fetchNotifications = useCallback(async () => {
     if (!token) return;
 
     try {
-      const response = await fetch(`${API_URL}/notifications?limit=5`, {
+      setLoadingList(true);
+      const response = await fetch(`${API_URL}/notifications?limit=10`, {
         headers: {
           'Authorization': `Bearer ${token}`,
           'X-Portal-Id': PORTAL_ID,
@@ -117,6 +123,10 @@ const Header: React.FC = () => {
       });
 
       if (!response.ok) {
+        if (response.status === 401) {
+          console.warn('⚠️ Session expired');
+          return;
+        }
         throw new Error(`HTTP ${response.status}`);
       }
 
@@ -124,19 +134,50 @@ const Header: React.FC = () => {
 
       if (data.success) {
         setNotifications(data.data || []);
-        // ✅ تحديث العداد بناءً على isRead
-        const unread = (data.data || []).filter((n: Notification) => !n.isRead).length;
-        setUnreadCount(unread);
+        // ⚠️ لا نُحدّث unreadCount من هنا
+        // العداد الحقيقي يأتي من /unread/count
       }
-    } catch (error) {
-      console.error('❌ Error fetching notifications:', error);
+    } catch (error: any) {
+      if (error.message?.includes('Failed to fetch') ||
+          error.message?.includes('Network')) {
+        console.warn('⚠️ Network error (ignored)');
+      } else {
+        console.error('❌ Error fetching notifications:', error);
+      }
+    } finally {
+      setLoadingList(false);
     }
-  }, [token]);
+  }, [token, API_URL]);
+
+  // ============================================================
+  // ✅ تعليم إشعار كمقروء
+  // ============================================================
+  const markAsRead = useCallback(async (notificationId: string) => {
+    if (!token) return;
+
+    try {
+      await fetch(`${API_URL}/notifications/${notificationId}/read`, {
+        method: 'PUT',
+        headers: {
+          'Authorization': `Bearer ${token}`,
+          'X-Portal-Id': PORTAL_ID,
+          'Content-Type': 'application/json',
+        },
+      });
+
+      // تحديث محلي
+      setNotifications(prev =>
+        prev.map(n => n._id === notificationId ? { ...n, isRead: true } : n)
+      );
+      setUnreadCount(prev => Math.max(0, prev - 1));
+    } catch (error) {
+      console.error('❌ Error marking as read:', error);
+    }
+  }, [token, API_URL]);
 
   // ============================================================
   // ✅ تحديد نوع السايدبار
   // ============================================================
-
   const getSidebarType = (): 'main' | 'dashboard' | 'specialist' | 'admin' => {
     if (location.pathname.startsWith('/dashboard')) return 'dashboard';
     if (location.pathname.startsWith('/specialist')) return 'specialist';
@@ -145,52 +186,49 @@ const Header: React.FC = () => {
   };
 
   // ============================================================
-  // ✅ تحديد عنوان الصفحة
+  // ✅ عنوان الصفحة
   // ============================================================
-
   const getPageTitle = () => {
-    if (location.pathname.startsWith('/dashboard')) {
-      if (location.pathname === '/dashboard') return 'نظرة عامة';
-      if (location.pathname.includes('/requests')) return 'طلباتي';
-      if (location.pathname.includes('/subscriptions')) return 'اشتراكاتي';
-      if (location.pathname.includes('/payments')) return 'المدفوعات';
-      if (location.pathname.includes('/notifications')) return 'الإشعارات';
-      if (location.pathname.includes('/profile')) return 'الملف الشخصي';
-      if (location.pathname.includes('/settings')) return 'الإعدادات';
+    const path = location.pathname;
+
+    if (path.startsWith('/dashboard')) {
+      if (path === '/dashboard') return 'نظرة عامة';
+      if (path.includes('/requests')) return 'طلباتي';
+      if (path.includes('/subscriptions')) return 'اشتراكاتي';
+      if (path.includes('/payments')) return 'المدفوعات';
+      if (path.includes('/notifications')) return 'الإشعارات';
+      if (path.includes('/profile')) return 'الملف الشخصي';
+      if (path.includes('/settings')) return 'الإعدادات';
       return 'لوحة التحكم';
     }
-    
-    if (location.pathname.startsWith('/specialist')) {
-      if (location.pathname === '/specialist/dashboard') return 'نظرة عامة';
-      if (location.pathname.includes('/requests')) return 'الطلبات المسندة';
-      if (location.pathname.includes('/tasks')) return 'المهام';
-      if (location.pathname.includes('/calls')) return 'المكالمات';
-      if (location.pathname.includes('/messages')) return 'الرسائل';
-      if (location.pathname.includes('/files')) return 'الملفات';
-      if (location.pathname.includes('/profile')) return 'الملف الشخصي';
-      if (location.pathname.includes('/settings')) return 'الإعدادات';
+
+    if (path.startsWith('/specialist')) {
+      if (path === '/specialist/dashboard' || path === '/specialist') return 'نظرة عامة';
+      if (path.includes('/requests')) return 'الطلبات المسندة';
+      if (path.includes('/tasks')) return 'المهام';
+      if (path.includes('/calls')) return 'المكالمات';
+      if (path.includes('/messages')) return 'الرسائل';
+      if (path.includes('/files')) return 'الملفات';
+      if (path.includes('/profile')) return 'الملف الشخصي';
+      if (path.includes('/settings')) return 'الإعدادات';
       return 'لوحة المختص';
     }
-    
-    if (location.pathname.startsWith('/admin-')) {
-      if (location.pathname === '/admin-dashboard') return 'نظرة عامة';
-      if (location.pathname.includes('/services')) return 'الخدمات';
-      if (location.pathname.includes('/sections')) return 'الأقسام';
-      if (location.pathname.includes('/users')) return 'المستخدمين';
-      if (location.pathname.includes('/payments')) return 'المدفوعات';
-      if (location.pathname.includes('/subscriptions')) return 'الاشتراكات';
-      if (location.pathname.includes('/requests')) return 'الطلبات';
-      if (location.pathname.includes('/reports')) return 'التقارير';
-      if (location.pathname.includes('/settings')) return 'الإعدادات';
+
+    if (path.startsWith('/admin-')) {
+      if (path === '/admin-dashboard') return 'نظرة عامة';
+      if (path.includes('/services')) return 'الخدمات';
+      if (path.includes('/sections')) return 'الأقسام';
+      if (path.includes('/users')) return 'المستخدمين';
+      if (path.includes('/payments')) return 'المدفوعات';
+      if (path.includes('/subscriptions')) return 'الاشتراكات';
+      if (path.includes('/requests')) return 'الطلبات';
+      if (path.includes('/reports')) return 'التقارير';
+      if (path.includes('/settings')) return 'الإعدادات';
       return 'لوحة الإدارة';
     }
-    
+
     return '';
   };
-
-  // ============================================================
-  // ✅ تحديد اسم لوحة التحكم للعرض
-  // ============================================================
 
   const getDashboardLabel = () => {
     if (location.pathname.startsWith('/dashboard')) return 'العميل';
@@ -199,26 +237,18 @@ const Header: React.FC = () => {
     return '';
   };
 
-  // ============================================================
-  // ✅ تحديد ما إذا كانت الصفحة من لوحات التحكم
-  // ============================================================
-
-  const isDashboard = location.pathname.startsWith('/dashboard') || 
-                      location.pathname.startsWith('/specialist') || 
-                      location.pathname.startsWith('/admin-');
+  const isDashboard =
+    location.pathname.startsWith('/dashboard') ||
+    location.pathname.startsWith('/specialist') ||
+    location.pathname.startsWith('/admin-');
 
   // ============================================================
-  // ✅ معالجة النقر على زر القائمة
+  // ✅ معالجات
   // ============================================================
-
   const handleMenuClick = () => {
     setSidebarType(getSidebarType());
     toggle();
   };
-
-  // ============================================================
-  // ✅ معالجة تسجيل الخروج
-  // ============================================================
 
   const handleLogout = async () => {
     await logout();
@@ -226,13 +256,18 @@ const Header: React.FC = () => {
   };
 
   // ============================================================
-  // ✅ معالجة النقر على الإشعار
+  // ✅ النقر على إشعار
   // ============================================================
+  const handleNotificationClick = async (notification: Notification) => {
+    // 1. علّم كمقروء
+    if (!notification.isRead) {
+      await markAsRead(notification._id);
+    }
 
-  const handleNotificationClick = (notification: Notification) => {
+    // 2. أغلق القائمة
     setShowNotifications(false);
 
-    // التوجيه حسب نوع الإشعار
+    // 3. وجّه
     if (notification.data?.url) {
       navigate(notification.data.url);
     } else if (notification.data?.requestId) {
@@ -241,23 +276,18 @@ const Header: React.FC = () => {
       navigate('/dashboard/payments');
     } else if (notification.data?.subscriptionId) {
       navigate('/dashboard/subscriptions');
-    } else if (notification.data?.messageId) {
-      navigate('/dashboard/messages');
-    } else if (notification.data?.callId) {
-      navigate('/dashboard/calls');
     }
   };
 
   // ============================================================
-  // ✅ النقر خارج القائمة لإغلاقها
+  // ✅ إغلاق القائمة عند النقر خارجها
   // ============================================================
-
   useEffect(() => {
     const handleClickOutside = (event: MouseEvent) => {
       if (
-        notificationRef.current && 
+        notificationRef.current &&
         !notificationRef.current.contains(event.target as Node) &&
-        buttonRef.current && 
+        buttonRef.current &&
         !buttonRef.current.contains(event.target as Node)
       ) {
         setShowNotifications(false);
@@ -269,27 +299,36 @@ const Header: React.FC = () => {
   }, []);
 
   // ============================================================
-  // ✅ جلب الإشعارات عند التحميل وتحديثها دورياً
+  // ✅ Polling الأولي (مع cleanup صحيح)
   // ============================================================
-
   useEffect(() => {
-    if (token) {
-      fetchUnreadCount();
-      
-      // تحديث العداد كل 30 ثانية
-      const interval = setInterval(fetchUnreadCount, 30000);
-      return () => clearInterval(interval);
-    }
+    if (!token) return;
+
+    // جلب أولي
+    fetchUnreadCount();
+
+    // Polling كل 60 ثانية (بدلاً من 30)
+    const interval = setInterval(() => {
+      // ⚠️ لا نجلب إذا كان التبويب غير مرئي
+      if (document.visibilityState === 'visible') {
+        fetchUnreadCount();
+      }
+    }, 60000);
+
+    return () => clearInterval(interval);
   }, [token, fetchUnreadCount]);
 
   const pageTitle = getPageTitle();
   const dashboardLabel = getDashboardLabel();
 
+  // ============================================================
+  // ✅ Render
+  // ============================================================
   return (
     <header className="bg-white dark:bg-gray-900 shadow-md border-b border-gray-200 dark:border-gray-700 sticky top-0 z-40">
       <div className="container-custom py-3 px-4 mx-auto max-w-7xl">
         <div className="flex items-center justify-between">
-          {/* ========== الجهة اليمنى ========== */}
+          {/* الجهة اليمنى */}
           <div className="flex items-center gap-3 min-w-0">
             <Link to="/" className="flex items-center gap-2 text-2xl font-black flex-shrink-0">
               <span className="bg-gradient-to-r from-purple-600 to-pink-500 bg-clip-text text-transparent">
@@ -301,7 +340,7 @@ const Header: React.FC = () => {
                 </span>
               )}
             </Link>
-            
+
             {pageTitle && (
               <>
                 <span className="text-gray-300 dark:text-gray-600 hidden sm:inline">|</span>
@@ -312,19 +351,19 @@ const Header: React.FC = () => {
             )}
           </div>
 
-          {/* ========== الجهة اليسرى ========== */}
+          {/* الجهة اليسرى */}
           <div className="flex items-center gap-1 sm:gap-2 flex-shrink-0">
-            {/* ✅ زر تبديل الثيم */}
+            {/* تبديل الثيم */}
             <ThemeToggle isDark={isDark} toggleTheme={toggleTheme} />
 
-            {/* ✅ زر الإشعارات */}
+            {/* زر الإشعارات */}
             <div className="relative">
               <button
                 ref={buttonRef}
                 onClick={() => {
-                  setShowNotifications(!showNotifications);
-                  if (!showNotifications) {
-                    // تحديث العداد والإشعارات عند فتح القائمة
+                  const newState = !showNotifications;
+                  setShowNotifications(newState);
+                  if (newState) {
                     fetchUnreadCount();
                     fetchNotifications();
                   }
@@ -333,22 +372,27 @@ const Header: React.FC = () => {
                 aria-label="الإشعارات"
               >
                 <FaBell className="w-5 h-5 text-gray-600 dark:text-gray-400" />
-                
-                {/* ✅ عداد الإشعارات غير المقروءة (باستخدام isRead) */}
+
+                {/* ✅ عداد صحيح */}
                 {unreadCount > 0 && (
                   <span className="absolute -top-0.5 -right-0.5 min-w-[18px] h-[18px] bg-red-500 text-white text-[10px] rounded-full flex items-center justify-center px-1 font-medium animate-pulse">
                     {unreadCount > 99 ? '99+' : unreadCount}
                   </span>
                 )}
+
+                {/* مؤشر جلب */}
+                {loadingCount && !unreadCount && (
+                  <span className="absolute -top-0.5 -right-0.5 w-2 h-2 bg-blue-500 rounded-full animate-pulse" />
+                )}
               </button>
 
-              {/* ✅ قائمة الإشعارات المنبثقة */}
+              {/* القائمة المنسدلة */}
               {showNotifications && (
-                <div 
+                <div
                   ref={notificationRef}
                   className="absolute left-0 top-full mt-2 w-[340px] sm:w-[420px] bg-white dark:bg-gray-800 rounded-xl shadow-2xl border border-gray-200 dark:border-gray-700 z-50 max-h-[550px] overflow-hidden"
                 >
-                  {/* رأس القائمة */}
+                  {/* الرأس */}
                   <div className="p-3 border-b border-gray-200 dark:border-gray-700 flex items-center justify-between bg-white dark:bg-gray-800 sticky top-0 z-10">
                     <h4 className="font-semibold text-gray-900 dark:text-white flex items-center gap-2">
                       <FaBell className="text-purple-600" />
@@ -362,15 +406,15 @@ const Header: React.FC = () => {
                     <button
                       onClick={() => setShowNotifications(false)}
                       className="p-1 rounded-lg hover:bg-gray-100 dark:hover:bg-gray-700 transition"
-                      aria-label="إغلاق الإشعارات"
+                      aria-label="إغلاق"
                     >
                       <FaTimes className="w-4 h-4 text-gray-500" />
                     </button>
                   </div>
 
-                  {/* ✅ قائمة الإشعارات */}
+                  {/* القائمة */}
                   <div className="overflow-y-auto max-h-[400px]">
-                    {loading ? (
+                    {loadingList ? (
                       <div className="flex items-center justify-center py-8">
                         <FaSpinner className="w-6 h-6 text-purple-600 animate-spin" />
                       </div>
@@ -380,8 +424,8 @@ const Header: React.FC = () => {
                           <div
                             key={notification._id}
                             className={`p-3 hover:bg-gray-50 dark:hover:bg-gray-700/30 transition cursor-pointer ${
-                              !notification.isRead 
-                                ? 'bg-purple-50 dark:bg-purple-900/10 border-r-4 border-purple-500' 
+                              !notification.isRead
+                                ? 'bg-purple-50 dark:bg-purple-900/10 border-r-4 border-purple-500'
                                 : ''
                             }`}
                             onClick={() => handleNotificationClick(notification)}
@@ -389,7 +433,7 @@ const Header: React.FC = () => {
                             <div className="flex items-start gap-3">
                               <div className="flex-1 min-w-0">
                                 <p className={`text-sm ${!notification.isRead ? 'text-gray-900 dark:text-white font-semibold' : 'text-gray-600 dark:text-gray-400'}`}>
-                                  {notification.titleAr || notification.title || notification.message}
+                                  {notification.titleAr || notification.title || notification.messageAr || notification.message || 'إشعار'}
                                 </p>
                                 <div className="flex items-center gap-2 mt-1">
                                   <span className="text-xs text-gray-400">
@@ -438,14 +482,14 @@ const Header: React.FC = () => {
               )}
             </div>
 
-            {/* ✅ معلومات المستخدم */}
+            {/* معلومات المستخدم */}
             {user && (
               <div className="flex items-center gap-2 hidden md:flex">
                 <div className="w-8 h-8 rounded-full bg-gradient-to-r from-purple-100 to-pink-100 dark:from-purple-900/30 dark:to-pink-900/30 flex items-center justify-center overflow-hidden flex-shrink-0">
                   {user?.profile?.avatar ? (
-                    <img 
-                      src={`${API_URL}/files/public/${user.profile.avatar}`} 
-                      alt={user?.fullName || 'مستخدم'} 
+                    <img
+                      src={`${API_URL}/files/public/${user.profile.avatar}`}
+                      alt={user?.fullName || 'مستخدم'}
                       className="w-full h-full object-cover"
                       onError={(e) => {
                         e.currentTarget.style.display = 'none';
@@ -461,7 +505,7 @@ const Header: React.FC = () => {
               </div>
             )}
 
-            {/* ✅ زر تسجيل الخروج */}
+            {/* زر تسجيل الخروج */}
             {user && (
               <button
                 onClick={handleLogout}
@@ -472,7 +516,7 @@ const Header: React.FC = () => {
               </button>
             )}
 
-            {/* ✅ زر القائمة (هامبورجر) */}
+            {/* زر القائمة */}
             <button
               onClick={handleMenuClick}
               className="p-2 rounded-lg hover:bg-gray-100 dark:hover:bg-gray-800 transition-colors"
@@ -490,7 +534,6 @@ const Header: React.FC = () => {
 // ============================================================
 // ✅ دوال مساعدة
 // ============================================================
-
 const formatTime = (date: string) => {
   try {
     const now = new Date();
@@ -526,11 +569,16 @@ const getTypeLabel = (type: string) => {
     'payment_failed': 'فشل',
     'new_message': 'رسالة',
     'new_call': 'مكالمة',
+    'call_scheduled': 'مكالمة',
     'subscription_created': 'اشتراك',
     'subscription_expiring': 'اشتراك',
     'subscription_expired': 'انتهاء',
+    'subscription_cancelled': 'إلغاء',
     'system_alert': 'نظام',
     'support_reply': 'دعم',
+    'scope_approved': 'اعتماد',
+    'delivery_submitted': 'تسليم',
+    'delivery_reviewed': 'مراجعة',
   };
   return labels[type] || type.replace(/_/g, ' ');
 };
