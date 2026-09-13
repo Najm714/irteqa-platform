@@ -154,12 +154,20 @@ NotificationSchema.statics.createNotification = async function(data) {
   await notification.save();
   return notification;
 };
-
 // ✅ دالة لجلب الإشعارات غير المقروءة
 NotificationSchema.statics.getUnreadCount = async function(accountId, portalId) {
+  // ✅ حوّل String → ObjectId
+  const mongoose = (await import('mongoose')).default;
+  const accountObjectId = mongoose.Types.ObjectId.isValid(accountId)
+    ? new mongoose.Types.ObjectId(accountId)
+    : accountId;
+  const portalObjectId = mongoose.Types.ObjectId.isValid(portalId)
+    ? new mongoose.Types.ObjectId(portalId)
+    : portalId;
+
   return this.countDocuments({
-    accountId,
-    portalId,
+    accountId: accountObjectId,
+    portalId: portalObjectId,
     isRead: false,
   });
 };

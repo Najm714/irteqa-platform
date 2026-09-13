@@ -1,15 +1,25 @@
 // src/services/notification.service.js
+import mongoose from 'mongoose';
 import { Notification } from '../models/Notification.model.js';
 import { Account } from '../models/Account.model.js';
+
+// ✅ دالة مساعدة: تحويل String → ObjectId
+const toObjectId = (id) => {
+  if (!id) return id;
+  // إذا كان ObjectId بالفعل، أرجعه
+  if (id instanceof mongoose.Types.ObjectId) return id;
+  // إذا كان String صالحاً، حوّله
+  if (typeof id === 'string' && mongoose.Types.ObjectId.isValid(id)) {
+    return new mongoose.Types.ObjectId(id);
+  }
+  return id;
+};
 
 class NotificationService {
   constructor(io) {
     this.io = io;
   }
 
-  /**
-   * إنشاء وإرسال إشعار
-   */
   async sendNotification(data) {
     try {
       const {
@@ -26,16 +36,14 @@ class NotificationService {
         expiresAt = null,
       } = data;
 
-      // التحقق من وجود المستخدم
-      const account = await Account.findById(accountId);
+      const account = await Account.findById(toObjectId(accountId));
       if (!account) {
         throw new Error('Account not found');
       }
 
-      // إنشاء الإشعار في قاعدة البيانات
       const notification = new Notification({
-        portalId,
-        accountId,
+        portalId: toObjectId(portalId),
+        accountId: toObjectId(accountId),
         type,
         title,
         titleAr,
@@ -49,7 +57,6 @@ class NotificationService {
 
       await notification.save();
 
-      // إرسال الإشعار عبر WebSocket
       if (channels.inApp && this.io) {
         this.io.to(`user_${accountId}`).emit('notification', {
           id: notification._id,
@@ -64,12 +71,10 @@ class NotificationService {
         });
       }
 
-      // إرسال عبر البريد الإلكتروني (سيتم تنفيذه لاحقاً)
       if (channels.email) {
         await this._sendEmail(account, notification);
       }
 
-      // إرسال عبر SMS (سيتم تنفيذه لاحقاً)
       if (channels.sms) {
         await this._sendSms(account, notification);
       }
@@ -81,9 +86,6 @@ class NotificationService {
     }
   }
 
-  /**
-   * جلب إشعارات المستخدم
-   */
   async getUserNotifications(accountId, portalId, options = {}) {
     const {
       limit = 20,
@@ -94,9 +96,10 @@ class NotificationService {
       endDate,
     } = options;
 
+    // ✅ حوّل String → ObjectId
     const query = {
-      accountId,
-      portalId,
+      accountId: toObjectId(accountId),
+      portalId: toObjectId(portalId),
     };
 
     if (isRead !== undefined) query.isRead = isRead;
@@ -128,13 +131,10 @@ class NotificationService {
     };
   }
 
-  /**
-   * تحديد إشعار كمقروء
-   */
   async markAsRead(notificationId, accountId) {
     const notification = await Notification.findOne({
-      _id: notificationId,
-      accountId,
+      _id: toObjectId(notificationId),
+      accountId: toObjectId(accountId),
     });
 
     if (!notification) {
@@ -147,14 +147,11 @@ class NotificationService {
     return notification;
   }
 
-  /**
-   * تحديد جميع الإشعارات كمقروءة
-   */
   async markAllAsRead(accountId, portalId) {
     const result = await Notification.updateMany(
       {
-        accountId,
-        portalId,
+        accountId: toObjectId(accountId),
+        portalId: toObjectId(portalId),
         isRead: false,
       },
       {
@@ -165,13 +162,10 @@ class NotificationService {
     return result;
   }
 
-  /**
-   * حذف إشعار
-   */
   async deleteNotification(notificationId, accountId) {
     const notification = await Notification.findOneAndDelete({
-      _id: notificationId,
-      accountId,
+      _id: toObjectId(notificationId),
+      accountId: toObjectId(accountId),
     });
 
     if (!notification) {
@@ -181,21 +175,15 @@ class NotificationService {
     return notification;
   }
 
-  /**
-   * حذف جميع الإشعارات
-   */
   async deleteAllNotifications(accountId, portalId) {
     const result = await Notification.deleteMany({
-      accountId,
-      portalId,
+      accountId: toObjectId(accountId),
+      portalId: toObjectId(portalId),
     });
 
     return result;
   }
 
-  /**
-   * إرسال إشعارات مجمعة (للمستخدمين المتعددين)
-   */
   async sendBulkNotifications(data) {
     const { accountIds, ...notificationData } = data;
     const results = [];
@@ -215,12 +203,9 @@ class NotificationService {
     return results;
   }
 
-  /**
-   * إرسال إشعارات لأعضاء دور معين
-   */
   async sendNotificationToRole(portalId, role, data) {
     const accounts = await Account.find({
-      portalId,
+      portalId: toObjectId(portalId),
       role,
       isActive: true,
     });
@@ -233,20 +218,15 @@ class NotificationService {
     });
   }
 
-  // ===== دوال خاصة (سيتم تنفيذها لاحقاً) =====
-
   async _sendEmail(account, notification) {
-    // TODO: تنفيذ إرسال البريد الإلكتروني
     console.log(`📧 Email notification to ${account.email}: ${notification.title}`);
   }
 
   async _sendSms(account, notification) {
-    // TODO: تنفيذ إرسال SMS
     console.log(`📱 SMS notification to ${account.phone}: ${notification.title}`);
   }
 }
 
-// ✅ تصدير نسخة واحدة من الخدمة
 let notificationServiceInstance = null;
 
 export const getNotificationService = (io) => {
