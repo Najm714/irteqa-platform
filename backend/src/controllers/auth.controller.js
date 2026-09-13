@@ -4,6 +4,7 @@ import { CustomerIdentity } from '../models/CustomerIdentity.model.js';
 import { Portal } from '../models/Portal.model.js';
 import { generateToken } from '../utils/jwt.js';
 import mongoose from 'mongoose';
+import { getNotificationService } from '../services/notification.service.js';
 
 // ============================================================
 // ✅ دالة مساعدة: استنتاج البوابة من Host أو portalId
@@ -203,7 +204,24 @@ export const register = async (req, res) => {
     });
 
     await account.save();
-
+// ✅ إشعار ترحيب
+try {
+  const notificationService = getNotificationService(req.app?.get('io'));
+  await notificationService.sendNotification({
+    portalId: account.portalId,
+    accountId: account._id,
+    type: 'system_alert',
+    title: 'Welcome to IRTEQA',
+    titleAr: 'مرحباً بك في منصة ارتقاء',
+    message: 'Your account has been created successfully',
+    messageAr: 'تم إنشاء حسابك بنجاح. نتمنى لك تجربة ممتعة!',
+    data: {},
+    priority: 'low',
+  });
+  console.log('✅ Welcome notification sent');
+} catch (notifError) {
+  console.error('⚠️ Notification error:', notifError.message);
+}
     console.log('✅ Account created for:', email);
 
     // ✅ إنشاء التوكن
