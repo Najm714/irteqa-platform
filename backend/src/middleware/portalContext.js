@@ -6,9 +6,10 @@ import { Account } from '../models/Account.model.js';
 /**
  * الحصول على Portal ID المطلوب من الطلب.
  *
- * ملاحظة:
- * هذا المصدر يُستخدم فقط لتحديد البوابة المطلوبة.
- * لا يُعتبر مصدرًا موثوقًا للمستخدمين المسجلين.
+ * الأولوية:
+ * 1. X-Portal-Id header
+ * 2. query ?portalId=
+ * 3. body.portalId
  */
 const getRequestedPortalId = (req) => {
   return (
@@ -49,9 +50,9 @@ const findPortal = async (portalId) => {
  *
  * للمستخدم المسجل:
  * - super_admin يستطيع اختيار أي Portal.
- * - بقية الأدوار لا تستطيع تغيير Portal الخاصة بها.
+ * - بقية الأدوار تستخدم Portal الخاصة بالحساب.
  *
- * للزائر غير المسجل:
+ * للزائر:
  * - يجب إرسال Portal محددة.
  */
 export const detectPortal = async (req, res, next) => {
@@ -62,15 +63,24 @@ export const detectPortal = async (req, res, next) => {
     // المستخدم المسجل
     // =========================================================
     if (req.user) {
+      // -------------------------------------------------------
       // SUPER ADMIN
+      // -------------------------------------------------------
       if (req.user.role === 'super_admin') {
-        if (!requestedPortalId) {
+        const effectivePortalId =
+          requestedPortalId ||
+          req.user.portalId ||
+          req.account?.portalId?._id ||
+          req.account?.portalId ||
+          null;
+
+        if (!effectivePortalId) {
           req.portal = null;
           req.portalId = null;
           return next();
         }
 
-        const portal = await findPortal(requestedPortalId);
+        const portal = await findPortal(effectivePortalId);
 
         if (!portal) {
           return res.status(404).json({
@@ -94,10 +104,9 @@ export const detectPortal = async (req, res, next) => {
         return next();
       }
 
-      // =======================================================
-      // بقية المستخدمين:
-      // Portal الخاصة بهم هي المصدر الموثوق الوحيد
-      // =======================================================
+      // -------------------------------------------------------
+      // بقية المستخدمين
+      // -------------------------------------------------------
       const accountPortalId = req.user.portalId;
 
       if (!accountPortalId) {
@@ -106,7 +115,7 @@ export const detectPortal = async (req, res, next) => {
         return next();
       }
 
-      // إذا أرسل العميل Portal مختلفة عن Portal حسابه → رفض
+      // منع الوصول إلى Portal مختلفة
       if (
         requestedPortalId &&
         requestedPortalId.toString() !== accountPortalId.toString()
@@ -179,7 +188,7 @@ export const detectPortal = async (req, res, next) => {
     req.portal = portal;
     req.portalId = portal._id;
 
-    next();
+    return next();
   } catch (error) {
     console.error('❌ Detect portal error:', error);
 
@@ -191,37 +200,69 @@ export const detectPortal = async (req, res, next) => {
   }
 };
 
-
 /**
  * requirePortalContext
  *
  * يفرض وجود Portal صحيحة قبل تنفيذ الـ route.
  *
- * قواعد الأمان:
- *
  * SUPER_ADMIN:
- *   يستطيع العمل على أي Portal يتم تحديدها في الطلب.
+ * - يستخدم Portal المرسلة في الطلب.
+ * - إذا لم توجد، يستخدم Portal الموجودة في الحساب/JWT.
  *
  * PORTAL_ADMIN / SPECIALIST / CUSTOMER:
- *   لا يستطيعون تغيير Portal الخاصة بحسابهم.
+ * - يستخدم Portal الخاصة بالحساب.
+ * - لا يستطيع تغييرها.
  *
  * Guest:
- *   يجب تحديد Portal في الطلب.
+ * - يجب تحديد Portal في الطلب.
  */
 export const requirePortalContext = async (req, res, next) => {
   try {
     const requestedPortalId = getRequestedPortalId(req);
 
     // =========================================================
+    // DEBUG
+    // =========================================================
+    console.log('========== PORTAL CONTEXT DEBUG ==========');
+    console.log('URL:', req.originalUrl);
+    console.log('requestedPortalId:', requestedPortalId);
+    console.log('req.user?.id:', req.user?.id);
+    console.log('req.user?.role:', req.user?.role);
+    console.log('req.user?.portalId:', req.user?.portalId);
+    console.log(
+      'req.headers[x-portal-id]:',
+      req.headers['x-portal-id']
+    );
+    console.log('req.query.portalId:', req.query?.portalId);
+    console.log('==========================================');
+
+    // =========================================================
     // 1. المستخدم المسجل الدخول
     // =========================================================
     if (req.user) {
-
       // -------------------------------------------------------
       // SUPER ADMIN
       // -------------------------------------------------------
       if (req.user.role === 'super_admin') {
-        if (!requestedPortalId) {
+        /**
+         * الأولوية:
+         * 1. Portal المرسلة في الطلب
+         * 2. Portal الموجودة في JWT / req.user
+         * 3. Portal الموجودة في Account
+         */
+        const effectivePortalId =
+          requestedPortalId ||
+          req.user.portalId ||
+          req.account?.portalId?._id ||
+          req.account?.portalId ||
+          null;
+
+        console.log(
+          '🔐 Super admin effectivePortalId:',
+          effectivePortalId
+        );
+
+        if (!effectivePortalId) {
           return res.status(400).json({
             success: false,
             message: 'Portal context is required for super admin.',
@@ -229,7 +270,7 @@ export const requirePortalContext = async (req, res, next) => {
           });
         }
 
-        const portal = await findPortal(requestedPortalId);
+        const portal = await findPortal(effectivePortalId);
 
         if (!portal) {
           return res.status(404).json({
@@ -250,6 +291,10 @@ export const requirePortalContext = async (req, res, next) => {
         req.portal = portal;
         req.portalId = portal._id;
 
+        console.log(
+          `✅ Super admin granted access to portal: ${portal._id}`
+        );
+
         return next();
       }
 
@@ -266,7 +311,7 @@ export const requirePortalContext = async (req, res, next) => {
         });
       }
 
-      // إذا حاول المستخدم تحديد Portal أخرى
+      // إذا حاول المستخدم تحديد Portal مختلفة
       if (requestedPortalId) {
         const requestedPortal = await findPortal(requestedPortalId);
 
@@ -283,7 +328,8 @@ export const requirePortalContext = async (req, res, next) => {
         ) {
           console.warn(
             `🚫 Cross-portal access blocked: account=${req.user.id}, ` +
-            `accountPortal=${accountPortalId}, requestedPortal=${requestedPortal._id}`
+            `accountPortal=${accountPortalId}, ` +
+            `requestedPortal=${requestedPortal._id}`
           );
 
           return res.status(403).json({
@@ -294,7 +340,7 @@ export const requirePortalContext = async (req, res, next) => {
         }
       }
 
-      // استخدام Portal الحساب، وليس Portal المرسلة من العميل
+      // استخدام Portal الحساب
       const portal = await findPortal(accountPortalId);
 
       if (!portal) {
@@ -351,7 +397,7 @@ export const requirePortalContext = async (req, res, next) => {
     req.portal = portal;
     req.portalId = portal._id;
 
-    next();
+    return next();
   } catch (error) {
     console.error('❌ Portal context error:', error);
 
@@ -363,11 +409,8 @@ export const requirePortalContext = async (req, res, next) => {
   }
 };
 
-
 /**
  * Middleware خاص بالإعدادات.
- *
- * يستخدم نفس قواعد عزل البوابات.
  */
 export const requirePortalForSettings = async (req, res, next) => {
   try {
@@ -377,7 +420,14 @@ export const requirePortalForSettings = async (req, res, next) => {
     // SUPER ADMIN
     // =========================================================
     if (req.user?.role === 'super_admin') {
-      if (!requestedPortalId) {
+      const effectivePortalId =
+        requestedPortalId ||
+        req.user.portalId ||
+        req.account?.portalId?._id ||
+        req.account?.portalId ||
+        null;
+
+      if (!effectivePortalId) {
         return res.status(400).json({
           success: false,
           message: 'Portal ID is required for settings.',
@@ -385,7 +435,7 @@ export const requirePortalForSettings = async (req, res, next) => {
         });
       }
 
-      const portal = await findPortal(requestedPortalId);
+      const portal = await findPortal(effectivePortalId);
 
       if (!portal) {
         return res.status(404).json({
@@ -501,7 +551,7 @@ export const requirePortalForSettings = async (req, res, next) => {
     req.portal = portal;
     req.portalId = portal._id;
 
-    next();
+    return next();
   } catch (error) {
     console.error('❌ Portal for settings error:', error);
 
