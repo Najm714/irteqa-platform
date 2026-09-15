@@ -1,31 +1,53 @@
 // frontend/portal-a/src/pages/Dashboard/CustomerDashboard.tsx
+
 import React, { useState, useEffect, useCallback, useMemo } from 'react';
 import { useAuth } from '../../context/AuthContext';
 import { useSidebar } from '../../context/SidebarContext';
 import { useNavigate, useLocation } from 'react-router-dom';
-// ✅ استيراد Header العام
 import Header from '../../components/layout/Header';
 
-// أيقونات
 import {
-  FaHome, FaFileAlt, FaCreditCard, FaUser, FaCog,
-  FaBell, FaSignOutAlt, FaSpinner, FaUsers,
-  FaClock, FaCheckCircle, FaTimesCircle, FaPlus,
+  FaHome,
+  FaFileAlt,
+  FaCreditCard,
+  FaUser,
+  FaCog,
+  FaBell,
+  FaSignOutAlt,
+  FaSpinner,
+  FaUsers,
+  FaClock,
+  FaCheckCircle,
+  FaTimesCircle,
+  FaPlus,
   FaEye,
   FaUserCircle,
-  FaGlobe, FaLock, FaSave, FaCamera,
+  FaGlobe,
+  FaLock,
+  FaSave,
+  FaCamera,
   FaMapMarkerAlt,
   FaMoneyBill,
   FaTimes,
   FaSearch,
+  FaArrowLeft,
+  FaArrowUp,
+  FaChartLine,
+  FaRocket,
+  FaCalendarAlt,
+  FaReceipt,
+  FaBookOpen,
+  FaChevronLeft,
+  FaShieldAlt,
 } from 'react-icons/fa';
 
 // ============================================================
-// ✅ دوال مساعدة
+// Helpers
 // ============================================================
 
 const formatDate = (date: string | Date) => {
   if (!date) return '-';
+
   try {
     return new Date(date).toLocaleDateString('ar-SA', {
       year: 'numeric',
@@ -39,6 +61,7 @@ const formatDate = (date: string | Date) => {
 
 const formatDateTime = (date: string | Date) => {
   if (!date) return '-';
+
   try {
     return new Date(date).toLocaleString('ar-SA', {
       year: 'numeric',
@@ -53,32 +76,106 @@ const formatDateTime = (date: string | Date) => {
 };
 
 const getStatusBadge = (status: string) => {
-  const statusMap: Record<string, { label: string; color: string }> = {
-    // حالات الطلبات
-    'new': { label: 'جديد', color: 'bg-blue-100 text-blue-700 dark:bg-blue-900/30 dark:text-blue-400' },
-    'under_review': { label: 'قيد المراجعة', color: 'bg-yellow-100 text-yellow-700 dark:bg-yellow-900/30 dark:text-yellow-400' },
-    'assigned': { label: 'تم الإسناد', color: 'bg-purple-100 text-purple-700 dark:bg-purple-900/30 dark:text-purple-400' },
-    'in_progress': { label: 'قيد التنفيذ', color: 'bg-green-100 text-green-700 dark:bg-green-900/30 dark:text-green-400' },
-    'completed': { label: 'مكتمل', color: 'bg-emerald-100 text-emerald-700 dark:bg-emerald-900/30 dark:text-emerald-400' },
-    'cancelled': { label: 'ملغي', color: 'bg-red-100 text-red-700 dark:bg-red-900/30 dark:text-red-400' },
-    'closed': { label: 'مغلق', color: 'bg-gray-100 text-gray-700 dark:bg-gray-700 dark:text-gray-300' },
-    // حالات الاشتراكات
-    'active': { label: 'نشط', color: 'bg-green-100 text-green-700 dark:bg-green-900/30 dark:text-green-400' },
-    'pending': { label: 'قيد الانتظار', color: 'bg-yellow-100 text-yellow-700 dark:bg-yellow-900/30 dark:text-yellow-400' },
-    'expired': { label: 'منتهي', color: 'bg-red-100 text-red-700 dark:bg-red-900/30 dark:text-red-400' },
-    // حالات المدفوعات
-    'paid': { label: 'مدفوع', color: 'bg-green-100 text-green-700 dark:bg-green-900/30 dark:text-green-400' },
-    'failed': { label: 'فشل', color: 'bg-red-100 text-red-700 dark:bg-red-900/30 dark:text-red-400' },
-    'refunded': { label: 'مسترجع', color: 'bg-gray-100 text-gray-700 dark:bg-gray-700 dark:text-gray-300' },
-    'verified': { label: 'مؤكد', color: 'bg-green-100 text-green-700 dark:bg-green-900/30 dark:text-green-400' },
-    'rejected': { label: 'مرفوض', color: 'bg-red-100 text-red-700 dark:bg-red-900/30 dark:text-red-400' },
-    'submitted': { label: 'مرسل', color: 'bg-blue-100 text-blue-700 dark:bg-blue-900/30 dark:text-blue-400' },
+  const statusMap: Record<
+    string,
+    {
+      label: string;
+      color: string;
+    }
+  > = {
+    new: {
+      label: 'جديد',
+      color:
+        'bg-blue-100 text-blue-700 dark:bg-blue-900/30 dark:text-blue-400',
+    },
+    under_review: {
+      label: 'قيد المراجعة',
+      color:
+        'bg-yellow-100 text-yellow-700 dark:bg-yellow-900/30 dark:text-yellow-400',
+    },
+    assigned: {
+      label: 'تم الإسناد',
+      color:
+        'bg-purple-100 text-purple-700 dark:bg-purple-900/30 dark:text-purple-400',
+    },
+    in_progress: {
+      label: 'قيد التنفيذ',
+      color:
+        'bg-green-100 text-green-700 dark:bg-green-900/30 dark:text-green-400',
+    },
+    completed: {
+      label: 'مكتمل',
+      color:
+        'bg-emerald-100 text-emerald-700 dark:bg-emerald-900/30 dark:text-emerald-400',
+    },
+    cancelled: {
+      label: 'ملغي',
+      color:
+        'bg-red-100 text-red-700 dark:bg-red-900/30 dark:text-red-400',
+    },
+    closed: {
+      label: 'مغلق',
+      color:
+        'bg-gray-100 text-gray-700 dark:bg-gray-700 dark:text-gray-300',
+    },
+    active: {
+      label: 'نشط',
+      color:
+        'bg-green-100 text-green-700 dark:bg-green-900/30 dark:text-green-400',
+    },
+    pending: {
+      label: 'قيد الانتظار',
+      color:
+        'bg-yellow-100 text-yellow-700 dark:bg-yellow-900/30 dark:text-yellow-400',
+    },
+    expired: {
+      label: 'منتهي',
+      color:
+        'bg-red-100 text-red-700 dark:bg-red-900/30 dark:text-red-400',
+    },
+    paid: {
+      label: 'مدفوع',
+      color:
+        'bg-green-100 text-green-700 dark:bg-green-900/30 dark:text-green-400',
+    },
+    failed: {
+      label: 'فشل',
+      color:
+        'bg-red-100 text-red-700 dark:bg-red-900/30 dark:text-red-400',
+    },
+    refunded: {
+      label: 'مسترجع',
+      color:
+        'bg-gray-100 text-gray-700 dark:bg-gray-700 dark:text-gray-300',
+    },
+    verified: {
+      label: 'مؤكد',
+      color:
+        'bg-green-100 text-green-700 dark:bg-green-900/30 dark:text-green-400',
+    },
+    rejected: {
+      label: 'مرفوض',
+      color:
+        'bg-red-100 text-red-700 dark:bg-red-900/30 dark:text-red-400',
+    },
+    submitted: {
+      label: 'مرسل',
+      color:
+        'bg-blue-100 text-blue-700 dark:bg-blue-900/30 dark:text-blue-400',
+    },
   };
-  return statusMap[status] || { label: status, color: 'bg-gray-100 text-gray-700 dark:bg-gray-700 dark:text-gray-300' };
+
+  return (
+    statusMap[status] || {
+      label: status,
+      color:
+        'bg-gray-100 text-gray-700 dark:bg-gray-700 dark:text-gray-300',
+    }
+  );
 };
 
 // ============================================================
-// ✅ واجهات TypeScript
+// Interfaces
 // ============================================================
 
 interface ExtendedUser {
@@ -165,12 +262,19 @@ interface Notification {
 }
 
 // ============================================================
-// ✅ المكون الرئيسي
+// Main Dashboard
 // ============================================================
 
 const CustomerDashboard: React.FC = () => {
   const { token, user, logout } = useAuth();
-  const { isOpen, close, isMobile, sidebarType, setSidebarType } = useSidebar();
+  const {
+    isOpen,
+    close,
+    isMobile,
+    sidebarType,
+    setSidebarType,
+  } = useSidebar();
+
   const navigate = useNavigate();
   const location = useLocation();
 
@@ -178,19 +282,33 @@ const CustomerDashboard: React.FC = () => {
   const [stats, setStats] = useState<DashboardStats | null>(null);
   const [notifications, setNotifications] = useState<Notification[]>([]);
 
-  const API_URL = import.meta.env.VITE_API_URL || 'http://localhost:5001/api';
+  const API_URL =
+    import.meta.env.VITE_API_URL || 'http://localhost:5001/api';
+
   const PORTAL_ID = import.meta.env.VITE_PORTAL_ID || '';
 
-  // ✅ السايدبار يظهر فقط إذا كان النوع 'dashboard' ومفتوح
-  const showDashboardSidebar = isOpen && sidebarType === 'dashboard';
-const getAvatarUrl = (avatarId: string | undefined) => {
-  if (!avatarId) return null;
+  const showDashboardSidebar =
+    isOpen && sidebarType === 'dashboard';
 
-  return `${API_URL}/files/public/${avatarId}?portalId=${PORTAL_ID}`;
-};
+  const extendedUser = user as ExtendedUser;
 
   // ============================================================
-  // ✅ جلب بيانات لوحة التحكم
+  // Avatar
+  // ============================================================
+
+  const getAvatarUrl = useCallback(
+    (avatarId?: string) => {
+      if (!avatarId) return '';
+
+      return `${API_URL}/files/public/${encodeURIComponent(
+        avatarId
+      )}?portalId=${encodeURIComponent(PORTAL_ID)}`;
+    },
+    [API_URL, PORTAL_ID]
+  );
+
+  // ============================================================
+  // Dashboard data
   // ============================================================
 
   const fetchDashboardData = useCallback(async () => {
@@ -202,18 +320,26 @@ const getAvatarUrl = (avatarId: string | undefined) => {
     try {
       setLoading(true);
 
-      const statsResponse = await fetch(`${API_URL}/dashboard/stats`, {
+      const response = await fetch(`${API_URL}/dashboard/stats`, {
         headers: {
-          'Authorization': `Bearer ${token}`,
+          Authorization: `Bearer ${token}`,
           'X-Portal-Id': PORTAL_ID,
         },
       });
 
-      const statsData = await statsResponse.json();
-      if (statsData.success) {
-        setStats(statsData.data);
-        if (statsData.data.recentNotifications) {
-          setNotifications(statsData.data.recentNotifications);
+      if (response.status === 401) {
+        await logout();
+        navigate('/login');
+        return;
+      }
+
+      const data = await response.json();
+
+      if (data.success) {
+        setStats(data.data);
+
+        if (data.data?.recentNotifications) {
+          setNotifications(data.data.recentNotifications);
         }
       }
     } catch (error) {
@@ -221,15 +347,24 @@ const getAvatarUrl = (avatarId: string | undefined) => {
     } finally {
       setLoading(false);
     }
-  }, [token, API_URL, PORTAL_ID]);
+  }, [
+    token,
+    API_URL,
+    PORTAL_ID,
+    logout,
+    navigate,
+  ]);
 
   // ============================================================
-  // ✅ تهيئة AOS و sidebarType
+  // Sidebar
   // ============================================================
 
   useEffect(() => {
     setSidebarType('dashboard');
-    return () => setSidebarType('main');
+
+    return () => {
+      setSidebarType('main');
+    };
   }, [setSidebarType]);
 
   useEffect(() => {
@@ -237,7 +372,7 @@ const getAvatarUrl = (avatarId: string | undefined) => {
   }, [fetchDashboardData]);
 
   // ============================================================
-  // ✅ تسجيل الخروج
+  // Logout
   // ============================================================
 
   const handleLogout = async () => {
@@ -246,93 +381,168 @@ const getAvatarUrl = (avatarId: string | undefined) => {
   };
 
   // ============================================================
-  // ✅ بيانات المستخدم
-  // ============================================================
-
-  const extendedUser = user as ExtendedUser;
-  const unreadCount = notifications.filter((n: Notification) => !n.isRead).length;
-
-  // ============================================================
-  // ✅ عناصر القائمة
+  // Navigation
   // ============================================================
 
   const menuItems = [
-    { id: 'overview', label: 'نظرة عامة', icon: <FaHome /> },
-    { id: 'requests', label: 'طلباتي', icon: <FaFileAlt /> },
-    { id: 'subscriptions', label: 'اشتراكاتي', icon: <FaUsers /> },
-    { id: 'payments', label: 'المدفوعات', icon: <FaCreditCard /> },
-    { id: 'notifications', label: 'الإشعارات', icon: <FaBell /> },
-    { id: 'addresses', label: 'العناوين', icon: <FaMapMarkerAlt /> },
-    { id: 'profile', label: 'الملف الشخصي', icon: <FaUser /> },
-    { id: 'settings', label: 'الإعدادات', icon: <FaCog /> },
+    {
+      id: 'overview',
+      label: 'نظرة عامة',
+      icon: <FaHome />,
+    },
+    {
+      id: 'requests',
+      label: 'طلباتي',
+      icon: <FaFileAlt />,
+    },
+    {
+      id: 'payments',
+      label: 'المدفوعات',
+      icon: <FaCreditCard />,
+    },
+    {
+      id: 'notifications',
+      label: 'الإشعارات',
+      icon: <FaBell />,
+    },
+    {
+      id: 'addresses',
+      label: 'العناوين',
+      icon: <FaMapMarkerAlt />,
+    },
+    {
+      id: 'profile',
+      label: 'الملف الشخصي',
+      icon: <FaUser />,
+    },
+    {
+      id: 'settings',
+      label: 'الإعدادات',
+      icon: <FaCog />,
+    },
   ];
 
-  // ✅ احسب activeTab مباشرة من URL param
+  const activeTab = useMemo(() => {
+    const path = location.pathname;
 
-const activeTab = useMemo(() => {
-  const path = location.pathname;
-  if (path === '/dashboard' || path === '/dashboard/') return 'overview';
-  if (path.startsWith('/dashboard/requests')) return 'requests';
-  if (path.startsWith('/dashboard/subscriptions')) return 'subscriptions';
-  if (path.startsWith('/dashboard/payments')) return 'payments';
-  if (path.startsWith('/dashboard/notifications')) return 'notifications';
-  if (path.startsWith('/dashboard/addresses')) return 'addresses';
-  if (path.startsWith('/dashboard/profile')) return 'profile';
-  if (path.startsWith('/dashboard/settings')) return 'settings';
-  return 'overview';
-}, [location.pathname]);
-  // ✅ دالة التنقل
-  const handleNavigate = (itemId: string) => {
-    const path = itemId === 'overview' ? '/dashboard' : `/dashboard/${itemId}`;
+    if (path === '/dashboard' || path === '/dashboard/') {
+      return 'overview';
+    }
+
+    if (path.startsWith('/dashboard/requests')) {
+      return 'requests';
+    }
+
+    if (path.startsWith('/dashboard/subscriptions')) {
+      return 'subscriptions';
+    }
+
+    if (path.startsWith('/dashboard/payments')) {
+      return 'payments';
+    }
+
+    if (path.startsWith('/dashboard/notifications')) {
+      return 'notifications';
+    }
+
+    if (path.startsWith('/dashboard/addresses')) {
+      return 'addresses';
+    }
+
+    if (path.startsWith('/dashboard/profile')) {
+      return 'profile';
+    }
+
+    if (path.startsWith('/dashboard/settings')) {
+      return 'settings';
+    }
+
+    return 'overview';
+  }, [location.pathname]);
+
+  const handleNavigate = (path: string) => {
     navigate(path);
-    if (isMobile) close();
+
+    if (isMobile) {
+      close();
+    }
   };
 
+  const unreadCount = notifications.filter(
+    (notification) => !notification.isRead
+  ).length;
+
   // ============================================================
-  // ✅ عرض شاشة التحميل
+  // Loading
   // ============================================================
 
   if (loading) {
     return (
-      <div className="min-h-screen flex items-center justify-center bg-gray-50 dark:bg-gray-900">
+      <div className="min-h-screen flex items-center justify-center bg-slate-50 dark:bg-gray-950">
         <div className="text-center">
-          <div className="w-16 h-16 border-4 border-purple-600 border-t-transparent rounded-full animate-spin mx-auto mb-4"></div>
-          <p className="text-gray-600 dark:text-gray-400">جاري تحميل لوحة التحكم...</p>
+          <div className="relative w-16 h-16 mx-auto mb-5">
+            <div className="absolute inset-0 rounded-full border-4 border-purple-100 dark:border-purple-900/40" />
+            <div className="absolute inset-0 rounded-full border-4 border-transparent border-t-purple-600 border-r-pink-500 animate-spin" />
+          </div>
+
+          <h3 className="font-bold text-gray-800 dark:text-white">
+            جاري تحميل لوحة التحكم
+          </h3>
+
+          <p className="text-sm text-gray-500 dark:text-gray-400 mt-1">
+            يرجى الانتظار...
+          </p>
         </div>
       </div>
     );
   }
 
   // ============================================================
-  // ✅ عرض لوحة التحكم
+  // Main
   // ============================================================
 
   return (
-    <div className="min-h-screen bg-gray-50 dark:bg-gray-900 flex flex-col">
+    <div
+      dir="rtl"
+      className="min-h-screen bg-slate-50 dark:bg-gray-950 flex flex-col"
+    >
       <Header />
 
       <div className="flex flex-1 relative">
-        {/* السايدبار الجانبي */}
+        {/* ======================================================
+            Sidebar
+        ====================================================== */}
+
         <aside
-          className={`fixed top-0 right-0 h-full w-72 bg-white dark:bg-gray-800 shadow-2xl z-50 transition-all duration-300 ease-in-out ${
-            showDashboardSidebar ? 'translate-x-0' : 'translate-x-full'
+          className={`fixed top-0 right-0 h-full w-72 bg-white dark:bg-gray-900 border-l border-gray-200 dark:border-gray-800 z-50 transition-all duration-300 ease-in-out ${
+            showDashboardSidebar
+              ? 'translate-x-0'
+              : 'translate-x-full'
           } md:translate-x-0 md:relative md:z-0 md:shadow-none`}
         >
           <div className="h-full flex flex-col">
-            {/* رأس السايدبار */}
-            <div className="p-6 border-b border-gray-200 dark:border-gray-700">
+            {/* Sidebar Header */}
+
+            <div className="p-5 border-b border-gray-200 dark:border-gray-800">
               <div className="flex items-center gap-3">
-                <div className="w-10 h-10 rounded-xl bg-gradient-to-r from-purple-600 to-pink-500 flex items-center justify-center text-white font-bold text-lg flex-shrink-0">
+                <div className="w-11 h-11 rounded-2xl bg-gradient-to-br from-purple-600 via-purple-600 to-pink-500 flex items-center justify-center text-white font-black text-xl shadow-lg shadow-purple-500/20">
                   إ
                 </div>
+
                 <div className="flex-1 min-w-0">
-                  <h1 className="font-bold text-gray-900 dark:text-white text-lg truncate">ارتقاء</h1>
-                  <p className="text-xs text-gray-500 dark:text-gray-400 truncate">منصة الخدمات الرقمية</p>
+                  <h1 className="font-black text-gray-900 dark:text-white text-lg">
+                    ارتقاء
+                  </h1>
+
+                  <p className="text-xs text-gray-500 dark:text-gray-400 truncate">
+                    لوحة العميل
+                  </p>
                 </div>
+
                 {isMobile && (
                   <button
                     onClick={close}
-                    className="p-2 rounded-lg hover:bg-gray-100 dark:hover:bg-gray-700 transition flex-shrink-0"
+                    className="p-2 rounded-xl hover:bg-gray-100 dark:hover:bg-gray-800 transition"
                     aria-label="إغلاق القائمة"
                   >
                     <FaTimes className="text-gray-500" />
@@ -341,105 +551,158 @@ const activeTab = useMemo(() => {
               </div>
             </div>
 
-            {/* معلومات المستخدم */}
-            <div className="p-4 border-b border-gray-200 dark:border-gray-700">
-              <div className="flex items-center gap-3">
-                <div className="w-12 h-12 rounded-full bg-gradient-to-r from-purple-100 to-pink-100 dark:from-purple-900/30 dark:to-pink-900/30 flex items-center justify-center text-2xl overflow-hidden flex-shrink-0">
-                  {extendedUser?.profile?.avatar ? (
-                    <img
-                      src={getAvatarUrl(extendedUser.profile.avatar) || ''}
-                      alt={extendedUser?.fullName}
-                      className="w-full h-full rounded-full object-cover"
-                      onError={(e) => {
-                        e.currentTarget.style.display = 'none';
-                      }}
-                    />
-                  ) : (
-                    <FaUserCircle className="text-purple-600 dark:text-purple-400 text-3xl" />
-                  )}
-                </div>
-                <div className="flex-1 min-w-0">
-                  <p className="font-semibold text-gray-900 dark:text-white truncate">
-                    {extendedUser?.fullName || 'مستخدم'}
-                  </p>
-                  <p className="text-xs text-gray-500 dark:text-gray-400 truncate">
-                    {extendedUser?.email}
-                  </p>
+            {/* User mini profile */}
+
+            <div className="p-4 border-b border-gray-200 dark:border-gray-800">
+              <div className="rounded-2xl bg-gradient-to-br from-purple-50 to-pink-50 dark:from-purple-950/30 dark:to-pink-950/20 p-3">
+                <div className="flex items-center gap-3">
+                  <div className="w-12 h-12 rounded-full bg-white dark:bg-gray-800 overflow-hidden flex items-center justify-center border border-purple-100 dark:border-purple-900/40 flex-shrink-0">
+                    {extendedUser?.profile?.avatar ? (
+                      <img
+                        src={
+                          getAvatarUrl(
+                            extendedUser.profile.avatar
+                          ) || ''
+                        }
+                        alt={extendedUser?.fullName || 'المستخدم'}
+                        className="w-full h-full object-cover"
+                        onError={(event) => {
+                          event.currentTarget.style.display = 'none';
+                        }}
+                      />
+                    ) : (
+                      <FaUserCircle className="text-purple-600 dark:text-purple-400 text-3xl" />
+                    )}
+                  </div>
+
+                  <div className="min-w-0">
+                    <p className="font-bold text-gray-900 dark:text-white truncate">
+                      {extendedUser?.fullName || 'مستخدم'}
+                    </p>
+
+                    <p className="text-xs text-gray-500 dark:text-gray-400 truncate">
+                      {extendedUser?.email || ''}
+                    </p>
+                  </div>
                 </div>
               </div>
             </div>
 
-            {/* قائمة التنقل */}
-            <nav className="flex-1 overflow-y-auto p-4 space-y-1">
-              {menuItems.map((item) => (
-                <button
-                  key={item.id}
-                  onClick={() => handleNavigate(item.id)}
-                  className={`w-full flex items-center gap-3 px-4 py-3 rounded-xl transition-all ${
-                    activeTab === item.id
-                      ? 'bg-gradient-to-r from-purple-600 to-pink-500 text-white shadow-lg shadow-purple-500/25'
-                      : 'text-gray-600 dark:text-gray-400 hover:bg-gray-100 dark:hover:bg-gray-700'
-                  }`}
-                >
-                  <span className="text-lg flex-shrink-0">{item.icon}</span>
-                  <span className="font-medium truncate">{item.label}</span>
-                  {item.id === 'notifications' && unreadCount > 0 && (
-                    <span className="mr-auto bg-red-500 text-white text-xs px-2 py-0.5 rounded-full">
-                      {unreadCount}
+            {/* Navigation */}
+
+            <nav className="flex-1 overflow-y-auto p-3">
+              <p className="px-3 mb-2 text-[11px] font-bold text-gray-400 uppercase tracking-wider">
+                القائمة الرئيسية
+              </p>
+
+              <div className="space-y-1">
+                {menuItems.map((item) => (
+                  <button
+                    key={item.id}
+                    onClick={() =>
+                      handleNavigate(
+                        item.id === 'overview'
+                          ? '/dashboard'
+                          : `/dashboard/${item.id}`
+                      )
+                    }
+                    className={`w-full flex items-center gap-3 px-4 py-3 rounded-xl transition-all duration-200 ${
+                      activeTab === item.id
+                        ? 'bg-gradient-to-r from-purple-600 to-pink-500 text-white shadow-lg shadow-purple-500/20'
+                        : 'text-gray-600 dark:text-gray-400 hover:bg-gray-100 dark:hover:bg-gray-800'
+                    }`}
+                  >
+                    <span className="text-lg w-5 text-center">
+                      {item.icon}
                     </span>
-                  )}
-                </button>
-              ))}
+
+                    <span className="font-semibold text-sm flex-1 text-right">
+                      {item.label}
+                    </span>
+
+                    {item.id === 'notifications' &&
+                      unreadCount > 0 && (
+                        <span className="min-w-6 h-6 px-1.5 bg-red-500 text-white text-[11px] font-bold rounded-full flex items-center justify-center">
+                          {unreadCount}
+                        </span>
+                      )}
+                  </button>
+                ))}
+              </div>
             </nav>
 
-            {/* زر تسجيل الخروج */}
-            <div className="p-4 border-t border-gray-200 dark:border-gray-700">
+            {/* Logout */}
+
+            <div className="p-4 border-t border-gray-200 dark:border-gray-800">
               <button
                 onClick={handleLogout}
-                className="w-full flex items-center gap-3 px-4 py-3 rounded-xl text-red-600 hover:bg-red-50 dark:hover:bg-red-900/20 transition-all"
+                className="w-full flex items-center gap-3 px-4 py-3 rounded-xl text-red-600 dark:text-red-400 hover:bg-red-50 dark:hover:bg-red-950/20 transition"
               >
-                <FaSignOutAlt className="text-lg flex-shrink-0" />
-                <span className="font-medium">تسجيل الخروج</span>
+                <FaSignOutAlt />
+                <span className="font-semibold text-sm">
+                  تسجيل الخروج
+                </span>
               </button>
             </div>
           </div>
         </aside>
 
-        {/* خلفية مظللة على الموبايل */}
+        {/* Mobile Overlay */}
+
         {isMobile && showDashboardSidebar && (
           <div
-            className="fixed inset-0 bg-black/50 z-40"
+            className="fixed inset-0 bg-black/50 backdrop-blur-sm z-40"
             onClick={close}
             aria-hidden="true"
           />
         )}
 
-        {/* المحتوى الرئيسي */}
-        <main className="flex-1 min-h-screen overflow-x-hidden">
-          <div className="p-4 sm:p-6 max-w-7xl mx-auto">
+        {/* ======================================================
+            Content
+        ====================================================== */}
+
+        <main className="flex-1 min-w-0 overflow-x-hidden">
+          <div className="max-w-7xl mx-auto p-4 sm:p-6 lg:p-8">
             {activeTab === 'overview' && stats && (
-              <OverviewTab stats={stats} onNavigate={navigate} />
+              <OverviewTab
+                stats={stats}
+                user={extendedUser}
+                notifications={notifications}
+                onNavigate={handleNavigate}
+              />
             )}
+
             {activeTab === 'requests' && (
-              <RequestsTab token={token} onNavigate={navigate} />
+              <RequestsTab
+                token={token}
+                onNavigate={handleNavigate}
+              />
             )}
-            {activeTab === 'subscriptions' && (
-              <SubscriptionsTab token={token} onNavigate={navigate} />
-            )}
+
             {activeTab === 'payments' && (
               <PaymentsTab token={token} />
             )}
+
             {activeTab === 'notifications' && (
-              <NotificationsTab notifications={notifications} />
+              <NotificationsTab
+                notifications={notifications}
+              />
             )}
-            {activeTab === 'addresses' && (
-              <AddressesTab />
-            )}
+
+            {activeTab === 'addresses' && <AddressesTab />}
+
             {activeTab === 'profile' && (
-              <ProfileTab token={token} user={extendedUser} />
+              <ProfileTab
+                token={token}
+                user={extendedUser}
+              />
             )}
+
             {activeTab === 'settings' && (
-              <SettingsTab token={token} user={extendedUser} />
+              <SettingsTab
+                token={token}
+                user={extendedUser}
+              />
             )}
           </div>
         </main>
@@ -449,114 +712,480 @@ const activeTab = useMemo(() => {
 };
 
 // ============================================================
-// ✅ OverviewTab - نظرة عامة
+// Overview
 // ============================================================
 
 interface OverviewTabProps {
   stats: DashboardStats;
+  user: ExtendedUser;
+  notifications: Notification[];
   onNavigate: (path: string) => void;
 }
 
-const OverviewTab: React.FC<OverviewTabProps> = ({ stats, onNavigate }) => {
+const OverviewTab: React.FC<OverviewTabProps> = ({
+  stats,
+  user,
+  notifications,
+  onNavigate,
+}) => {
+  const unreadCount = notifications.filter(
+    (item) => !item.isRead
+  ).length;
+
   const statCards = [
-    { title: 'الطلبات', value: stats?.totalRequests || 0, icon: <FaFileAlt className="text-purple-600" />, bg: 'bg-purple-50 dark:bg-purple-900/20' },
-    { title: 'قيد التنفيذ', value: stats?.inProgress || 0, icon: <FaClock className="text-yellow-600" />, bg: 'bg-yellow-50 dark:bg-yellow-900/20' },
-    { title: 'مكتملة', value: stats?.completed || 0, icon: <FaCheckCircle className="text-green-600" />, bg: 'bg-green-50 dark:bg-green-900/20' },
-    { title: 'الاشتراكات النشطة', value: stats?.activeSubscriptions || 0, icon: <FaUsers className="text-blue-600" />, bg: 'bg-blue-50 dark:bg-blue-900/20' },
-    { title: 'المدفوعات المؤكدة', value: stats?.paidPayments || 0, icon: <FaCreditCard className="text-emerald-600" />, bg: 'bg-emerald-50 dark:bg-emerald-900/20' },
-    { title: 'المبلغ الإجمالي', value: `${stats?.totalAmount || 0} ريال`, icon: <FaMoneyBill className="text-amber-600" />, bg: 'bg-amber-50 dark:bg-amber-900/20' },
+    {
+      title: 'إجمالي الطلبات',
+      value: stats.totalRequests || 0,
+      icon: <FaFileAlt />,
+      iconBg: 'bg-purple-100 dark:bg-purple-900/30',
+      iconColor: 'text-purple-600 dark:text-purple-400',
+      path: '/dashboard/requests',
+    },
+    {
+      title: 'قيد التنفيذ',
+      value: stats.inProgress || 0,
+      icon: <FaClock />,
+      iconBg: 'bg-amber-100 dark:bg-amber-900/30',
+      iconColor: 'text-amber-600 dark:text-amber-400',
+      path: '/dashboard/requests',
+    },
+    {
+      title: 'طلبات مكتملة',
+      value: stats.completed || 0,
+      icon: <FaCheckCircle />,
+      iconBg: 'bg-emerald-100 dark:bg-emerald-900/30',
+      iconColor: 'text-emerald-600 dark:text-emerald-400',
+      path: '/dashboard/requests',
+    },
+    {
+      title: 'المدفوعات المؤكدة',
+      value: stats.paidPayments || 0,
+      icon: <FaCreditCard />,
+      iconBg: 'bg-green-100 dark:bg-green-900/30',
+      iconColor: 'text-green-600 dark:text-green-400',
+      path: '/dashboard/payments',
+    },
+    {
+      title: 'إجمالي المدفوعات',
+      value: `${stats.totalAmount || 0} ريال`,
+      icon: <FaMoneyBill />,
+      iconBg: 'bg-pink-100 dark:bg-pink-900/30',
+      iconColor: 'text-pink-600 dark:text-pink-400',
+      path: '/dashboard/payments',
+    },
   ];
 
   return (
     <div className="space-y-6">
-      <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
-        {statCards.map((card, index) => (
-          <div key={index} className={`${card.bg} rounded-xl p-6 border border-gray-200 dark:border-gray-700`}>
-            <div className="flex items-center justify-between">
-              <div>
-                <p className="text-sm text-gray-500 dark:text-gray-400">{card.title}</p>
-                <p className="text-2xl font-bold text-gray-900 dark:text-white mt-1">{card.value}</p>
+      {/* Hero */}
+
+      <section className="relative overflow-hidden rounded-3xl bg-gradient-to-br from-purple-700 via-purple-600 to-pink-500 text-white shadow-xl shadow-purple-500/15">
+        <div className="absolute -top-24 -left-24 w-64 h-64 rounded-full bg-white/10 blur-2xl" />
+        <div className="absolute -bottom-28 right-10 w-72 h-72 rounded-full bg-pink-300/10 blur-3xl" />
+
+        <div className="relative p-6 sm:p-8">
+          <div className="flex flex-col lg:flex-row lg:items-center lg:justify-between gap-6">
+            <div className="flex items-center gap-4">
+              <div className="w-16 h-16 sm:w-20 sm:h-20 rounded-2xl bg-white/15 backdrop-blur-md border border-white/20 overflow-hidden flex items-center justify-center flex-shrink-0">
+                {user?.profile?.avatar ? (
+                  <img
+                    src={`${import.meta.env.VITE_API_URL || 'http://localhost:5001/api'}/files/public/${encodeURIComponent(
+                      user.profile.avatar
+                    )}?portalId=${encodeURIComponent(
+                      import.meta.env.VITE_PORTAL_ID || ''
+                    )}`}
+                    alt={user.fullName || 'المستخدم'}
+                    className="w-full h-full object-cover"
+                  />
+                ) : (
+                  <FaUserCircle className="text-5xl text-white/90" />
+                )}
               </div>
-              <div className="w-12 h-12 rounded-full bg-white dark:bg-gray-800 flex items-center justify-center text-2xl shadow-sm">{card.icon}</div>
+
+              <div>
+                <p className="text-white/70 text-sm mb-1">
+                  مرحبًا بك من جديد 👋
+                </p>
+
+                <h2 className="text-2xl sm:text-3xl font-black">
+                  {user?.fullName || 'مستخدم ارتقاء'}
+                </h2>
+
+                <p className="text-white/75 text-sm mt-1">
+                  تابع طلباتك واشتراكاتك ومدفوعاتك من مكان واحد.
+                </p>
+              </div>
+            </div>
+
+            <button
+              onClick={() => onNavigate('/services')}
+              className="inline-flex items-center justify-center gap-2 px-5 py-3 bg-white text-purple-700 rounded-xl font-bold hover:bg-white/90 transition shadow-lg"
+            >
+              <FaPlus />
+              إنشاء طلب جديد
+            </button>
+          </div>
+        </div>
+      </section>
+
+      {/* Profile / Notification strip */}
+
+      <div className="grid grid-cols-1 lg:grid-cols-3 gap-4">
+        <div className="lg:col-span-2 bg-white dark:bg-gray-900 rounded-2xl border border-gray-200 dark:border-gray-800 p-5">
+          <div className="flex items-center justify-between gap-4">
+            <div className="flex items-center gap-3">
+              <div className="w-10 h-10 rounded-xl bg-purple-100 dark:bg-purple-900/30 flex items-center justify-center">
+                <FaUser className="text-purple-600 dark:text-purple-400" />
+              </div>
+
+              <div>
+                <p className="text-xs text-gray-500 dark:text-gray-400">
+                  حسابك
+                </p>
+                <p className="font-bold text-gray-900 dark:text-white">
+                  الملف الشخصي
+                </p>
+              </div>
+            </div>
+
+            <button
+              onClick={() => onNavigate('/dashboard/profile')}
+              className="text-sm text-purple-600 dark:text-purple-400 font-semibold flex items-center gap-1 hover:gap-2 transition-all"
+            >
+              تعديل الملف
+              <FaChevronLeft className="text-xs" />
+            </button>
+          </div>
+
+          <div className="grid grid-cols-1 sm:grid-cols-3 gap-3 mt-4">
+            <div className="rounded-xl bg-gray-50 dark:bg-gray-800/70 p-3">
+              <p className="text-xs text-gray-400">البريد الإلكتروني</p>
+              <p className="text-sm font-semibold text-gray-800 dark:text-gray-200 truncate mt-1">
+                {user?.email || '-'}
+              </p>
+            </div>
+
+            <div className="rounded-xl bg-gray-50 dark:bg-gray-800/70 p-3">
+              <p className="text-xs text-gray-400">رقم الجوال</p>
+              <p className="text-sm font-semibold text-gray-800 dark:text-gray-200 mt-1">
+                {user?.phone || 'غير مضاف'}
+              </p>
+            </div>
+
+            <div className="rounded-xl bg-gray-50 dark:bg-gray-800/70 p-3">
+              <p className="text-xs text-gray-400">الموقع</p>
+              <p className="text-sm font-semibold text-gray-800 dark:text-gray-200 truncate mt-1">
+                {user?.profile?.location || 'غير مضاف'}
+              </p>
             </div>
           </div>
-        ))}
+        </div>
+
+        <button
+          onClick={() => onNavigate('/dashboard/notifications')}
+          className="text-right bg-white dark:bg-gray-900 rounded-2xl border border-gray-200 dark:border-gray-800 p-5 hover:border-purple-300 dark:hover:border-purple-700 transition"
+        >
+          <div className="flex items-center justify-between">
+            <div className="w-10 h-10 rounded-xl bg-red-100 dark:bg-red-900/30 flex items-center justify-center">
+              <FaBell className="text-red-500" />
+            </div>
+
+            {unreadCount > 0 && (
+              <span className="px-2.5 py-1 bg-red-500 text-white text-xs font-bold rounded-full">
+                {unreadCount} جديد
+              </span>
+            )}
+          </div>
+
+          <p className="font-bold text-gray-900 dark:text-white mt-4">
+            الإشعارات
+          </p>
+
+          <p className="text-sm text-gray-500 dark:text-gray-400 mt-1">
+            {unreadCount > 0
+              ? `لديك ${unreadCount} إشعار غير مقروء`
+              : 'لا توجد إشعارات غير مقروءة'}
+          </p>
+        </button>
       </div>
 
-      <div className="bg-white dark:bg-gray-800 rounded-xl p-6 border border-gray-200 dark:border-gray-700">
-        <h3 className="text-lg font-bold text-gray-900 dark:text-white mb-4">⚡ إجراءات سريعة</h3>
-        <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
-          {[
-            { label: 'طلب جديد', icon: <FaPlus />, path: '/services', color: 'purple' },
-            { label: 'طلباتي', icon: <FaFileAlt />, path: '/dashboard/requests', color: 'blue' },
-            { label: 'اشتراكاتي', icon: <FaUsers />, path: '/dashboard/subscriptions', color: 'green' },
-            { label: 'الملف الشخصي', icon: <FaUser />, path: '/dashboard/profile', color: 'pink' },
-          ].map((action, index) => (
+      {/* Statistics */}
+
+      <section>
+        <div className="flex items-center justify-between mb-4">
+          <div>
+            <h3 className="text-lg font-black text-gray-900 dark:text-white">
+              الإحصائيات
+            </h3>
+            <p className="text-sm text-gray-500 dark:text-gray-400 mt-1">
+              ملخص سريع لنشاط حسابك
+            </p>
+          </div>
+
+          <FaChartLine className="text-purple-500 text-xl" />
+        </div>
+
+        <div className="grid grid-cols-1 sm:grid-cols-2 xl:grid-cols-3 gap-4">
+          {statCards.map((card, index) => (
             <button
               key={index}
-              onClick={() => onNavigate(action.path)}
-              className={`p-4 rounded-xl text-center transition-all hover:scale-105 ${
-                action.color === 'purple' ? 'bg-purple-50 dark:bg-purple-900/20 hover:bg-purple-100' :
-                action.color === 'blue' ? 'bg-blue-50 dark:bg-blue-900/20 hover:bg-blue-100' :
-                action.color === 'green' ? 'bg-green-50 dark:bg-green-900/20 hover:bg-green-100' :
-                'bg-pink-50 dark:bg-pink-900/20 hover:bg-pink-100'
-              }`}
+              onClick={() => onNavigate(card.path)}
+              className="text-right bg-white dark:bg-gray-900 rounded-2xl border border-gray-200 dark:border-gray-800 p-5 hover:-translate-y-1 hover:shadow-lg transition-all duration-200"
             >
-              <span className={`text-2xl ${
-                action.color === 'purple' ? 'text-purple-600' :
-                action.color === 'blue' ? 'text-blue-600' :
-                action.color === 'green' ? 'text-green-600' :
-                'text-pink-600'
-              }`}>{action.icon}</span>
-              <p className="text-sm font-medium text-gray-700 dark:text-gray-300 mt-1">{action.label}</p>
+              <div className="flex items-center justify-between">
+                <div>
+                  <p className="text-sm text-gray-500 dark:text-gray-400">
+                    {card.title}
+                  </p>
+
+                  <p className="text-2xl font-black text-gray-900 dark:text-white mt-2">
+                    {card.value}
+                  </p>
+                </div>
+
+                <div
+                  className={`w-12 h-12 rounded-xl ${card.iconBg} ${card.iconColor} flex items-center justify-center text-xl`}
+                >
+                  {card.icon}
+                </div>
+              </div>
+
+              <div className="flex items-center gap-1 text-xs text-gray-400 mt-4">
+                التفاصيل
+                <FaChevronLeft className="text-[9px]" />
+              </div>
             </button>
           ))}
         </div>
+      </section>
+
+      {/* Quick Actions */}
+
+      <section className="bg-white dark:bg-gray-900 rounded-2xl border border-gray-200 dark:border-gray-800 p-5">
+        <div className="flex items-center justify-between mb-5">
+          <div>
+            <h3 className="text-lg font-black text-gray-900 dark:text-white">
+              إجراءات سريعة
+            </h3>
+
+            <p className="text-sm text-gray-500 dark:text-gray-400 mt-1">
+              الوصول السريع إلى أهم خدماتك
+            </p>
+          </div>
+
+          <FaRocket className="text-purple-500" />
+        </div>
+
+        <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
+          {[
+            {
+              label: 'طلب جديد',
+              icon: <FaPlus />,
+              path: '/services',
+              color:
+                'text-purple-600 bg-purple-50 dark:bg-purple-900/20',
+            },
+            {
+              label: 'طلباتي',
+              icon: <FaFileAlt />,
+              path: '/dashboard/requests',
+              color:
+                'text-blue-600 bg-blue-50 dark:bg-blue-900/20',
+            },
+
+            {
+              label: 'الملف الشخصي',
+              icon: <FaUser />,
+              path: '/dashboard/profile',
+              color:
+                'text-pink-600 bg-pink-50 dark:bg-pink-900/20',
+            },
+          ].map((action) => (
+            <button
+              key={action.label}
+              onClick={() => onNavigate(action.path)}
+              className="p-4 rounded-xl border border-transparent hover:border-gray-200 dark:hover:border-gray-700 hover:-translate-y-0.5 transition-all"
+            >
+              <div
+                className={`w-11 h-11 mx-auto rounded-xl ${action.color} flex items-center justify-center text-lg`}
+              >
+                {action.icon}
+              </div>
+
+              <p className="text-sm font-bold text-gray-700 dark:text-gray-300 mt-3">
+                {action.label}
+              </p>
+            </button>
+          ))}
+        </div>
+      </section>
+
+      {/* Recent Requests + Subscription */}
+
+      <div className="grid grid-cols-1 xl:grid-cols-3 gap-6">
+        {/* Recent requests */}
+
+        <section className="xl:col-span-2 bg-white dark:bg-gray-900 rounded-2xl border border-gray-200 dark:border-gray-800 overflow-hidden">
+          <div className="p-5 border-b border-gray-200 dark:border-gray-800 flex items-center justify-between">
+            <div>
+              <h3 className="font-black text-gray-900 dark:text-white">
+                آخر الطلبات
+              </h3>
+              <p className="text-xs text-gray-500 dark:text-gray-400 mt-1">
+                أحدث طلباتك المسجلة
+              </p>
+            </div>
+
+            <button
+              onClick={() =>
+                onNavigate('/dashboard/requests')
+              }
+              className="text-sm text-purple-600 dark:text-purple-400 font-semibold"
+            >
+              عرض الكل
+            </button>
+          </div>
+
+          {stats.recentRequests &&
+          stats.recentRequests.length > 0 ? (
+            <div className="divide-y divide-gray-100 dark:divide-gray-800">
+              {stats.recentRequests
+                .slice(0, 5)
+                .map((request, index) => {
+                  const status = getStatusBadge(
+                    request.status
+                  );
+
+                  return (
+                    <button
+                      key={request._id || index}
+                      onClick={() =>
+                        onNavigate(
+                          `/request/${request._id}`
+                        )
+                      }
+                      className="w-full text-right p-4 hover:bg-gray-50 dark:hover:bg-gray-800/50 transition flex items-center gap-4"
+                    >
+                      <div className="w-11 h-11 rounded-xl bg-purple-50 dark:bg-purple-900/20 flex items-center justify-center text-purple-600 flex-shrink-0">
+                        <FaFileAlt />
+                      </div>
+
+                      <div className="flex-1 min-w-0">
+                        <div className="flex items-center gap-2 flex-wrap">
+                          <h4 className="font-bold text-sm text-gray-900 dark:text-white truncate">
+                            {request.title ||
+                              'طلب بدون عنوان'}
+                          </h4>
+
+                          <span
+                            className={`px-2 py-0.5 rounded-full text-[10px] font-bold ${status.color}`}
+                          >
+                            {status.label}
+                          </span>
+                        </div>
+
+                        <div className="flex items-center gap-3 mt-1 text-xs text-gray-400">
+                          <span>
+                            {request.serviceName ||
+                              request.service?.nameAr ||
+                              'خدمة'}
+                          </span>
+
+                          <span>•</span>
+
+                          <span>
+                            {formatDate(request.createdAt)}
+                          </span>
+                        </div>
+                      </div>
+
+                      <FaChevronLeft className="text-gray-300 flex-shrink-0" />
+                    </button>
+                  );
+                })}
+            </div>
+          ) : (
+            <div className="p-10 text-center">
+              <FaFileAlt className="mx-auto text-4xl text-gray-300 dark:text-gray-700" />
+
+              <p className="font-bold text-gray-700 dark:text-gray-300 mt-3">
+                لا توجد طلبات حتى الآن
+              </p>
+
+              <button
+                onClick={() => onNavigate('/services')}
+                className="mt-4 px-4 py-2 bg-purple-600 text-white rounded-xl text-sm font-semibold"
+              >
+                استكشاف الخدمات
+              </button>
+            </div>
+          )}
+        </section>
       </div>
 
-      <div className="bg-white dark:bg-gray-800 rounded-xl p-6 border border-gray-200 dark:border-gray-700">
-        <div className="flex items-center justify-between mb-4">
-          <h3 className="text-lg font-bold text-gray-900 dark:text-white">📋 آخر الطلبات</h3>
-          <button onClick={() => onNavigate('/dashboard/requests')} className="text-sm text-purple-600 hover:text-purple-700">عرض الكل</button>
+      {/* Payment summary */}
+
+      <section className="bg-white dark:bg-gray-900 rounded-2xl border border-gray-200 dark:border-gray-800 p-5">
+        <div className="flex items-center justify-between mb-5">
+          <div>
+            <h3 className="font-black text-gray-900 dark:text-white">
+              ملخص المدفوعات
+            </h3>
+
+            <p className="text-xs text-gray-500 dark:text-gray-400 mt-1">
+              نظرة سريعة على عمليات الدفع
+            </p>
+          </div>
+
+          <FaReceipt className="text-emerald-500" />
         </div>
-        {stats?.recentRequests && stats.recentRequests.length > 0 ? (
-          <div className="space-y-3">
-            {stats.recentRequests.slice(0, 5).map((request, index) => {
-              const status = getStatusBadge(request.status);
-              return (
-                <div
-                  key={index}
-                  className="flex items-center justify-between p-3 rounded-lg hover:bg-gray-50 dark:hover:bg-gray-700/30 transition cursor-pointer"
-                  onClick={() => onNavigate(`/request/${request._id}`)}
-                >
-                  <div className="flex-1">
-                    <div className="flex items-center gap-2">
-                      <span className="font-medium text-gray-900 dark:text-white">{request.title}</span>
-                      <span className={`px-2 py-0.5 rounded-full text-xs font-semibold ${status.color}`}>{status.label}</span>
-                    </div>
-                    <div className="flex items-center gap-3 mt-1 text-xs text-gray-500 dark:text-gray-400">
-                      <span>{request.serviceName}</span>
-                      <span>•</span>
-                      <span>{formatDate(request.createdAt)}</span>
-                    </div>
-                  </div>
-                  <FaEye className="text-gray-400 hover:text-purple-600 transition" />
-                </div>
-              );
-            })}
+
+        <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
+          <div className="rounded-xl bg-gray-50 dark:bg-gray-800/60 p-4">
+            <p className="text-xs text-gray-500 dark:text-gray-400">
+              إجمالي العمليات
+            </p>
+
+            <p className="text-2xl font-black text-gray-900 dark:text-white mt-1">
+              {stats.totalPayments || 0}
+            </p>
           </div>
-        ) : (
-          <div className="text-center py-8 text-gray-500 dark:text-gray-400">
-            <p>لا توجد طلبات</p>
+
+          <div className="rounded-xl bg-emerald-50 dark:bg-emerald-900/20 p-4">
+            <p className="text-xs text-emerald-600 dark:text-emerald-400">
+              المدفوعات المؤكدة
+            </p>
+
+            <p className="text-2xl font-black text-emerald-700 dark:text-emerald-400 mt-1">
+              {stats.paidPayments || 0}
+            </p>
           </div>
-        )}
-      </div>
+
+          <div className="rounded-xl bg-amber-50 dark:bg-amber-900/20 p-4">
+            <p className="text-xs text-amber-600 dark:text-amber-400">
+              قيد الانتظار
+            </p>
+
+            <p className="text-2xl font-black text-amber-700 dark:text-amber-400 mt-1">
+              {stats.pendingPayments || 0}
+            </p>
+          </div>
+        </div>
+
+        <button
+          onClick={() => onNavigate('/dashboard/payments')}
+          className="mt-4 text-sm text-purple-600 dark:text-purple-400 font-semibold flex items-center gap-2"
+        >
+          عرض سجل المدفوعات
+          <FaArrowLeft />
+        </button>
+      </section>
     </div>
   );
 };
 
 // ============================================================
-// ✅ RequestsTab - طلباتي
+// Requests
 // ============================================================
 
 interface RequestsTabProps {
@@ -564,12 +1193,18 @@ interface RequestsTabProps {
   onNavigate: (path: string) => void;
 }
 
-const RequestsTab: React.FC<RequestsTabProps> = ({ token, onNavigate }) => {
+const RequestsTab: React.FC<RequestsTabProps> = ({
+  token,
+  onNavigate,
+}) => {
   const [requests, setRequests] = useState<Request[]>([]);
   const [loading, setLoading] = useState(true);
   const [filter, setFilter] = useState('all');
   const [searchTerm, setSearchTerm] = useState('');
-  const API_URL = import.meta.env.VITE_API_URL || 'http://localhost:5001/api';
+
+  const API_URL =
+    import.meta.env.VITE_API_URL || 'http://localhost:5001/api';
+
   const PORTAL_ID = import.meta.env.VITE_PORTAL_ID || '';
 
   useEffect(() => {
@@ -580,75 +1215,99 @@ const RequestsTab: React.FC<RequestsTabProps> = ({ token, onNavigate }) => {
       }
 
       try {
-        const url = filter === 'all'
-          ? `${API_URL}/requests/my`
-          : `${API_URL}/requests/my?status=${filter}`;
+        setLoading(true);
+
+        const url =
+          filter === 'all'
+            ? `${API_URL}/requests/my`
+            : `${API_URL}/requests/my?status=${filter}`;
+
         const response = await fetch(url, {
           headers: {
-            'Authorization': `Bearer ${token}`,
-            'X-Portal-Id': PORTAL_ID
-          }
+            Authorization: `Bearer ${token}`,
+            'X-Portal-Id': PORTAL_ID,
+          },
         });
+
         const data = await response.json();
-        if (data.success) setRequests(data.data || []);
+
+        if (data.success) {
+          setRequests(data.data || []);
+        }
       } catch (error) {
-        console.error('❌ Error fetching requests:', error);
+        console.error(
+          '❌ Error fetching requests:',
+          error
+        );
       } finally {
         setLoading(false);
       }
     };
-    fetchRequests();
-  }, [token, filter, API_URL]);
 
-  const filteredRequests = requests.filter(req =>
-    req.title?.toLowerCase().includes(searchTerm.toLowerCase()) ||
-    req.requestNumber?.toLowerCase().includes(searchTerm.toLowerCase()) ||
-    req.serviceName?.toLowerCase().includes(searchTerm.toLowerCase())
-  );
+    fetchRequests();
+  }, [token, filter, API_URL, PORTAL_ID]);
+
+  const filteredRequests = requests.filter((request) => {
+    const term = searchTerm.toLowerCase();
+
+    return (
+      request.title?.toLowerCase().includes(term) ||
+      request.requestNumber
+        ?.toLowerCase()
+        .includes(term) ||
+      request.serviceName?.toLowerCase().includes(term)
+    );
+  });
 
   if (loading) {
-    return (
-      <div className="flex items-center justify-center py-12">
-        <div className="w-8 h-8 border-4 border-purple-600 border-t-transparent rounded-full animate-spin"></div>
-      </div>
-    );
+    return <PageLoader />;
   }
 
   return (
-    <div className="space-y-4">
-      <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4">
-        <h3 className="text-lg font-bold text-gray-900 dark:text-white flex items-center gap-2">
-          <FaFileAlt className="text-purple-600" />
-          طلباتي
-          <span className="text-sm font-normal text-gray-500 dark:text-gray-400">({requests.length} طلب)</span>
-        </h3>
-        <div className="flex gap-2 flex-wrap w-full sm:w-auto">
-          <div className="relative flex-1 sm:flex-none">
-            <FaSearch className="absolute right-3 top-1/2 -translate-y-1/2 text-gray-400" />
+    <div className="space-y-6">
+      <PageHeader
+        icon={<FaFileAlt />}
+        title="طلباتي"
+        description="إدارة ومتابعة جميع طلباتك"
+        count={`${requests.length} طلب`}
+      />
+
+      <div className="bg-white dark:bg-gray-900 rounded-2xl border border-gray-200 dark:border-gray-800 p-4">
+        <div className="flex flex-col lg:flex-row gap-3">
+          <div className="relative flex-1">
+            <FaSearch className="absolute right-4 top-1/2 -translate-y-1/2 text-gray-400" />
+
             <input
               type="text"
-              placeholder="بحث..."
+              placeholder="ابحث في الطلبات..."
               value={searchTerm}
-              onChange={(e) => setSearchTerm(e.target.value)}
-              className="w-full sm:w-48 pr-9 pl-3 py-2 rounded-lg border-2 border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-800 focus:border-purple-500 focus:ring-2 focus:ring-purple-500/20 outline-none transition text-sm"
+              onChange={(event) =>
+                setSearchTerm(event.target.value)
+              }
+              className="w-full pr-11 pl-4 py-3 rounded-xl border border-gray-200 dark:border-gray-700 bg-gray-50 dark:bg-gray-800 text-gray-900 dark:text-white outline-none focus:border-purple-500 transition"
             />
           </div>
+
           <select
             value={filter}
-            onChange={(e) => setFilter(e.target.value)}
-            className="px-4 py-2 rounded-lg border-2 border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-800 focus:border-purple-500 focus:ring-2 focus:ring-purple-500/20 outline-none transition text-sm"
+            onChange={(event) =>
+              setFilter(event.target.value)
+            }
+            className="px-4 py-3 rounded-xl border border-gray-200 dark:border-gray-700 bg-gray-50 dark:bg-gray-800 text-gray-900 dark:text-white outline-none focus:border-purple-500"
           >
-            <option value="all">الكل</option>
+            <option value="all">كل الطلبات</option>
             <option value="new">جديد</option>
             <option value="in_progress">قيد التنفيذ</option>
             <option value="completed">مكتمل</option>
             <option value="cancelled">ملغي</option>
           </select>
+
           <button
             onClick={() => onNavigate('/services')}
-            className="px-4 py-2 bg-purple-600 text-white rounded-lg hover:bg-purple-700 transition flex items-center gap-2 text-sm whitespace-nowrap"
+            className="px-5 py-3 bg-gradient-to-r from-purple-600 to-pink-500 text-white rounded-xl font-bold flex items-center justify-center gap-2 shadow-lg shadow-purple-500/15"
           >
-            <FaPlus className="w-4 h-4" /> طلب جديد
+            <FaPlus />
+            طلب جديد
           </button>
         </div>
       </div>
@@ -657,233 +1316,130 @@ const RequestsTab: React.FC<RequestsTabProps> = ({ token, onNavigate }) => {
         <div className="space-y-3">
           {filteredRequests.map((request) => {
             const status = getStatusBadge(request.status);
+
             return (
-              <div
+              <button
                 key={request._id}
-                className="bg-white dark:bg-gray-800 rounded-xl p-4 border border-gray-200 dark:border-gray-700 hover:shadow-md transition cursor-pointer"
-                onClick={() => onNavigate(`/request/${request._id}`)}
+                onClick={() =>
+                  onNavigate(`/request/${request._id}`)
+                }
+                className="w-full text-right bg-white dark:bg-gray-900 rounded-2xl border border-gray-200 dark:border-gray-800 p-5 hover:shadow-lg hover:border-purple-200 dark:hover:border-purple-800 transition"
               >
-                <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-3">
-                  <div className="flex-1">
-                    <div className="flex items-center gap-3 flex-wrap">
-                      <span className="text-sm font-mono text-gray-400">#{request.requestNumber}</span>
-                      <span className={`px-2 py-0.5 rounded-full text-xs font-semibold ${status.color}`}>{status.label}</span>
-                    </div>
-                    <h4 className="font-bold text-gray-900 dark:text-white mt-1 truncate">{request.title}</h4>
-                    <p className="text-sm text-gray-500 dark:text-gray-400 truncate">
-                      {request.service?.nameAr || request.service?.name || request.serviceName}
-                    </p>
-                    <div className="flex items-center gap-4 mt-2 text-xs text-gray-400 flex-wrap">
-                      <span>📅 {formatDate(request.createdAt)}</span>
-                      {request.price && request.price > 0 && <span>💰 {request.price} ريال</span>}
-                      <span>📎 {request.files?.length || 0} ملفات</span>
-                      {request.specialistName && <span>👤 {request.specialistName}</span>}
-                    </div>
+                <div className="flex flex-col sm:flex-row gap-4 sm:items-center">
+                  <div className="w-12 h-12 rounded-xl bg-purple-50 dark:bg-purple-900/20 text-purple-600 flex items-center justify-center flex-shrink-0">
+                    <FaFileAlt />
                   </div>
-                  <button className="px-4 py-2 bg-purple-100 text-purple-600 hover:bg-purple-200 dark:bg-purple-900/30 dark:text-purple-400 rounded-lg text-sm font-semibold transition whitespace-nowrap">
-                    <FaEye className="inline ml-1" /> عرض
-                  </button>
-                </div>
-              </div>
-            );
-          })}
-        </div>
-      ) : (
-        <div className="bg-white dark:bg-gray-800 rounded-xl p-12 text-center border border-gray-200 dark:border-gray-700">
-          <FaFileAlt className="w-16 h-16 text-gray-300 dark:text-gray-600 mx-auto mb-4" />
-          <h4 className="text-xl font-bold text-gray-900 dark:text-white mb-2">لا توجد طلبات</h4>
-          <p className="text-gray-500 dark:text-gray-400">
-            {searchTerm ? 'لا توجد نتائج مطابقة للبحث' : 'لم تقم بإنشاء أي طلب بعد'}
-          </p>
-          <button
-            onClick={() => onNavigate('/services')}
-            className="mt-4 px-6 py-2 bg-purple-600 text-white rounded-lg hover:bg-purple-700 transition"
-          >
-            {searchTerm ? 'مسح البحث' : 'استكشاف الخدمات'}
-          </button>
-        </div>
-      )}
-    </div>
-  );
-};
 
-// ============================================================
-// ✅ SubscriptionsTab - اشتراكاتي
-// ============================================================
+                  <div className="flex-1 min-w-0">
+                    <div className="flex items-center gap-2 flex-wrap">
+                      <span className="text-xs font-mono text-gray-400">
+                        #{request.requestNumber}
+                      </span>
 
-interface SubscriptionsTabProps {
-  token: string | null;
-  onNavigate: (path: string) => void;
-}
+                      <span
+                        className={`px-2.5 py-1 rounded-full text-[11px] font-bold ${status.color}`}
+                      >
+                        {status.label}
+                      </span>
+                    </div>
 
-const SubscriptionsTab: React.FC<SubscriptionsTabProps> = ({ token, onNavigate }) => {
-  const [subscriptions, setSubscriptions] = useState<Subscription[]>([]);
-  const [loading, setLoading] = useState(true);
-  const [error, setError] = useState<string | null>(null);
-  const API_URL = import.meta.env.VITE_API_URL || 'http://localhost:5001/api';
-  const PORTAL_ID = import.meta.env.VITE_PORTAL_ID || '';
-
-  useEffect(() => {
-    const fetchSubscriptions = async () => {
-      if (!token) {
-        setLoading(false);
-        return;
-      }
-
-      try {
-        const response = await fetch(`${API_URL}/explanations/subscriptions/my`, {
-          headers: {
-            'Authorization': `Bearer ${token}`,
-            'X-Portal-Id': PORTAL_ID,
-          },
-        });
-        const data = await response.json();
-        if (data.success) {
-          setSubscriptions(data.data || []);
-          setError(null);
-        } else {
-          setError(data.message || 'حدث خطأ في تحميل الاشتراكات');
-        }
-      } catch (error) {
-        console.error('❌ Error fetching subscriptions:', error);
-        setError('حدث خطأ في تحميل الاشتراكات');
-      } finally {
-        setLoading(false);
-      }
-    };
-    fetchSubscriptions();
-  }, [token, API_URL, PORTAL_ID]);
-
-  if (loading) {
-    return (
-      <div className="flex items-center justify-center py-12">
-        <div className="w-8 h-8 border-4 border-purple-600 border-t-transparent rounded-full animate-spin"></div>
-      </div>
-    );
-  }
-
-  if (error) {
-    return (
-      <div className="bg-red-50 dark:bg-red-900/20 rounded-xl p-6 text-center border border-red-200 dark:border-red-800">
-        <FaTimesCircle className="w-12 h-12 text-red-500 mx-auto mb-4" />
-        <p className="text-red-700 dark:text-red-400">{error}</p>
-        <button
-          onClick={() => window.location.reload()}
-          className="mt-4 px-4 py-2 bg-red-600 text-white rounded-lg hover:bg-red-700 transition"
-        >
-          إعادة المحاولة
-        </button>
-      </div>
-    );
-  }
-
-  return (
-    <div className="space-y-4">
-      <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4">
-        <h3 className="text-lg font-bold text-gray-900 dark:text-white flex items-center gap-2">
-          <FaUsers className="text-purple-600" />
-          اشتراكاتي
-          <span className="text-sm font-normal text-gray-500 dark:text-gray-400">({subscriptions.length} اشتراك)</span>
-        </h3>
-        <button
-          onClick={() => onNavigate('/explanations')}
-          className="px-4 py-2 bg-purple-600 text-white rounded-lg hover:bg-purple-700 transition flex items-center gap-2 text-sm"
-        >
-          <FaPlus className="w-4 h-4" /> استكشاف المواد
-        </button>
-      </div>
-
-      {subscriptions.length > 0 ? (
-        <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-          {subscriptions.map((sub) => {
-            const status = getStatusBadge(sub.status);
-            return (
-              <div                key={sub._id}
-                className="bg-white dark:bg-gray-800 rounded-xl p-6 border border-gray-200 dark:border-gray-700 hover:shadow-md transition"
-              >
-                <div className="flex items-start justify-between">
-                  <div>
-                    <h4 className="font-bold text-gray-900 dark:text-white">
-                      {sub.materialId?.nameAr || sub.materialId?.name || 'اشتراك'}
+                    <h4 className="font-black text-gray-900 dark:text-white mt-2 truncate">
+                      {request.title}
                     </h4>
-                    <p className="text-sm text-gray-500 dark:text-gray-400 mt-1">{sub.materialId?.code || ''}</p>
-                  </div>
-                  <span className={`px-2 py-1 rounded-full text-xs font-semibold ${status.color}`}>{status.label}</span>
-                </div>
-                <div className="mt-4 grid grid-cols-2 gap-2 text-sm">
-                  <div>
-                    <p className="text-gray-500 dark:text-gray-400">المبلغ</p>
-                    <p className="font-semibold text-gray-900 dark:text-white">{sub.price || 0} ريال</p>
-                  </div>
-                  <div>
-                    <p className="text-gray-500 dark:text-gray-400">تاريخ البداية</p>
-                    <p className="font-semibold text-gray-900 dark:text-white">
-                      {sub.startDate ? formatDate(sub.startDate) : '-'}
+
+                    <p className="text-sm text-gray-500 dark:text-gray-400 mt-1 truncate">
+                      {request.service?.nameAr ||
+                        request.service?.name ||
+                        request.serviceName}
                     </p>
+
+                    <div className="flex flex-wrap items-center gap-4 mt-3 text-xs text-gray-400">
+                      <span className="flex items-center gap-1">
+                        <FaCalendarAlt />
+                        {formatDate(request.createdAt)}
+                      </span>
+
+                      {request.price &&
+                        request.price > 0 && (
+                          <span className="flex items-center gap-1">
+                            <FaMoneyBill />
+                            {request.price} ريال
+                          </span>
+                        )}
+
+                      <span>
+                        📎 {request.files?.length || 0} ملفات
+                      </span>
+
+                      {request.specialistName && (
+                        <span>
+                          👤 {request.specialistName}
+                        </span>
+                      )}
+                    </div>
                   </div>
-                  <div className="col-span-2">
-                    <p className="text-gray-500 dark:text-gray-400">تاريخ الانتهاء</p>
-                    <p className="font-semibold text-gray-900 dark:text-white">
-                      {sub.endDate ? formatDate(sub.endDate) : '-'}
-                    </p>
+
+                  <div className="flex items-center gap-2 text-purple-600 dark:text-purple-400">
+                    <span className="text-sm font-bold">
+                      عرض
+                    </span>
+                    <FaChevronLeft />
                   </div>
                 </div>
-                {sub.status === 'active' && sub.endDate && (
-                  <div className="mt-3 p-2 bg-green-50 dark:bg-green-900/20 rounded-lg text-center">
-                    <p className="text-sm text-green-700 dark:text-green-400">✅ نشط حتى {formatDate(sub.endDate)}</p>
-                  </div>
-                )}
-                {sub.status === 'pending' && (
-                  <div className="mt-3 p-2 bg-yellow-50 dark:bg-yellow-900/20 rounded-lg text-center">
-                    <p className="text-sm text-yellow-700 dark:text-yellow-400">⏳ قيد المراجعة</p>
-                  </div>
-                )}
-                {sub.status === 'expired' && (
-                  <div className="mt-3 p-2 bg-red-50 dark:bg-red-900/20 rounded-lg text-center">
-                    <p className="text-sm text-red-700 dark:text-red-400">❌ منتهي</p>
-                  </div>
-                )}
-              </div>
+              </button>
             );
           })}
         </div>
       ) : (
-        <div className="bg-white dark:bg-gray-800 rounded-xl p-12 text-center border border-gray-200 dark:border-gray-700">
-          <FaUsers className="w-16 h-16 text-gray-300 dark:text-gray-600 mx-auto mb-4" />
-          <h4 className="text-xl font-bold text-gray-900 dark:text-white mb-2">لا توجد اشتراكات</h4>
-          <p className="text-gray-500 dark:text-gray-400">لم تقم بالاشتراك في أي مادة بعد</p>
-          <button
-            onClick={() => onNavigate('/explanations')}
-            className="mt-4 px-6 py-2 bg-purple-600 text-white rounded-lg hover:bg-purple-700 transition"
-          >
-            استكشاف المواد
-          </button>
-        </div>
+        <EmptyState
+          icon={<FaFileAlt />}
+          title="لا توجد طلبات"
+          description={
+            searchTerm
+              ? 'لا توجد نتائج مطابقة للبحث'
+              : 'لم تقم بإنشاء أي طلب بعد'
+          }
+          action={
+            !searchTerm
+              ? {
+                  label: 'استكشاف الخدمات',
+                  onClick: () =>
+                    onNavigate('/services'),
+                }
+              : undefined
+          }
+        />
       )}
     </div>
   );
 };
 
 // ============================================================
-// ✅ PaymentsTab - المدفوعات
+// Payments
 // ============================================================
 
 interface PaymentsTabProps {
   token: string | null;
 }
 
-const PaymentsTab: React.FC<PaymentsTabProps> = ({ token }) => {
+const PaymentsTab: React.FC<PaymentsTabProps> = ({
+  token,
+}) => {
   const [payments, setPayments] = useState<Payment[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
 
-  const API_URL = import.meta.env.VITE_API_URL || 'http://localhost:5001/api';
+  const API_URL =
+    import.meta.env.VITE_API_URL || 'http://localhost:5001/api';
+
   const PORTAL_ID = import.meta.env.VITE_PORTAL_ID || '';
 
   useEffect(() => {
     if (!token) {
       setLoading(false);
-      setError('يرجى تسجيل الدخول لعرض المدفوعات');
+      setError(
+        'يرجى تسجيل الدخول لعرض المدفوعات'
+      );
       return;
     }
 
@@ -892,33 +1448,54 @@ const PaymentsTab: React.FC<PaymentsTabProps> = ({ token }) => {
         setLoading(true);
         setError(null);
 
-        const response = await fetch(`${API_URL}/payments/my`, {
-          headers: {
-            'Authorization': `Bearer ${token}`,
-            'X-Portal-Id': PORTAL_ID,
-          },
-        });
+        const response = await fetch(
+          `${API_URL}/payments/my`,
+          {
+            headers: {
+              Authorization: `Bearer ${token}`,
+              'X-Portal-Id': PORTAL_ID,
+            },
+          }
+        );
 
         if (response.status === 401) {
-          setError('جلسة الدخول منتهية. يرجى تسجيل الدخول مرة أخرى.');
+          setError(
+            'جلسة الدخول منتهية. يرجى تسجيل الدخول مرة أخرى.'
+          );
           return;
         }
 
         if (!response.ok) {
-          throw new Error(`HTTP ${response.status}: ${response.statusText}`);
+          throw new Error(
+            `HTTP ${response.status}: ${response.statusText}`
+          );
         }
 
         const data = await response.json();
 
         if (data.success) {
-          const paymentsData = data.data?.payments || data.data || [];
+          const paymentsData =
+            data.data?.payments ||
+            data.data ||
+            [];
+
           setPayments(paymentsData);
         } else {
-          setError(data.message || 'حدث خطأ في تحميل المدفوعات');
+          setError(
+            data.message ||
+              'حدث خطأ في تحميل المدفوعات'
+          );
         }
       } catch (error: any) {
-        console.error('❌ Error fetching payments:', error);
-        setError(error.message || 'حدث خطأ في تحميل المدفوعات');
+        console.error(
+          '❌ Error fetching payments:',
+          error
+        );
+
+        setError(
+          error.message ||
+            'حدث خطأ في تحميل المدفوعات'
+        );
       } finally {
         setLoading(false);
       }
@@ -927,201 +1504,287 @@ const PaymentsTab: React.FC<PaymentsTabProps> = ({ token }) => {
     fetchPayments();
   }, [token, API_URL, PORTAL_ID]);
 
-  const totalAmount = payments.reduce((sum, p) => sum + (p.amount || 0), 0);
-  const paidCount = payments.filter(p => p.status === 'paid' || p.status === 'verified').length;
+  const totalAmount = payments.reduce(
+    (sum, payment) => sum + (payment.amount || 0),
+    0
+  );
+
+  const paidCount = payments.filter(
+    (payment) =>
+      payment.status === 'paid' ||
+      payment.status === 'verified'
+  ).length;
 
   if (loading) {
-    return (
-      <div className="flex items-center justify-center py-12">
-        <div className="w-8 h-8 border-4 border-purple-600 border-t-transparent rounded-full animate-spin"></div>
-      </div>
-    );
+    return <PageLoader />;
   }
 
   if (error) {
     return (
-      <div className="bg-red-50 dark:bg-red-900/20 rounded-xl p-6 text-center border border-red-200 dark:border-red-800">
-        <FaTimesCircle className="w-12 h-12 text-red-500 mx-auto mb-4" />
-        <p className="text-red-700 dark:text-red-400">{error}</p>
-        {error.includes('جلسة الدخول منتهية') && (
-          <button
-            onClick={() => window.location.href = '/login'}
-            className="mt-4 px-4 py-2 bg-purple-600 text-white rounded-lg hover:bg-purple-700 transition"
-          >
-            تسجيل الدخول
-          </button>
-        )}
-        <button
-          onClick={() => window.location.reload()}
-          className="mt-4 mr-2 px-4 py-2 bg-gray-200 dark:bg-gray-700 text-gray-700 dark:text-gray-300 rounded-lg hover:bg-gray-300 dark:hover:bg-gray-600 transition"
-        >
-          إعادة المحاولة
-        </button>
-      </div>
+      <ErrorState
+        message={error}
+        onRetry={() => window.location.reload()}
+        loginAction={
+          error.includes('جلسة الدخول منتهية')
+            ? () => {
+                window.location.href = '/login';
+              }
+            : undefined
+        }
+      />
     );
   }
 
   return (
-    <div className="space-y-4">
+    <div className="space-y-6">
+      <PageHeader
+        icon={<FaCreditCard />}
+        title="المدفوعات"
+        description="سجل عمليات الدفع الخاصة بحسابك"
+      />
+
       <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
-        <div className="bg-white dark:bg-gray-800 rounded-xl p-4 border border-gray-200 dark:border-gray-700">
-          <p className="text-sm text-gray-500 dark:text-gray-400">إجمالي المدفوعات</p>
-          <p className="text-2xl font-bold text-gray-900 dark:text-white">{totalAmount} ريال</p>
-        </div>
-        <div className="bg-white dark:bg-gray-800 rounded-xl p-4 border border-gray-200 dark:border-gray-700">
-          <p className="text-sm text-gray-500 dark:text-gray-400">عدد المدفوعات</p>
-          <p className="text-2xl font-bold text-gray-900 dark:text-white">{payments.length}</p>
-        </div>
-        <div className="bg-white dark:bg-gray-800 rounded-xl p-4 border border-gray-200 dark:border-gray-700">
-          <p className="text-sm text-gray-500 dark:text-gray-400">المدفوعات المؤكدة</p>
-          <p className="text-2xl font-bold text-green-600">{paidCount}</p>
-        </div>
+        <SummaryCard
+          title="إجمالي المدفوعات"
+          value={`${totalAmount} ريال`}
+          icon={<FaMoneyBill />}
+          color="purple"
+        />
+
+        <SummaryCard
+          title="عدد العمليات"
+          value={payments.length}
+          icon={<FaReceipt />}
+          color="blue"
+        />
+
+        <SummaryCard
+          title="المدفوعات المؤكدة"
+          value={paidCount}
+          icon={<FaCheckCircle />}
+          color="green"
+        />
       </div>
 
-      <h3 className="text-lg font-bold text-gray-900 dark:text-white flex items-center gap-2">
-        <FaCreditCard className="text-purple-600" />
-        سجل المدفوعات
-        {payments.length > 0 && (
-          <span className="text-sm font-normal text-gray-500 dark:text-gray-400">({payments.length} دفعة)</span>
-        )}
-      </h3>
+      <section className="bg-white dark:bg-gray-900 rounded-2xl border border-gray-200 dark:border-gray-800 overflow-hidden">
+        <div className="p-5 border-b border-gray-200 dark:border-gray-800">
+          <h3 className="font-black text-gray-900 dark:text-white">
+            سجل المدفوعات
+          </h3>
 
-      {payments.length > 0 ? (
-        <div className="overflow-x-auto">
-          <table className="w-full">
-            <thead className="bg-gray-50 dark:bg-gray-700/50">
-              <tr>
-                <th className="px-4 py-3 text-right text-sm font-semibold text-gray-600 dark:text-gray-300">#</th>
-                <th className="px-4 py-3 text-right text-sm font-semibold text-gray-600 dark:text-gray-300">المرجع</th>
-                <th className="px-4 py-3 text-right text-sm font-semibold text-gray-600 dark:text-gray-300">المبلغ</th>
-                <th className="px-4 py-3 text-right text-sm font-semibold text-gray-600 dark:text-gray-300">الطريقة</th>
-                <th className="px-4 py-3 text-right text-sm font-semibold text-gray-600 dark:text-gray-300">الحالة</th>
-                <th className="px-4 py-3 text-right text-sm font-semibold text-gray-600 dark:text-gray-300">التاريخ</th>
-              </tr>
-            </thead>
-            <tbody className="divide-y divide-gray-200 dark:divide-gray-700">
-              {payments.map((payment) => {
-                const status = getStatusBadge(payment.status);
-                return (
-                  <tr key={payment._id} className="hover:bg-gray-50 dark:hover:bg-gray-700/30 transition">
-                    <td className="px-4 py-3 text-gray-600 dark:text-gray-400 text-sm font-mono">
-                      #{payment._id.slice(-8)}
-                    </td>
-                    <td className="px-4 py-3 text-gray-600 dark:text-gray-400 text-sm font-mono">
-                      {payment.reference || '-'}
-                    </td>
-                    <td className="px-4 py-3 font-semibold text-gray-900 dark:text-white">
-                      {payment.amount} {payment.currency || 'ريال'}
-                    </td>
-                    <td className="px-4 py-3 text-sm text-gray-600 dark:text-gray-400">
-                      {payment.paymentMethod === 'credit_card' ? '💳 بطاقة' :
-                       payment.paymentMethod === 'mada' ? '💳 مدى' :
-                       payment.paymentMethod === 'bank_transfer' ? '🏦 تحويل' :
-                       payment.paymentMethod === 'manual' ? '📝 يدوي' :
-                       payment.paymentMethod === 'free' ? '🎁 مجاني' :
-                       payment.paymentMethod || 'غير محدد'}
-                    </td>
-                    <td className="px-4 py-3">
-                      <span className={`px-2 py-1 rounded-full text-xs font-semibold ${status.color}`}>{status.label}</span>
-                    </td>
-                    <td className="px-4 py-3 text-sm text-gray-500 dark:text-gray-400">
-                      {formatDate(payment.createdAt)}
-                    </td>
-                  </tr>
-                );
-              })}
-            </tbody>
-          </table>
+          <p className="text-xs text-gray-500 dark:text-gray-400 mt-1">
+            جميع العمليات المالية المرتبطة بحسابك
+          </p>
         </div>
-      ) : (
-        <div className="bg-white dark:bg-gray-800 rounded-xl p-12 text-center border border-gray-200 dark:border-gray-700">
-          <FaCreditCard className="w-16 h-16 text-gray-300 dark:text-gray-600 mx-auto mb-4" />
-          <h4 className="text-xl font-bold text-gray-900 dark:text-white mb-2">لا توجد مدفوعات</h4>
-          <p className="text-gray-500 dark:text-gray-400">لم تقم بأي عملية دفع بعد</p>
-          <p className="text-sm text-gray-400 mt-2">ستظهر المدفوعات هنا عند إتمام أي عملية دفع</p>
-        </div>
-      )}
+
+        {payments.length > 0 ? (
+          <div className="overflow-x-auto">
+            <table className="w-full">
+              <thead className="bg-gray-50 dark:bg-gray-800/70">
+                <tr>
+                  <th className="px-5 py-4 text-right text-xs font-bold text-gray-500">
+                    المرجع
+                  </th>
+                  <th className="px-5 py-4 text-right text-xs font-bold text-gray-500">
+                    المبلغ
+                  </th>
+                  <th className="px-5 py-4 text-right text-xs font-bold text-gray-500">
+                    الطريقة
+                  </th>
+                  <th className="px-5 py-4 text-right text-xs font-bold text-gray-500">
+                    الحالة
+                  </th>
+                  <th className="px-5 py-4 text-right text-xs font-bold text-gray-500">
+                    التاريخ
+                  </th>
+                </tr>
+              </thead>
+
+              <tbody className="divide-y divide-gray-100 dark:divide-gray-800">
+                {payments.map((payment) => {
+                  const status = getStatusBadge(
+                    payment.status
+                  );
+
+                  return (
+                    <tr
+                      key={payment._id}
+                      className="hover:bg-gray-50 dark:hover:bg-gray-800/40 transition"
+                    >
+                      <td className="px-5 py-4 text-sm font-mono text-gray-500">
+                        {payment.reference ||
+                          `#${payment._id.slice(-8)}`}
+                      </td>
+
+                      <td className="px-5 py-4 font-bold text-gray-900 dark:text-white">
+                        {payment.amount}{' '}
+                        {payment.currency || 'ريال'}
+                      </td>
+
+                      <td className="px-5 py-4 text-sm text-gray-500 dark:text-gray-400">
+                        {payment.paymentMethod ===
+                        'credit_card'
+                          ? 'بطاقة'
+                          : payment.paymentMethod ===
+                            'mada'
+                          ? 'مدى'
+                          : payment.paymentMethod ===
+                            'bank_transfer'
+                          ? 'تحويل بنكي'
+                          : payment.paymentMethod ===
+                            'manual'
+                          ? 'يدوي'
+                          : payment.paymentMethod ===
+                            'free'
+                          ? 'مجاني'
+                          : payment.paymentMethod ||
+                            'غير محدد'}
+                      </td>
+
+                      <td className="px-5 py-4">
+                        <span
+                          className={`px-2.5 py-1 rounded-full text-[11px] font-bold ${status.color}`}
+                        >
+                          {status.label}
+                        </span>
+                      </td>
+
+                      <td className="px-5 py-4 text-sm text-gray-500">
+                        {formatDate(payment.createdAt)}
+                      </td>
+                    </tr>
+                  );
+                })}
+              </tbody>
+            </table>
+          </div>
+        ) : (
+          <EmptyState
+            icon={<FaCreditCard />}
+            title="لا توجد مدفوعات"
+            description="ستظهر عمليات الدفع هنا عند إتمام أي عملية دفع"
+          />
+        )}
+      </section>
     </div>
   );
 };
 
 // ============================================================
-// ✅ NotificationsTab - الإشعارات
+// Notifications
 // ============================================================
 
 interface NotificationsTabProps {
   notifications: Notification[];
 }
 
-const NotificationsTab: React.FC<NotificationsTabProps> = ({ notifications }) => {
-  const unreadCount = notifications.filter((n: Notification) => !n.isRead).length;
+const NotificationsTab: React.FC<
+  NotificationsTabProps
+> = ({ notifications }) => {
+  const unreadCount = notifications.filter(
+    (notification) => !notification.isRead
+  ).length;
 
   return (
-    <div className="space-y-4">
-      <div className="flex items-center justify-between">
-        <h3 className="text-lg font-bold text-gray-900 dark:text-white flex items-center gap-2">
-          <FaBell className="text-purple-600" />
-          الإشعارات
-          {unreadCount > 0 && (
-            <span className="text-sm bg-red-500 text-white px-2 py-0.5 rounded-full">{unreadCount} غير مقروء</span>
-          )}
-        </h3>
-      </div>
+    <div className="space-y-6">
+      <PageHeader
+        icon={<FaBell />}
+        title="الإشعارات"
+        description="آخر التنبيهات والتحديثات الخاصة بحسابك"
+        count={
+          unreadCount > 0
+            ? `${unreadCount} غير مقروء`
+            : undefined
+        }
+      />
 
       {notifications.length > 0 ? (
         <div className="space-y-3">
-          {notifications.map((notif, index) => (
+          {notifications.map((notification) => (
             <div
-              key={index}
-              className={`p-4 rounded-xl border transition ${
-                !notif.isRead
-                  ? 'bg-purple-50 dark:bg-purple-900/10 border-purple-200 dark:border-purple-800'
-                  : 'bg-white dark:bg-gray-800 border-gray-200 dark:border-gray-700'
+              key={notification._id}
+              className={`p-5 rounded-2xl border transition ${
+                !notification.isRead
+                  ? 'bg-purple-50 dark:bg-purple-950/20 border-purple-200 dark:border-purple-800'
+                  : 'bg-white dark:bg-gray-900 border-gray-200 dark:border-gray-800'
               }`}
             >
-              <p className="text-gray-800 dark:text-gray-200">{notif.message}</p>
-              <div className="flex items-center gap-3 mt-2">
-                <p className="text-xs text-gray-400">{formatDateTime(notif.createdAt)}</p>
-                {!notif.isRead && (
-                  <span className="text-xs bg-purple-500 text-white px-2 py-0.5 rounded-full">جديد</span>
-                )}
+              <div className="flex items-start gap-4">
+                <div
+                  className={`w-11 h-11 rounded-xl flex items-center justify-center flex-shrink-0 ${
+                    notification.isRead
+                      ? 'bg-gray-100 dark:bg-gray-800 text-gray-500'
+                      : 'bg-purple-100 dark:bg-purple-900/30 text-purple-600'
+                  }`}
+                >
+                  <FaBell />
+                </div>
+
+                <div className="flex-1">
+                  <div className="flex items-center gap-2 flex-wrap">
+                    <h4 className="font-bold text-gray-900 dark:text-white">
+                      {notification.titleAr ||
+                        notification.title ||
+                        'إشعار جديد'}
+                    </h4>
+
+                    {!notification.isRead && (
+                      <span className="px-2 py-0.5 rounded-full bg-purple-500 text-white text-[10px] font-bold">
+                        جديد
+                      </span>
+                    )}
+                  </div>
+
+                  <p className="text-sm text-gray-600 dark:text-gray-300 mt-2">
+                    {notification.messageAr ||
+                      notification.message}
+                  </p>
+
+                  <p className="text-xs text-gray-400 mt-3">
+                    {formatDateTime(
+                      notification.createdAt
+                    )}
+                  </p>
+                </div>
               </div>
             </div>
           ))}
         </div>
       ) : (
-        <div className="bg-white dark:bg-gray-800 rounded-xl p-12 text-center border border-gray-200 dark:border-gray-700">
-          <FaBell className="w-16 h-16 text-gray-300 dark:text-gray-600 mx-auto mb-4" />
-          <h4 className="text-xl font-bold text-gray-900 dark:text-white mb-2">لا توجد إشعارات</h4>
-          <p className="text-gray-500 dark:text-gray-400">سيتم عرض الإشعارات هنا عند ورودها</p>
-        </div>
+        <EmptyState
+          icon={<FaBell />}
+          title="لا توجد إشعارات"
+          description="سيتم عرض الإشعارات هنا عند ورودها"
+        />
       )}
     </div>
   );
 };
 
 // ============================================================
-// ✅ AddressesTab - العناوين
+// Addresses
 // ============================================================
 
 const AddressesTab: React.FC = () => {
   return (
-    <div className="space-y-4">
-      <h3 className="text-lg font-bold text-gray-900 dark:text-white flex items-center gap-2">
-        <FaMapMarkerAlt className="text-purple-600" />
-        العناوين
-      </h3>
-      <div className="bg-white dark:bg-gray-800 rounded-xl p-12 text-center border border-gray-200 dark:border-gray-700">
-        <FaMapMarkerAlt className="w-16 h-16 text-gray-300 dark:text-gray-600 mx-auto mb-4" />
-        <h4 className="text-xl font-bold text-gray-900 dark:text-white mb-2">جاري التطوير</h4>
-        <p className="text-gray-500 dark:text-gray-400">سيتم إضافة إدارة العناوين قريباً</p>
-      </div>
+    <div className="space-y-6">
+      <PageHeader
+        icon={<FaMapMarkerAlt />}
+        title="العناوين"
+        description="إدارة عناوينك ومواقعك"
+      />
+
+      <EmptyState
+        icon={<FaMapMarkerAlt />}
+        title="جاري التطوير"
+        description="سيتم إضافة إدارة العناوين قريباً"
+      />
     </div>
   );
 };
 
 // ============================================================
-// ✅ ProfileTab - الملف الشخصي
+// Profile
 // ============================================================
 
 interface ProfileTabProps {
@@ -1129,7 +1792,10 @@ interface ProfileTabProps {
   user: ExtendedUser;
 }
 
-const ProfileTab: React.FC<ProfileTabProps> = ({ token, user }) => {
+const ProfileTab: React.FC<ProfileTabProps> = ({
+  token,
+  user,
+}) => {
   const [profile, setProfile] = useState({
     fullName: user?.fullName || '',
     email: user?.email || '',
@@ -1138,19 +1804,30 @@ const ProfileTab: React.FC<ProfileTabProps> = ({ token, user }) => {
     location: user?.profile?.location || '',
     website: user?.profile?.website || '',
   });
+
   const [avatar, setAvatar] = useState<File | null>(null);
-  const [avatarPreview, setAvatarPreview] = useState<string | null>(null);
+  const [avatarPreview, setAvatarPreview] =
+    useState<string | null>(null);
+
   const [loading, setLoading] = useState(false);
   const [saving, setSaving] = useState(false);
-  const [message, setMessage] = useState<{ type: 'success' | 'error'; text: string } | null>(null);
 
-  const API_URL = import.meta.env.VITE_API_URL || 'http://localhost:5001/api';
+  const [message, setMessage] = useState<{
+    type: 'success' | 'error';
+    text: string;
+  } | null>(null);
+
+  const API_URL =
+    import.meta.env.VITE_API_URL || 'http://localhost:5001/api';
+
   const PORTAL_ID = import.meta.env.VITE_PORTAL_ID || '';
 
-  const getAvatarUrl = (avatarId: string | undefined) => {
-    if (!avatarId) return null;
+  const getAvatarUrl = (avatarId?: string) => {
+    if (!avatarId) return '';
 
-    return `${API_URL}/files/public/${avatarId}?portalId=${PORTAL_ID}`;
+    return `${API_URL}/files/public/${encodeURIComponent(
+      avatarId
+    )}?portalId=${encodeURIComponent(PORTAL_ID)}`;
   };
 
   const fetchProfile = useCallback(async () => {
@@ -1159,12 +1836,15 @@ const ProfileTab: React.FC<ProfileTabProps> = ({ token, user }) => {
     try {
       setLoading(true);
 
-      const response = await fetch(`${API_URL}/auth/profile`, {
-        headers: {
-          'Authorization': `Bearer ${token}`,
-          'X-Portal-Id': PORTAL_ID,
-        },
-      });
+      const response = await fetch(
+        `${API_URL}/auth/profile`,
+        {
+          headers: {
+            Authorization: `Bearer ${token}`,
+            'X-Portal-Id': PORTAL_ID,
+          },
+        }
+      );
 
       const data = await response.json();
 
@@ -1176,16 +1856,25 @@ const ProfileTab: React.FC<ProfileTabProps> = ({ token, user }) => {
           email: userData.email || '',
           phone: userData.phone || '',
           bio: userData.profile?.bio || '',
-          location: userData.profile?.location || '',
-          website: userData.profile?.website || '',
+          location:
+            userData.profile?.location || '',
+          website:
+            userData.profile?.website || '',
         });
 
         if (userData.profile?.avatar) {
-          setAvatarPreview(getAvatarUrl(userData.profile.avatar));
+          setAvatarPreview(
+            getAvatarUrl(
+              userData.profile.avatar
+            )
+          );
         }
       }
     } catch (error) {
-      console.error('❌ Error fetching profile:', error);
+      console.error(
+        '❌ Error fetching profile:',
+        error
+      );
     } finally {
       setLoading(false);
     }
@@ -1195,226 +1884,369 @@ const ProfileTab: React.FC<ProfileTabProps> = ({ token, user }) => {
     fetchProfile();
   }, [fetchProfile]);
 
-  const handleAvatarChange = (e: React.ChangeEvent<HTMLInputElement>) => {
-    const file = e.target.files?.[0];
-    if (file) {
-      if (file.size > 5 * 1024 * 1024) {
-        setMessage({ type: 'error', text: 'حجم الصورة يتجاوز 5MB' });
-        return;
-      }
-      setAvatar(file);
-      const reader = new FileReader();
-      reader.onload = () => setAvatarPreview(reader.result as string);
-      reader.readAsDataURL(file);
+  const handleAvatarChange = (
+    event: React.ChangeEvent<HTMLInputElement>
+  ) => {
+    const file = event.target.files?.[0];
+
+    if (!file) return;
+
+    if (file.size > 5 * 1024 * 1024) {
+      setMessage({
+        type: 'error',
+        text: 'حجم الصورة يتجاوز 5MB',
+      });
+      return;
     }
+
+    setAvatar(file);
+
+    const reader = new FileReader();
+
+    reader.onload = () =>
+      setAvatarPreview(reader.result as string);
+
+    reader.readAsDataURL(file);
   };
 
-  const uploadAvatar = async (): Promise<string | null> => {
+  const uploadAvatar = async (): Promise<
+    string | null
+  > => {
     if (!avatar) return null;
+
     const formData = new FormData();
+
     formData.append('file', avatar);
     formData.append('category', 'profile');
     formData.append('portalId', PORTAL_ID);
-    const response = await fetch(`${API_URL}/files/upload`, {
-      method: 'POST',
-      headers: { 'Authorization': `Bearer ${token}` },
-      body: formData,
-    });
+
+    const response = await fetch(
+      `${API_URL}/files/upload`,
+      {
+        method: 'POST',
+        headers: {
+          Authorization: `Bearer ${token}`,
+        },
+        body: formData,
+      }
+    );
+
     const data = await response.json();
-    if (data.success) return data.data.file._id;
-    throw new Error(data.message || 'فشل رفع الصورة');
+
+    if (data.success) {
+      return data.data.file._id;
+    }
+
+    throw new Error(
+      data.message || 'فشل رفع الصورة'
+    );
   };
 
-  const handleSave = async (e: React.FormEvent) => {
-    e.preventDefault();
+  const handleSave = async (
+    event: React.FormEvent
+  ) => {
+    event.preventDefault();
+
     setSaving(true);
     setMessage(null);
+
     try {
       let avatarId = null;
+
       if (avatar) {
         avatarId = await uploadAvatar();
       }
 
-      const response = await fetch(`${API_URL}/auth/profile`, {
-        method: 'PUT',
-        headers: {
-          'Authorization': `Bearer ${token}`,
-          'Content-Type': 'application/json',
-          'X-Portal-Id': PORTAL_ID,
-        },
-        body: JSON.stringify({
-          fullName: profile.fullName,
-          phone: profile.phone,
-          bio: profile.bio,
-          location: profile.location,
-          website: profile.website,
-          avatar: avatarId,
-        }),
-      });
+      const response = await fetch(
+        `${API_URL}/auth/profile`,
+        {
+          method: 'PUT',
+          headers: {
+            Authorization: `Bearer ${token}`,
+            'Content-Type': 'application/json',
+            'X-Portal-Id': PORTAL_ID,
+          },
+          body: JSON.stringify({
+            fullName: profile.fullName,
+            phone: profile.phone,
+            bio: profile.bio,
+            location: profile.location,
+            website: profile.website,
+            avatar: avatarId,
+          }),
+        }
+      );
 
       const data = await response.json();
+
       if (data.success) {
-        setMessage({ type: 'success', text: '✅ تم تحديث الملف الشخصي بنجاح!' });
+        setMessage({
+          type: 'success',
+          text: 'تم تحديث الملف الشخصي بنجاح',
+        });
 
         if (data.data?.profile?.avatar) {
-          setAvatarPreview(getAvatarUrl(data.data.profile.avatar));
+          setAvatarPreview(
+            getAvatarUrl(
+              data.data.profile.avatar
+            )
+          );
         }
 
-        if (data.data) {
-          const storedUser = localStorage.getItem('user');
-          if (storedUser) {
-            const currentUser = JSON.parse(storedUser);
-            const updatedUser = {
-              ...currentUser,
-              fullName: profile.fullName,
-              phone: profile.phone,
-              profile: {
-                ...currentUser.profile,
-                avatar: data.data.profile?.avatar || avatarId,
-                bio: profile.bio,
-                location: profile.location,
-                website: profile.website,
-              },
-            };
-            localStorage.setItem('user', JSON.stringify(updatedUser));
-          }
+        const storedUser =
+          localStorage.getItem('user');
+
+        if (storedUser) {
+          const currentUser =
+            JSON.parse(storedUser);
+
+          const updatedUser = {
+            ...currentUser,
+            fullName: profile.fullName,
+            phone: profile.phone,
+            profile: {
+              ...currentUser.profile,
+              avatar:
+                data.data?.profile?.avatar ||
+                avatarId,
+              bio: profile.bio,
+              location: profile.location,
+              website: profile.website,
+            },
+          };
+
+          localStorage.setItem(
+            'user',
+            JSON.stringify(updatedUser)
+          );
         }
 
         setTimeout(() => {
           window.location.reload();
-        }, 1500);
+        }, 1200);
       } else {
-        setMessage({ type: 'error', text: data.message || 'حدث خطأ في التحديث' });
+        setMessage({
+          type: 'error',
+          text:
+            data.message ||
+            'حدث خطأ في التحديث',
+        });
       }
     } catch (error: any) {
-      console.error('❌ Error updating profile:', error);
-      setMessage({ type: 'error', text: error.message || 'حدث خطأ في التحديث' });
+      console.error(
+        '❌ Error updating profile:',
+        error
+      );
+
+      setMessage({
+        type: 'error',
+        text:
+          error.message ||
+          'حدث خطأ في التحديث',
+      });
     } finally {
       setSaving(false);
     }
   };
 
   if (loading) {
-    return (
-      <div className="flex items-center justify-center py-12">
-        <FaSpinner className="w-8 h-8 text-purple-600 animate-spin" />
-      </div>
-    );
+    return <PageLoader />;
   }
 
-  const avatarSrc = avatarPreview || getAvatarUrl(user?.profile?.avatar);
+  const avatarSrc =
+    avatarPreview ||
+    getAvatarUrl(user?.profile?.avatar);
 
   return (
     <div className="space-y-6">
-      <h3 className="text-lg font-bold text-gray-900 dark:text-white">👤 الملف الشخصي</h3>
+      <PageHeader
+        icon={<FaUser />}
+        title="الملف الشخصي"
+        description="إدارة معلومات حسابك وصورتك الشخصية"
+      />
+
       {message && (
         <div
-          className={`p-4 rounded-xl ${
+          className={`p-4 rounded-2xl border ${
             message.type === 'success'
-              ? 'bg-green-100 text-green-700 dark:bg-green-900/30 dark:text-green-400 border border-green-200 dark:border-green-800'
-              : 'bg-red-100 text-red-700 dark:bg-red-900/30 dark:text-red-400 border border-red-200 dark:border-red-800'
+              ? 'bg-emerald-50 text-emerald-700 border-emerald-200 dark:bg-emerald-950/20 dark:text-emerald-400 dark:border-emerald-800'
+              : 'bg-red-50 text-red-700 border-red-200 dark:bg-red-950/20 dark:text-red-400 dark:border-red-800'
           }`}
         >
           {message.text}
         </div>
       )}
-      <form onSubmit={handleSave} className="space-y-6">
-        <div className="flex flex-col items-center">
-          <div className="relative">
-            <div className="w-32 h-32 rounded-full bg-gradient-to-r from-purple-100 to-pink-100 dark:from-purple-900/30 dark:to-pink-900/30 flex items-center justify-center overflow-hidden border-2 border-purple-200 dark:border-purple-800">
-              {avatarSrc ? (
-                <img
-                  src={avatarSrc}
-                  alt="الصورة الشخصية"
-                  className="w-full h-full object-cover"
-                  onError={(e) => {
-                    e.currentTarget.style.display = 'none';
-                  }}
-                />
-              ) : (
-                <FaUserCircle className="text-purple-600 dark:text-purple-400 text-6xl" />
-              )}
-            </div>
-            <label className="absolute bottom-0 right-0 p-2 bg-purple-600 text-white rounded-full cursor-pointer hover:bg-purple-700 transition shadow-lg">
-              <FaCamera className="w-4 h-4" />
-              <input type="file" accept="image/*" onChange={handleAvatarChange} className="hidden" />
-            </label>
-          </div>
-          <p className="text-xs text-gray-400 mt-2">اضغط على الكاميرا لتغيير الصورة</p>
-        </div>
 
-        <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-          <div>
-            <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">الاسم الكامل *</label>
-            <input
-              type="text"
+      <form
+        onSubmit={handleSave}
+        className="space-y-6"
+      >
+        {/* Avatar */}
+
+        <section className="bg-white dark:bg-gray-900 rounded-2xl border border-gray-200 dark:border-gray-800 p-6">
+          <div className="flex flex-col items-center">
+            <div className="relative">
+              <div className="w-32 h-32 rounded-3xl bg-gradient-to-br from-purple-100 to-pink-100 dark:from-purple-950/40 dark:to-pink-950/30 flex items-center justify-center overflow-hidden border-2 border-purple-200 dark:border-purple-800">
+                {avatarSrc ? (
+                  <img
+                    src={avatarSrc}
+                    alt="الصورة الشخصية"
+                    className="w-full h-full object-cover"
+                    onError={(event) => {
+                      event.currentTarget.style.display =
+                        'none';
+                    }}
+                  />
+                ) : (
+                  <FaUserCircle className="text-purple-600 dark:text-purple-400 text-6xl" />
+                )}
+              </div>
+
+              <label className="absolute -bottom-2 -right-2 w-10 h-10 bg-gradient-to-r from-purple-600 to-pink-500 text-white rounded-xl cursor-pointer hover:scale-105 transition shadow-lg flex items-center justify-center">
+                <FaCamera />
+
+                <input
+                  type="file"
+                  accept="image/*"
+                  onChange={handleAvatarChange}
+                  className="hidden"
+                />
+              </label>
+            </div>
+
+            <h3 className="font-black text-gray-900 dark:text-white mt-4">
+              {profile.fullName ||
+                'مستخدم ارتقاء'}
+            </h3>
+
+            <p className="text-xs text-gray-400 mt-1">
+              اضغط على الكاميرا لتغيير الصورة
+            </p>
+          </div>
+        </section>
+
+        {/* Information */}
+
+        <section className="bg-white dark:bg-gray-900 rounded-2xl border border-gray-200 dark:border-gray-800 p-6">
+          <div className="flex items-center gap-3 mb-5">
+            <div className="w-10 h-10 rounded-xl bg-purple-100 dark:bg-purple-900/30 text-purple-600 flex items-center justify-center">
+              <FaUser />
+            </div>
+
+            <div>
+              <h3 className="font-black text-gray-900 dark:text-white">
+                المعلومات الأساسية
+              </h3>
+
+              <p className="text-xs text-gray-500 dark:text-gray-400">
+                معلومات حسابك الشخصية
+              </p>
+            </div>
+          </div>
+
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-5">
+            <FormField
+              label="الاسم الكامل *"
               value={profile.fullName}
-              onChange={(e) => setProfile({ ...profile, fullName: e.target.value })}
-              className="w-full px-4 py-2 rounded-lg border-2 border-gray-200 dark:border-gray-700 bg-gray-50 dark:bg-gray-700 focus:border-purple-500 focus:ring-2 focus:ring-purple-500/20 outline-none transition"
+              onChange={(value) =>
+                setProfile({
+                  ...profile,
+                  fullName: value,
+                })
+              }
               required
             />
-          </div>
-          <div>
-            <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">البريد الإلكتروني</label>
-            <input
-              type="email"
+
+            <FormField
+              label="البريد الإلكتروني"
               value={profile.email}
-              className="w-full px-4 py-2 rounded-lg border-2 border-gray-200 dark:border-gray-700 bg-gray-100 dark:bg-gray-600 text-gray-500 dark:text-gray-400 cursor-not-allowed"
               disabled
+              helper="لا يمكن تغيير البريد الإلكتروني"
             />
-            <p className="text-xs text-gray-400 mt-1">لا يمكن تغيير البريد الإلكتروني</p>
-          </div>
-          <div>
-            <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">رقم الجوال</label>
-            <input
-              type="tel"
+
+            <FormField
+              label="رقم الجوال"
               value={profile.phone}
-              onChange={(e) => setProfile({ ...profile, phone: e.target.value })}
-              className="w-full px-4 py-2 rounded-lg border-2 border-gray-200 dark:border-gray-700 bg-gray-50 dark:bg-gray-700 focus:border-purple-500 focus:ring-2 focus:ring-purple-500/20 outline-none transition"
+              onChange={(value) =>
+                setProfile({
+                  ...profile,
+                  phone: value,
+                })
+              }
               placeholder="05xxxxxxxx"
             />
-          </div>
-          <div>
-            <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">الموقع</label>
-            <input
-              type="text"
+
+            <FormField
+              label="الموقع"
               value={profile.location}
-              onChange={(e) => setProfile({ ...profile, location: e.target.value })}
-              className="w-full px-4 py-2 rounded-lg border-2 border-gray-200 dark:border-gray-700 bg-gray-50 dark:bg-gray-700 focus:border-purple-500 focus:ring-2 focus:ring-purple-500/20 outline-none transition"
+              onChange={(value) =>
+                setProfile({
+                  ...profile,
+                  location: value,
+                })
+              }
               placeholder="المدينة، الدولة"
             />
           </div>
-        </div>
 
-        <div>
-          <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">نبذة عني</label>
-          <textarea
-            value={profile.bio}
-            onChange={(e) => setProfile({ ...profile, bio: e.target.value })}
-            rows={4}
-            className="w-full px-4 py-2 rounded-lg border-2 border-gray-200 dark:border-gray-700 bg-gray-50 dark:bg-gray-700 focus:border-purple-500 focus:ring-2 focus:ring-purple-500/20 outline-none transition resize-none"
-            placeholder="اكتب نبذة عن نفسك..."
-          />
-        </div>
+          <div className="mt-5">
+            <label className="block text-sm font-semibold text-gray-700 dark:text-gray-300 mb-2">
+              نبذة عني
+            </label>
 
-        <div>
-          <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">الموقع الإلكتروني</label>
-          <input
-            type="url"
-            value={profile.website}
-            onChange={(e) => setProfile({ ...profile, website: e.target.value })}
-            className="w-full px-4 py-2 rounded-lg border-2 border-gray-200 dark:border-gray-700 bg-gray-50 dark:bg-gray-700 focus:border-purple-500 focus:ring-2 focus:ring-purple-500/20 outline-none transition"
-            placeholder="https://example.com"
-          />
-        </div>
+            <textarea
+              value={profile.bio}
+              onChange={(event) =>
+                setProfile({
+                  ...profile,
+                  bio: event.target.value,
+                })
+              }
+              rows={4}
+              className="w-full px-4 py-3 rounded-xl border border-gray-200 dark:border-gray-700 bg-gray-50 dark:bg-gray-800 text-gray-900 dark:text-white focus:border-purple-500 outline-none transition resize-none"
+              placeholder="اكتب نبذة عن نفسك..."
+            />
+          </div>
+
+          <div className="mt-5">
+            <label className="block text-sm font-semibold text-gray-700 dark:text-gray-300 mb-2">
+              الموقع الإلكتروني
+            </label>
+
+            <div className="relative">
+              <FaGlobe className="absolute right-4 top-1/2 -translate-y-1/2 text-gray-400" />
+
+              <input
+                type="url"
+                value={profile.website}
+                onChange={(event) =>
+                  setProfile({
+                    ...profile,
+                    website:
+                      event.target.value,
+                  })
+                }
+                className="w-full pr-11 pl-4 py-3 rounded-xl border border-gray-200 dark:border-gray-700 bg-gray-50 dark:bg-gray-800 text-gray-900 dark:text-white focus:border-purple-500 outline-none transition"
+                placeholder="https://example.com"
+              />
+            </div>
+          </div>
+        </section>
 
         <button
           type="submit"
           disabled={saving}
-          className="px-6 py-3 bg-gradient-to-r from-purple-600 to-pink-500 text-white rounded-xl font-bold hover:opacity-90 transition disabled:opacity-50 flex items-center gap-2"
+          className="px-6 py-3.5 bg-gradient-to-r from-purple-600 to-pink-500 text-white rounded-xl font-bold hover:opacity-90 transition disabled:opacity-50 flex items-center gap-2 shadow-lg shadow-purple-500/15"
         >
-          {saving ? <FaSpinner className="animate-spin" /> : <FaSave />}
-          {saving ? 'جاري الحفظ...' : 'حفظ التغييرات'}
+          {saving ? (
+            <FaSpinner className="animate-spin" />
+          ) : (
+            <FaSave />
+          )}
+
+          {saving
+            ? 'جاري الحفظ...'
+            : 'حفظ التغييرات'}
         </button>
       </form>
     </div>
@@ -1422,7 +2254,7 @@ const ProfileTab: React.FC<ProfileTabProps> = ({ token, user }) => {
 };
 
 // ============================================================
-// ✅ SettingsTab - الإعدادات
+// Settings
 // ============================================================
 
 interface SettingsTabProps {
@@ -1430,7 +2262,9 @@ interface SettingsTabProps {
   user: ExtendedUser;
 }
 
-const SettingsTab: React.FC<SettingsTabProps> = ({ token }) => {
+const SettingsTab: React.FC<SettingsTabProps> = ({
+  token,
+}) => {
   const [settings, setSettings] = useState({
     emailNotifications: true,
     pushNotifications: true,
@@ -1440,65 +2274,114 @@ const SettingsTab: React.FC<SettingsTabProps> = ({ token }) => {
     language: 'ar',
     theme: 'auto',
   });
+
   const [saving, setSaving] = useState(false);
-  const [message, setMessage] = useState<{ type: 'success' | 'error'; text: string } | null>(null);
-  const API_URL = import.meta.env.VITE_API_URL || 'http://localhost:5001/api';
+
+  const [message, setMessage] = useState<{
+    type: 'success' | 'error';
+    text: string;
+  } | null>(null);
+
+  const API_URL =
+    import.meta.env.VITE_API_URL || 'http://localhost:5001/api';
+
   const PORTAL_ID = import.meta.env.VITE_PORTAL_ID || '';
 
   useEffect(() => {
     const fetchSettings = async () => {
       if (!token) return;
+
       try {
-        const response = await fetch(`${API_URL}/auth/settings`, {
-          headers: {
-            'Authorization': `Bearer ${token}`,
-            'X-Portal-Id': PORTAL_ID,
-          },
-        });
+        const response = await fetch(
+          `${API_URL}/auth/settings`,
+          {
+            headers: {
+              Authorization: `Bearer ${token}`,
+              'X-Portal-Id': PORTAL_ID,
+            },
+          }
+        );
+
         const data = await response.json();
+
         if (data.success) {
           setSettings(data.data);
         }
       } catch (error) {
-        console.error('❌ Error fetching settings:', error);
+        console.error(
+          '❌ Error fetching settings:',
+          error
+        );
       }
     };
+
     fetchSettings();
   }, [token, API_URL, PORTAL_ID]);
 
-  const handleSaveSettings = async (e: React.FormEvent) => {
-    e.preventDefault();
+  const handleSaveSettings = async (
+    event: React.FormEvent
+  ) => {
+    event.preventDefault();
+
     setSaving(true);
     setMessage(null);
-    try {
-      const response = await fetch(`${API_URL}/auth/settings`, {
-        method: 'PUT',
-        headers: {
-          'Authorization': `Bearer ${token}`,
-          'Content-Type': 'application/json',
-          'X-Portal-Id': PORTAL_ID,
-        },
-        body: JSON.stringify(settings),
-      });
-      const data = await response.json();
-      if (data.success) {
-        setMessage({ type: 'success', text: '✅ تم حفظ الإعدادات بنجاح!' });
 
-        const storedUser = localStorage.getItem('user');
+    try {
+      const response = await fetch(
+        `${API_URL}/auth/settings`,
+        {
+          method: 'PUT',
+          headers: {
+            Authorization: `Bearer ${token}`,
+            'Content-Type': 'application/json',
+            'X-Portal-Id': PORTAL_ID,
+          },
+          body: JSON.stringify(settings),
+        }
+      );
+
+      const data = await response.json();
+
+      if (data.success) {
+        setMessage({
+          type: 'success',
+          text: 'تم حفظ الإعدادات بنجاح',
+        });
+
+        const storedUser =
+          localStorage.getItem('user');
+
         if (storedUser) {
-          const currentUser = JSON.parse(storedUser);
-          const updatedUser = {
-            ...currentUser,
-            preferences: data.data || settings,
-          };
-          localStorage.setItem('user', JSON.stringify(updatedUser));
+          const currentUser =
+            JSON.parse(storedUser);
+
+          localStorage.setItem(
+            'user',
+            JSON.stringify({
+              ...currentUser,
+              preferences:
+                data.data || settings,
+            })
+          );
         }
       } else {
-        setMessage({ type: 'error', text: data.message || 'حدث خطأ في حفظ الإعدادات' });
+        setMessage({
+          type: 'error',
+          text:
+            data.message ||
+            'حدث خطأ في حفظ الإعدادات',
+        });
       }
     } catch (error) {
-      console.error('❌ Error saving settings:', error);
-      setMessage({ type: 'error', text: 'حدث خطأ في حفظ الإعدادات' });
+      console.error(
+        '❌ Error saving settings:',
+        error
+      );
+
+      setMessage({
+        type: 'error',
+        text: 'حدث خطأ في حفظ الإعدادات',
+      });
     } finally {
       setSaving(false);
     }
@@ -1506,132 +2389,508 @@ const SettingsTab: React.FC<SettingsTabProps> = ({ token }) => {
 
   return (
     <div className="space-y-6">
-      <h3 className="text-lg font-bold text-gray-900 dark:text-white">⚙️ الإعدادات</h3>
+      <PageHeader
+        icon={<FaCog />}
+        title="الإعدادات"
+        description="تحكم في الإشعارات والأمان والتفضيلات"
+      />
+
       {message && (
         <div
-          className={`p-4 rounded-xl ${
+          className={`p-4 rounded-2xl border ${
             message.type === 'success'
-              ? 'bg-green-100 text-green-700 dark:bg-green-900/30 dark:text-green-400 border border-green-200 dark:border-green-800'
-              : 'bg-red-100 text-red-700 dark:bg-red-900/30 dark:text-red-400 border border-red-200 dark:border-red-800'
+              ? 'bg-emerald-50 text-emerald-700 border-emerald-200 dark:bg-emerald-950/20 dark:text-emerald-400 dark:border-emerald-800'
+              : 'bg-red-50 text-red-700 border-red-200 dark:bg-red-950/20 dark:text-red-400 dark:border-red-800'
           }`}
         >
           {message.text}
         </div>
       )}
-      <form onSubmit={handleSaveSettings} className="space-y-6">
-        <div className="bg-gray-50 dark:bg-gray-700/30 rounded-xl p-4">
-          <h4 className="font-semibold text-gray-900 dark:text-white mb-4 flex items-center gap-2">
-            <FaBell className="text-purple-600" />
-            الإشعارات
-          </h4>
-          <div className="space-y-3">
-            <label className="flex items-center justify-between">
-              <span className="text-gray-700 dark:text-gray-300">إشعارات البريد الإلكتروني</span>
-              <input
-                type="checkbox"
-                checked={settings.emailNotifications}
-                onChange={(e) => setSettings({ ...settings, emailNotifications: e.target.checked })}
-                className="w-5 h-5 text-purple-600 rounded focus:ring-purple-500"
-              />
-            </label>
-            <label className="flex items-center justify-between">
-              <span className="text-gray-700 dark:text-gray-300">إشعارات التطبيق</span>
-              <input
-                type="checkbox"
-                checked={settings.pushNotifications}
-                onChange={(e) => setSettings({ ...settings, pushNotifications: e.target.checked })}
-                className="w-5 h-5 text-purple-600 rounded focus:ring-purple-500"
-              />
-            </label>
-            <label className="flex items-center justify-between">
-              <span className="text-gray-700 dark:text-gray-300">تحديثات الطلبات</span>
-              <input
-                type="checkbox"
-                checked={settings.orderUpdates}
-                onChange={(e) => setSettings({ ...settings, orderUpdates: e.target.checked })}
-                className="w-5 h-5 text-purple-600 rounded focus:ring-purple-500"
-              />
-            </label>
-            <label className="flex items-center justify-between">
-              <span className="text-gray-700 dark:text-gray-300">رسائل ترويجية</span>
-              <input
-                type="checkbox"
-                checked={settings.promotionalEmails}
-                onChange={(e) => setSettings({ ...settings, promotionalEmails: e.target.checked })}
-                className="w-5 h-5 text-purple-600 rounded focus:ring-purple-500"
-              />
-            </label>
-          </div>
-        </div>
 
-        <div className="bg-gray-50 dark:bg-gray-700/30 rounded-xl p-4">
-          <h4 className="font-semibold text-gray-900 dark:text-white mb-4 flex items-center gap-2">
-            <FaLock className="text-purple-600" />
-            الأمان
-          </h4>
-          <div className="space-y-3">
-            <label className="flex items-center justify-between">
-              <span className="text-gray-700 dark:text-gray-300">المصادقة الثنائية (2FA)</span>
-              <input
-                type="checkbox"
-                checked={settings.twoFactorAuth}
-                onChange={(e) => setSettings({ ...settings, twoFactorAuth: e.target.checked })}
-                className="w-5 h-5 text-purple-600 rounded focus:ring-purple-500"
-              />
+      <form
+        onSubmit={handleSaveSettings}
+        className="space-y-5"
+      >
+        <SettingsSection
+          icon={<FaBell />}
+          title="الإشعارات"
+          description="حدد الإشعارات التي تريد استقبالها"
+        >
+          <ToggleRow
+            label="إشعارات البريد الإلكتروني"
+            checked={settings.emailNotifications}
+            onChange={(value) =>
+              setSettings({
+                ...settings,
+                emailNotifications: value,
+              })
+            }
+          />
+
+          <ToggleRow
+            label="إشعارات التطبيق"
+            checked={settings.pushNotifications}
+            onChange={(value) =>
+              setSettings({
+                ...settings,
+                pushNotifications: value,
+              })
+            }
+          />
+
+          <ToggleRow
+            label="تحديثات الطلبات"
+            checked={settings.orderUpdates}
+            onChange={(value) =>
+              setSettings({
+                ...settings,
+                orderUpdates: value,
+              })
+            }
+          />
+
+          <ToggleRow
+            label="رسائل ترويجية"
+            checked={settings.promotionalEmails}
+            onChange={(value) =>
+              setSettings({
+                ...settings,
+                promotionalEmails: value,
+              })
+            }
+          />
+        </SettingsSection>
+
+        <SettingsSection
+          icon={<FaShieldAlt />}
+          title="الأمان"
+          description="إعدادات حماية حسابك"
+        >
+          <ToggleRow
+            label="المصادقة الثنائية (2FA)"
+            checked={settings.twoFactorAuth}
+            onChange={(value) =>
+              setSettings({
+                ...settings,
+                twoFactorAuth: value,
+              })
+            }
+          />
+
+          <button
+            type="button"
+            onClick={() => {
+              window.location.href =
+                '/change-password';
+            }}
+            className="text-purple-600 dark:text-purple-400 text-sm font-semibold flex items-center gap-2"
+          >
+            <FaLock />
+            تغيير كلمة المرور
+          </button>
+        </SettingsSection>
+
+        <SettingsSection
+          icon={<FaGlobe />}
+          title="التفضيلات"
+          description="تخصيص تجربة استخدام المنصة"
+        >
+          <div>
+            <label className="block text-sm font-semibold text-gray-700 dark:text-gray-300 mb-2">
+              اللغة
             </label>
-            <button
-              type="button"
-              onClick={() => { window.location.href = '/change-password'; }}
-              className="text-purple-600 hover:text-purple-700 text-sm"
+
+            <select
+              value={settings.language}
+              onChange={(event) =>
+                setSettings({
+                  ...settings,
+                  language:
+                    event.target.value,
+                })
+              }
+              className="w-full px-4 py-3 rounded-xl border border-gray-200 dark:border-gray-700 bg-gray-50 dark:bg-gray-800 text-gray-900 dark:text-white outline-none focus:border-purple-500"
             >
-              تغيير كلمة المرور
-            </button>
+              <option value="ar">
+                العربية
+              </option>
+              <option value="en">
+                English
+              </option>
+            </select>
           </div>
-        </div>
 
-        <div className="bg-gray-50 dark:bg-gray-700/30 rounded-xl p-4">
-          <h4 className="font-semibold text-gray-900 dark:text-white mb-4 flex items-center gap-2">
-            <FaGlobe className="text-purple-600" />
-            التفضيلات
-          </h4>
-          <div className="space-y-3">
-            <div>
-              <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">اللغة</label>
-              <select
-                value={settings.language}
-                onChange={(e) => setSettings({ ...settings, language: e.target.value })}
-                className="w-full px-4 py-2 rounded-lg border-2 border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-800 focus:border-purple-500 focus:ring-2 focus:ring-purple-500/20 outline-none transition"
-              >
-                <option value="ar">العربية</option>
-                <option value="en">English</option>
-              </select>
-            </div>
-            <div>
-              <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">المظهر</label>
-              <select
-                value={settings.theme}
-                onChange={(e) => setSettings({ ...settings, theme: e.target.value })}
-                className="w-full px-4 py-2 rounded-lg border-2 border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-800 focus:border-purple-500 focus:ring-2 focus:ring-purple-500/20 outline-none transition"
-              >
-                <option value="auto">تلقائي</option>
-                <option value="light">فاتح</option>
-                <option value="dark">داكن</option>
-              </select>
-            </div>
+          <div>
+            <label className="block text-sm font-semibold text-gray-700 dark:text-gray-300 mb-2">
+              المظهر
+            </label>
+
+            <select
+              value={settings.theme}
+              onChange={(event) =>
+                setSettings({
+                  ...settings,
+                  theme: event.target.value,
+                })
+              }
+              className="w-full px-4 py-3 rounded-xl border border-gray-200 dark:border-gray-700 bg-gray-50 dark:bg-gray-800 text-gray-900 dark:text-white outline-none focus:border-purple-500"
+            >
+              <option value="auto">
+                تلقائي
+              </option>
+              <option value="light">
+                فاتح
+              </option>
+              <option value="dark">
+                داكن
+              </option>
+            </select>
           </div>
-        </div>
+        </SettingsSection>
 
         <button
           type="submit"
           disabled={saving}
-          className="px-6 py-3 bg-gradient-to-r from-purple-600 to-pink-500 text-white rounded-xl font-bold hover:opacity-90 transition disabled:opacity-50 flex items-center gap-2"
+          className="px-6 py-3.5 bg-gradient-to-r from-purple-600 to-pink-500 text-white rounded-xl font-bold hover:opacity-90 transition disabled:opacity-50 flex items-center gap-2 shadow-lg shadow-purple-500/15"
         >
-          {saving ? <FaSpinner className="animate-spin" /> : <FaSave />}
-          {saving ? 'جاري الحفظ...' : 'حفظ الإعدادات'}
+          {saving ? (
+            <FaSpinner className="animate-spin" />
+          ) : (
+            <FaSave />
+          )}
+
+          {saving
+            ? 'جاري الحفظ...'
+            : 'حفظ الإعدادات'}
         </button>
       </form>
     </div>
   );
 };
+
+// ============================================================
+// Reusable UI
+// ============================================================
+
+const PageLoader: React.FC = () => (
+  <div className="flex items-center justify-center py-20">
+    <div className="text-center">
+      <FaSpinner className="w-8 h-8 text-purple-600 animate-spin mx-auto" />
+      <p className="text-sm text-gray-500 dark:text-gray-400 mt-3">
+        جاري التحميل...
+      </p>
+    </div>
+  </div>
+);
+
+interface PageHeaderProps {
+  icon: React.ReactNode;
+  title: string;
+  description?: string;
+  count?: string;
+  action?: React.ReactNode;
+}
+
+const PageHeader: React.FC<PageHeaderProps> = ({
+  icon,
+  title,
+  description,
+  count,
+  action,
+}) => (
+  <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4">
+    <div className="flex items-center gap-3">
+      <div className="w-11 h-11 rounded-xl bg-purple-100 dark:bg-purple-900/30 text-purple-600 dark:text-purple-400 flex items-center justify-center text-lg">
+        {icon}
+      </div>
+
+      <div>
+        <div className="flex items-center gap-2">
+          <h2 className="text-xl font-black text-gray-900 dark:text-white">
+            {title}
+          </h2>
+
+          {count && (
+            <span className="text-xs bg-gray-100 dark:bg-gray-800 text-gray-500 dark:text-gray-400 px-2.5 py-1 rounded-full">
+              {count}
+            </span>
+          )}
+        </div>
+
+        {description && (
+          <p className="text-sm text-gray-500 dark:text-gray-400 mt-1">
+            {description}
+          </p>
+        )}
+      </div>
+    </div>
+
+    {action}
+  </div>
+);
+
+interface EmptyStateProps {
+  icon: React.ReactNode;
+  title: string;
+  description: string;
+  action?: {
+    label: string;
+    onClick: () => void;
+  };
+}
+
+const EmptyState: React.FC<EmptyStateProps> = ({
+  icon,
+  title,
+  description,
+  action,
+}) => (
+  <div className="bg-white dark:bg-gray-900 rounded-2xl border border-gray-200 dark:border-gray-800 p-12 text-center">
+    <div className="w-16 h-16 mx-auto rounded-2xl bg-gray-100 dark:bg-gray-800 text-gray-300 dark:text-gray-600 flex items-center justify-center text-2xl">
+      {icon}
+    </div>
+
+    <h4 className="text-lg font-black text-gray-900 dark:text-white mt-5">
+      {title}
+    </h4>
+
+    <p className="text-sm text-gray-500 dark:text-gray-400 mt-2">
+      {description}
+    </p>
+
+    {action && (
+      <button
+        onClick={action.onClick}
+        className="mt-5 px-5 py-2.5 bg-gradient-to-r from-purple-600 to-pink-500 text-white rounded-xl font-bold text-sm"
+      >
+        {action.label}
+      </button>
+    )}
+  </div>
+);
+
+interface ErrorStateProps {
+  message: string;
+  onRetry: () => void;
+  loginAction?: () => void;
+}
+
+const ErrorState: React.FC<ErrorStateProps> = ({
+  message,
+  onRetry,
+  loginAction,
+}) => (
+  <div className="bg-red-50 dark:bg-red-950/20 rounded-2xl p-8 text-center border border-red-200 dark:border-red-800">
+    <FaTimesCircle className="w-12 h-12 text-red-500 mx-auto mb-4" />
+
+    <p className="text-red-700 dark:text-red-400 font-semibold">
+      {message}
+    </p>
+
+    <div className="flex justify-center gap-2 mt-5">
+      {loginAction && (
+        <button
+          onClick={loginAction}
+          className="px-5 py-2.5 bg-purple-600 text-white rounded-xl font-bold"
+        >
+          تسجيل الدخول
+        </button>
+      )}
+
+      <button
+        onClick={onRetry}
+        className="px-5 py-2.5 bg-gray-200 dark:bg-gray-800 text-gray-700 dark:text-gray-300 rounded-xl font-semibold"
+      >
+        إعادة المحاولة
+      </button>
+    </div>
+  </div>
+);
+
+interface InfoBoxProps {
+  label: string;
+  value: React.ReactNode;
+}
+
+const InfoBox: React.FC<InfoBoxProps> = ({
+  label,
+  value,
+}) => (
+  <div className="rounded-xl bg-gray-50 dark:bg-gray-800/60 p-3">
+    <p className="text-xs text-gray-400">
+      {label}
+    </p>
+
+    <p className="text-sm font-bold text-gray-800 dark:text-gray-200 mt-1">
+      {value}
+    </p>
+  </div>
+);
+
+interface SummaryCardProps {
+  title: string;
+  value: React.ReactNode;
+  icon: React.ReactNode;
+  color: 'purple' | 'blue' | 'green';
+}
+
+const SummaryCard: React.FC<SummaryCardProps> = ({
+  title,
+  value,
+  icon,
+  color,
+}) => {
+  const styles = {
+    purple:
+      'bg-purple-100 dark:bg-purple-900/30 text-purple-600 dark:text-purple-400',
+    blue:
+      'bg-blue-100 dark:bg-blue-900/30 text-blue-600 dark:text-blue-400',
+    green:
+      'bg-emerald-100 dark:bg-emerald-900/30 text-emerald-600 dark:text-emerald-400',
+  };
+
+  return (
+    <div className="bg-white dark:bg-gray-900 rounded-2xl border border-gray-200 dark:border-gray-800 p-5">
+      <div className="flex items-center justify-between">
+        <div>
+          <p className="text-sm text-gray-500 dark:text-gray-400">
+            {title}
+          </p>
+
+          <p className="text-2xl font-black text-gray-900 dark:text-white mt-2">
+            {value}
+          </p>
+        </div>
+
+        <div
+          className={`w-12 h-12 rounded-xl ${styles[color]} flex items-center justify-center text-xl`}
+        >
+          {icon}
+        </div>
+      </div>
+    </div>
+  );
+};
+
+interface FormFieldProps {
+  label: string;
+  value: string;
+  onChange?: (value: string) => void;
+  disabled?: boolean;
+  required?: boolean;
+  placeholder?: string;
+  helper?: string;
+}
+
+const FormField: React.FC<FormFieldProps> = ({
+  label,
+  value,
+  onChange,
+  disabled,
+  required,
+  placeholder,
+  helper,
+}) => (
+  <div>
+    <label className="block text-sm font-semibold text-gray-700 dark:text-gray-300 mb-2">
+      {label}
+    </label>
+
+    <input
+      type="text"
+      value={value}
+      onChange={(event) =>
+        onChange?.(event.target.value)
+      }
+      disabled={disabled}
+      required={required}
+      placeholder={placeholder}
+      className={`w-full px-4 py-3 rounded-xl border border-gray-200 dark:border-gray-700 outline-none transition ${
+        disabled
+          ? 'bg-gray-100 dark:bg-gray-800 text-gray-500 cursor-not-allowed'
+          : 'bg-gray-50 dark:bg-gray-800 text-gray-900 dark:text-white focus:border-purple-500'
+      }`}
+    />
+
+    {helper && (
+      <p className="text-xs text-gray-400 mt-1">
+        {helper}
+      </p>
+    )}
+  </div>
+);
+
+interface SettingsSectionProps {
+  icon: React.ReactNode;
+  title: string;
+  description: string;
+  children: React.ReactNode;
+}
+
+const SettingsSection: React.FC<
+  SettingsSectionProps
+> = ({
+  icon,
+  title,
+  description,
+  children,
+}) => (
+  <section className="bg-white dark:bg-gray-900 rounded-2xl border border-gray-200 dark:border-gray-800 overflow-hidden">
+    <div className="p-5 border-b border-gray-200 dark:border-gray-800 flex items-center gap-3">
+      <div className="w-10 h-10 rounded-xl bg-purple-100 dark:bg-purple-900/30 text-purple-600 dark:text-purple-400 flex items-center justify-center">
+        {icon}
+      </div>
+
+      <div>
+        <h3 className="font-black text-gray-900 dark:text-white">
+          {title}
+        </h3>
+
+        <p className="text-xs text-gray-500 dark:text-gray-400 mt-1">
+          {description}
+        </p>
+      </div>
+    </div>
+
+    <div className="p-5 space-y-5">
+      {children}
+    </div>
+  </section>
+);
+
+interface ToggleRowProps {
+  label: string;
+  checked: boolean;
+  onChange: (value: boolean) => void;
+}
+
+const ToggleRow: React.FC<ToggleRowProps> = ({
+  label,
+  checked,
+  onChange,
+}) => (
+  <label className="flex items-center justify-between gap-4 cursor-pointer">
+    <span className="text-sm font-semibold text-gray-700 dark:text-gray-300">
+      {label}
+    </span>
+
+    <button
+      type="button"
+      onClick={() => onChange(!checked)}
+      className={`relative w-12 h-6 rounded-full transition ${
+        checked
+          ? 'bg-purple-600'
+          : 'bg-gray-300 dark:bg-gray-700'
+      }`}
+      aria-pressed={checked}
+    >
+      <span
+        className={`absolute top-1 w-4 h-4 bg-white rounded-full shadow transition-all ${
+          checked ? 'right-1' : 'left-1'
+        }`}
+      />
+    </button>
+  </label>
+);
 
 export default CustomerDashboard;

@@ -125,31 +125,64 @@ const AdminAbout: React.FC = () => {
     fetchAbout();
   }, [fetchAbout]);
 
-  // ===== رفع ملف =====
-  const uploadFile = async (file: File, category: string): Promise<string> => {
-    const formData = new FormData();
-    formData.append('file', file);
-    formData.append('category', category);
-    formData.append('portalId', PORTAL_ID);
+// ===== رفع ملف =====
+const uploadFile = async (file: File, category: string): Promise<string> => {
+  console.log('🔐 Upload token exists:', !!token);
+console.log('🌐 API URL:', API_URL);
+console.log('🏢 Portal ID:', PORTAL_ID);
 
-    setUploading(true);
+  if (!token) {
+    throw new Error('انتهت جلسة الدخول أو لم يتم العثور على رمز المصادقة. يرجى تسجيل الدخول مرة أخرى.');
+  }
 
-    try {
-      const response = await fetch(`${API_URL}/files/upload`, {
-        method: 'POST',
-        headers: { 'Authorization': `Bearer ${token}` },
-        body: formData,
-      });
+  if (!PORTAL_ID) {
+    throw new Error('لم يتم تحديد Portal ID.');
+  }
 
-      const data = await response.json();
-      if (!data.success) {
-        throw new Error(data.message || 'فشل رفع الملف');
-      }
-      return data.data.file._id;
-    } finally {
-      setUploading(false);
+  const uploadFormData = new FormData();
+
+  uploadFormData.append('file', file);
+  uploadFormData.append('category', category);
+  uploadFormData.append('portalId', PORTAL_ID);
+
+  setUploading(true);
+
+  try {
+    const response = await fetch(`${API_URL}/files/upload`, {
+      method: 'POST',
+      headers: {
+        Authorization: `Bearer ${token}`,
+        'X-Portal-Id': PORTAL_ID,
+      },
+      body: uploadFormData,
+    });
+
+    const data = await response.json();
+
+    if (!response.ok) {
+      throw new Error(
+        data?.message || `فشل رفع الملف (${response.status})`
+      );
     }
-  };
+
+    if (!data.success) {
+      throw new Error(data.message || 'فشل رفع الملف');
+    }
+
+    const fileId = data?.data?.file?._id;
+
+    if (!fileId) {
+      throw new Error('تم رفع الملف ولكن لم يتم إرجاع معرف الملف.');
+    }
+
+    return fileId;
+  } catch (error) {
+    console.error('❌ File upload error:', error);
+    throw error;
+  } finally {
+    setUploading(false);
+  }
+};
 
   // ===== حفظ البيانات =====
   const handleSave = async () => {

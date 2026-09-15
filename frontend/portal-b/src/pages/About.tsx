@@ -1,6 +1,11 @@
 // frontend/portal-a/src/pages/About.tsx
 
-import React, { useState, useEffect, useCallback } from 'react';
+import React, {
+  useState,
+  useEffect,
+  useCallback,
+} from 'react';
+
 import { useAuth } from '../context/AuthContext';
 
 import {
@@ -29,6 +34,9 @@ import {
   FaBookOpen,
   FaCheckCircle,
   FaExternalLinkAlt,
+  FaChevronLeft,
+  FaRocket,
+  FaQuoteRight,
 } from 'react-icons/fa';
 
 // ============================================================
@@ -172,16 +180,20 @@ const getFileId = (
   return file._id || null;
 };
 
-const getArabicText = (
+const text = (
   arabic?: string,
   english?: string,
   fallback = ''
 ): string => {
-  return arabic?.trim() || english?.trim() || fallback;
+  return (
+    arabic?.trim() ||
+    english?.trim() ||
+    fallback
+  );
 };
 
-const getOrderedItems = <T extends { order?: number }>(
-  items: T[] | undefined
+const ordered = <T extends { order?: number }>(
+  items?: T[]
 ): T[] => {
   if (!Array.isArray(items)) return [];
 
@@ -198,7 +210,13 @@ const About: React.FC = () => {
   const { token } = useAuth();
 
   const [loading, setLoading] = useState(true);
-  const [about, setAbout] = useState<AboutData | null>(null);
+
+  const [about, setAbout] =
+    useState<AboutData | null>(null);
+
+  const [activeTab, setActiveTab] =
+    useState('overview');
+
   const [error, setError] = useState('');
 
   // ============================================================
@@ -206,7 +224,8 @@ const About: React.FC = () => {
   // ============================================================
 
   const API_URL =
-    import.meta.env.VITE_API_URL || 'http://localhost:5001/api';
+    import.meta.env.VITE_API_URL ||
+    'http://localhost:5001/api';
 
   const PORTAL_ID =
     import.meta.env.VITE_PORTAL_ID || '';
@@ -217,8 +236,12 @@ const About: React.FC = () => {
 
   const getAboutFileUrl = useCallback(
     (
-      file: string | FileReference | null | undefined
-    ): string => {
+      file:
+        | string
+        | FileReference
+        | null
+        | undefined
+    ) => {
       const fileId = getFileId(file);
 
       if (!fileId || !token) {
@@ -238,13 +261,15 @@ const About: React.FC = () => {
   );
 
   // ============================================================
-  // Fetch About
+  // Fetch
   // ============================================================
 
   const fetchAbout = useCallback(async () => {
     if (!token) {
       setLoading(false);
-      setError('لم يتم العثور على جلسة تسجيل الدخول.');
+      setError(
+        'لم يتم العثور على جلسة تسجيل الدخول.'
+      );
       return;
     }
 
@@ -252,84 +277,88 @@ const About: React.FC = () => {
       setLoading(true);
       setError('');
 
-      const response = await fetch(`${API_URL}/about`, {
-        method: 'GET',
-        headers: {
-          Authorization: `Bearer ${token}`,
-          'X-Portal-Id': PORTAL_ID,
-          Accept: 'application/json',
-        },
-      });
+      const response = await fetch(
+        `${API_URL}/about`,
+        {
+          method: 'GET',
+          headers: {
+            Authorization: `Bearer ${token}`,
+            'X-Portal-Id': PORTAL_ID,
+            Accept: 'application/json',
+          },
+        }
+      );
 
-      const rawText = await response.text();
+      const rawText =
+        await response.text();
 
       if (!response.ok) {
         throw new Error(
-          `About API failed: ${response.status} ${rawText}`
+          `About API failed: ${response.status}`
         );
       }
 
-      let data: {
-        success?: boolean;
-        data?: AboutData;
-        message?: string;
-      };
+      const data = JSON.parse(rawText);
 
-      try {
-        data = JSON.parse(rawText);
-      } catch {
-        throw new Error(
-          'استجابة غير صالحة من خادم صفحة نبذة عنا.'
-        );
-      }
-
-      if (data.success && data.data) {
+      if (
+        data.success &&
+        data.data
+      ) {
         setAbout(data.data);
       } else {
         setAbout(null);
         setError(
           data.message ||
-            'لم يتم العثور على بيانات صفحة نبذة عنا.'
+            'لا توجد بيانات متاحة.'
         );
       }
     } catch (err) {
-      console.error('❌ Error fetching About:', err);
+      console.error(
+        '❌ Error fetching About:',
+        err
+      );
 
       setAbout(null);
+
       setError(
         err instanceof Error
           ? err.message
-          : 'تعذر تحميل صفحة نبذة عنا.'
+          : 'تعذر تحميل البيانات.'
       );
     } finally {
       setLoading(false);
     }
-  }, [API_URL, PORTAL_ID, token]);
-
-  // ============================================================
-  // Load
-  // ============================================================
+  }, [
+    API_URL,
+    PORTAL_ID,
+    token,
+  ]);
 
   useEffect(() => {
     fetchAbout();
   }, [fetchAbout]);
 
   // ============================================================
-  // Format Date
+  // Date
   // ============================================================
 
   const formatDate = (
-    date: string | undefined
-  ): string => {
+    date?: string
+  ) => {
     if (!date) return '';
 
-    const parsedDate = new Date(date);
+    const parsed =
+      new Date(date);
 
-    if (Number.isNaN(parsedDate.getTime())) {
+    if (
+      Number.isNaN(
+        parsed.getTime()
+      )
+    ) {
       return '';
     }
 
-    return parsedDate.toLocaleDateString(
+    return parsed.toLocaleDateString(
       'ar-SA',
       {
         year: 'numeric',
@@ -340,39 +369,46 @@ const About: React.FC = () => {
   };
 
   // ============================================================
-  // Render Stars
+  // Stars
   // ============================================================
 
   const renderStars = (
-    rating: number | undefined
+    rating?: number
   ) => {
-    const safeRating = Math.max(
+    const safe = Math.max(
       0,
-      Math.min(5, Number(rating) || 0)
+      Math.min(
+        5,
+        Number(rating) || 0
+      )
     );
 
     return Array.from(
       { length: 5 },
       (_, index) => {
-        const number = index + 1;
+        const number =
+          index + 1;
 
-        if (number <= Math.floor(safeRating)) {
+        if (
+          number <=
+          Math.floor(safe)
+        ) {
           return (
             <FaStar
               key={number}
-              className="w-4 h-4 text-yellow-400"
+              className="w-3.5 h-3.5 text-amber-400"
             />
           );
         }
 
         if (
-          number - safeRating > 0 &&
-          number - safeRating < 1
+          number - safe > 0 &&
+          number - safe < 1
         ) {
           return (
             <FaStarHalf
               key={number}
-              className="w-4 h-4 text-yellow-400"
+              className="w-3.5 h-3.5 text-amber-400"
             />
           );
         }
@@ -380,7 +416,7 @@ const About: React.FC = () => {
         return (
           <FaStar
             key={number}
-            className="w-4 h-4 text-gray-300"
+            className="w-3.5 h-3.5 text-gray-300 dark:text-gray-700"
           />
         );
       }
@@ -394,14 +430,16 @@ const About: React.FC = () => {
   if (loading) {
     return (
       <div
-        className="min-h-screen flex items-center justify-center bg-gray-50 dark:bg-gray-950"
         dir="rtl"
+        className="min-h-screen flex items-center justify-center bg-slate-50 dark:bg-slate-950"
       >
         <div className="text-center">
-          <FaSpinner className="w-12 h-12 text-purple-600 animate-spin mx-auto mb-4" />
+          <div className="w-14 h-14 rounded-2xl bg-purple-100 dark:bg-purple-900/30 flex items-center justify-center mx-auto mb-4">
+            <FaSpinner className="w-6 h-6 text-purple-600 animate-spin" />
+          </div>
 
-          <p className="text-gray-600 dark:text-gray-400">
-            جاري تحميل صفحة نبذة عنا...
+          <p className="text-sm text-slate-500 dark:text-slate-400">
+            جاري تحميل المعلومات...
           </p>
         </div>
       </div>
@@ -409,31 +447,30 @@ const About: React.FC = () => {
   }
 
   // ============================================================
-  // Error / Empty
+  // Empty
   // ============================================================
 
   if (!about) {
     return (
       <div
-        className="min-h-screen flex items-center justify-center bg-gray-50 dark:bg-gray-950 px-4"
         dir="rtl"
+        className="min-h-screen flex items-center justify-center bg-slate-50 dark:bg-slate-950 px-4"
       >
-        <div className="max-w-lg w-full bg-white dark:bg-gray-900 rounded-3xl p-10 text-center shadow-lg border border-gray-200 dark:border-gray-800">
-          <FaInfoCircle className="w-16 h-16 text-gray-300 mx-auto mb-5" />
+        <div className="max-w-md w-full bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-3xl p-8 text-center shadow-sm">
+          <FaInfoCircle className="w-12 h-12 text-slate-300 mx-auto mb-4" />
 
-          <h2 className="text-2xl font-bold text-gray-900 dark:text-white mb-3">
-            تعذر تحميل صفحة نبذة عنا
+          <h2 className="text-lg font-bold text-slate-900 dark:text-white mb-2">
+            تعذر تحميل الصفحة
           </h2>
 
-          <p className="text-gray-600 dark:text-gray-400 leading-relaxed mb-6">
+          <p className="text-sm text-slate-500 dark:text-slate-400 mb-5">
             {error ||
               'لا توجد بيانات متاحة حالياً.'}
           </p>
 
           <button
-            type="button"
             onClick={fetchAbout}
-            className="inline-flex items-center justify-center gap-2 px-6 py-3 rounded-xl bg-purple-600 text-white font-semibold hover:bg-purple-700 transition"
+            className="px-5 py-2.5 rounded-xl bg-purple-600 text-white text-sm font-medium hover:bg-purple-700 transition"
           >
             إعادة المحاولة
           </button>
@@ -443,24 +480,26 @@ const About: React.FC = () => {
   }
 
   // ============================================================
-  // Published Check
+  // Published
   // ============================================================
 
-  if (about.isPublished === false) {
+  if (
+    about.isPublished === false
+  ) {
     return (
       <div
-        className="min-h-screen flex items-center justify-center bg-gray-50 dark:bg-gray-950 px-4"
         dir="rtl"
+        className="min-h-screen flex items-center justify-center bg-slate-50 dark:bg-slate-950 px-4"
       >
-        <div className="max-w-lg w-full bg-white dark:bg-gray-900 rounded-3xl p-10 text-center shadow-lg border border-gray-200 dark:border-gray-800">
-          <FaInfoCircle className="w-16 h-16 text-gray-300 mx-auto mb-5" />
+        <div className="max-w-md bg-white dark:bg-slate-900 rounded-3xl p-8 text-center border border-slate-200 dark:border-slate-800">
+          <FaInfoCircle className="w-12 h-12 text-slate-300 mx-auto mb-4" />
 
-          <h2 className="text-2xl font-bold text-gray-900 dark:text-white mb-3">
-            صفحة نبذة عنا غير منشورة
+          <h2 className="text-lg font-bold mb-2">
+            الصفحة غير منشورة
           </h2>
 
-          <p className="text-gray-600 dark:text-gray-400">
-            سيتم إتاحة هذه الصفحة عند نشرها من لوحة الإدارة.
+          <p className="text-sm text-slate-500 dark:text-slate-400">
+            صفحة نبذة عنا غير متاحة حالياً.
           </p>
         </div>
       </div>
@@ -468,45 +507,145 @@ const About: React.FC = () => {
   }
 
   // ============================================================
-  // Safe Data
+  // Data
   // ============================================================
 
-  const values = getOrderedItems(about.values);
-
-  const stats = getOrderedItems(about.stats);
-
-  const team = getOrderedItems(about.team)
-    .filter(
-      (member) => member.isActive !== false
+  const platformName =
+    text(
+      about.platformNameAr,
+      about.platformName,
+      'منصة ارتقاء'
     );
 
-  const achievements = getOrderedItems(
-    about.achievements
-  ).filter(
-    (achievement) =>
-      achievement.isActive !== false
-  );
+  const description =
+    text(
+      about.platformDescriptionAr,
+      about.platformDescription
+    );
 
-  const testimonials = getOrderedItems(
-    about.testimonials
-  ).filter(
-    (testimonial) =>
-      testimonial.isActive !== false
-  );
+  const values =
+    ordered(about.values);
 
-  const contact = about.contactInfo;
+  const stats =
+    ordered(about.stats);
 
-  const social = contact?.socialMedia;
+  const team =
+    ordered(about.team).filter(
+      (member) =>
+        member.isActive !== false
+    );
 
-  const platformName = getArabicText(
-    about.platformNameAr,
-    about.platformName,
-    'منصة ارتقاء'
-  );
+  const achievements =
+    ordered(
+      about.achievements
+    ).filter(
+      (item) =>
+        item.isActive !== false
+    );
 
-  const platformDescription = getArabicText(
-    about.platformDescriptionAr,
-    about.platformDescription
+  const testimonials =
+    ordered(
+      about.testimonials
+    ).filter(
+      (item) =>
+        item.isActive !== false
+    );
+
+  const contact =
+    about.contactInfo;
+
+  const social =
+    contact?.socialMedia;
+
+  // ============================================================
+  // Tabs
+  // ============================================================
+
+  const tabs = [
+    {
+      id: 'overview',
+      label: 'الرئيسية',
+      icon: <FaInfoCircle />,
+      visible: true,
+    },
+    {
+      id: 'story',
+      label: 'قصتنا',
+      icon: <FaBookOpen />,
+      visible:
+        !!(
+          about.storyAr ||
+          about.story
+        ),
+    },
+    {
+      id: 'vision',
+      label: 'الرؤية والرسالة',
+      icon: <FaEye />,
+      visible:
+        !!(
+          about.visionAr ||
+          about.vision ||
+          about.missionAr ||
+          about.mission
+        ),
+    },
+    {
+      id: 'values',
+      label: 'قيمنا',
+      icon: <FaCheckCircle />,
+      visible:
+        values.length > 0,
+    },
+    {
+      id: 'stats',
+      label: 'الإحصاءات',
+      icon: <FaChartBar />,
+      visible:
+        stats.length > 0,
+    },
+    {
+      id: 'team',
+      label: 'فريق العمل',
+      icon: <FaUsers />,
+      visible:
+        team.length > 0,
+    },
+    {
+      id: 'achievements',
+      label: 'الإنجازات',
+      icon: <FaAward />,
+      visible:
+        achievements.length > 0,
+    },
+    {
+      id: 'testimonials',
+      label: 'الآراء',
+      icon: <FaStar />,
+      visible:
+        testimonials.length > 0,
+    },
+    {
+      id: 'contact',
+      label: 'تواصل معنا',
+      icon: <FaPhone />,
+      visible:
+        !!(
+          contact?.email ||
+          contact?.phone ||
+          contact?.address ||
+          contact?.addressAr ||
+          contact?.workingHours ||
+          contact?.workingHoursAr ||
+          contact?.mapUrl ||
+          (social &&
+            Object.values(
+              social
+            ).some(Boolean))
+        ),
+    },
+  ].filter(
+    (tab) => tab.visible
   );
 
   // ============================================================
@@ -515,16 +654,31 @@ const About: React.FC = () => {
 
   return (
     <main
-      className="min-h-screen bg-gray-50 dark:bg-gray-950 text-gray-900 dark:text-white"
       dir="rtl"
+      className="min-h-screen bg-slate-50 dark:bg-slate-950 text-slate-800 dark:text-slate-100"
     >
+
+      {/* ======================================================
+          Decorative Background
+      ====================================================== */}
+
+      <div className="fixed inset-0 pointer-events-none overflow-hidden -z-0">
+        <div className="absolute -top-32 -right-32 w-80 h-80 rounded-full bg-purple-200/30 dark:bg-purple-900/10 blur-3xl" />
+
+        <div className="absolute top-1/3 -left-32 w-80 h-80 rounded-full bg-indigo-200/20 dark:bg-indigo-900/10 blur-3xl" />
+
+        <div className="absolute bottom-0 right-1/3 w-96 h-96 rounded-full bg-blue-100/20 dark:bg-blue-900/10 blur-3xl" />
+      </div>
+
       {/* ======================================================
           Hero
       ====================================================== */}
 
-      <section className="relative overflow-hidden">
+      <section className="relative">
+
         {about.platformCover ? (
-          <div className="relative h-[360px] md:h-[460px]">
+          <div className="relative h-[300px] md:h-[380px] overflow-hidden">
+
             <img
               src={getAboutFileUrl(
                 about.platformCover
@@ -537,878 +691,982 @@ const About: React.FC = () => {
               }}
             />
 
-            <div className="absolute inset-0 bg-gradient-to-l from-purple-950/90 via-purple-900/60 to-black/30" />
+            <div className="absolute inset-0 bg-gradient-to-l from-slate-950/90 via-purple-950/65 to-slate-950/30" />
 
-            <div className="relative z-10 h-full max-w-7xl mx-auto px-6 flex items-center">
-              <div className="max-w-3xl text-white">
-                <div className="inline-flex items-center gap-2 px-4 py-2 rounded-full bg-white/10 backdrop-blur-md border border-white/20 mb-5">
-                  <FaInfoCircle />
-                  <span>
+            <div className="relative z-10 h-full max-w-6xl mx-auto px-5 flex items-center">
+
+              <div className="max-w-3xl">
+
+                <div className="flex items-center gap-3 mb-4">
+
+                  {about.platformLogo && (
+                    <div className="w-12 h-12 rounded-xl bg-white/95 p-2 shadow-lg">
+                      <img
+                        src={getAboutFileUrl(
+                          about.platformLogo
+                        )}
+                        alt="Logo"
+                        className="w-full h-full object-contain"
+                      />
+                    </div>
+                  )}
+
+                  <span className="text-xs md:text-sm text-white/80">
                     نبذة عن المنصة
                   </span>
                 </div>
 
-                <h1 className="text-4xl md:text-6xl font-extrabold leading-tight mb-5">
+                <h1 className="text-3xl md:text-5xl font-bold text-white leading-tight mb-4">
                   {platformName}
                 </h1>
 
-                {platformDescription && (
-                  <p className="text-lg md:text-xl text-white/90 leading-9 whitespace-pre-line">
-                    {platformDescription}
+                {description && (
+                  <p className="text-sm md:text-base leading-7 text-white/85 max-w-2xl whitespace-pre-line">
+                    {description}
                   </p>
                 )}
+
               </div>
             </div>
           </div>
         ) : (
-          <div className="bg-gradient-to-l from-purple-900 to-purple-700">
-            <div className="max-w-7xl mx-auto px-6 py-20 text-white text-center">
-              <div className="flex justify-center mb-6">
-                {about.platformLogo ? (
+          <div className="bg-gradient-to-l from-purple-950 via-purple-800 to-indigo-800">
+            <div className="max-w-6xl mx-auto px-5 py-14 text-center text-white">
+
+              {about.platformLogo && (
+                <div className="w-20 h-20 rounded-2xl bg-white p-3 mx-auto mb-5 shadow-xl">
                   <img
                     src={getAboutFileUrl(
                       about.platformLogo
                     )}
-                    alt={platformName}
-                    className="w-28 h-28 object-contain rounded-2xl bg-white p-3 shadow-xl"
+                    alt="Logo"
+                    className="w-full h-full object-contain"
                   />
-                ) : (
-                  <div className="w-28 h-28 rounded-2xl bg-white/10 border border-white/20 flex items-center justify-center">
-                    <FaGlobe className="w-14 h-14" />
-                  </div>
-                )}
-              </div>
+                </div>
+              )}
 
-              <h1 className="text-4xl md:text-6xl font-extrabold mb-5">
+              <h1 className="text-3xl md:text-5xl font-bold mb-4">
                 {platformName}
               </h1>
 
-              {platformDescription && (
-                <p className="max-w-4xl mx-auto text-lg md:text-xl text-white/90 leading-9 whitespace-pre-line">
-                  {platformDescription}
+              {description && (
+                <p className="max-w-3xl mx-auto text-sm md:text-base leading-7 text-white/85 whitespace-pre-line">
+                  {description}
                 </p>
               )}
+
             </div>
           </div>
         )}
+
       </section>
 
       {/* ======================================================
-          Main Container
+          Main
       ====================================================== */}
 
-      <div className="max-w-7xl mx-auto px-4 sm:px-6 py-12">
+      <div className="relative z-10 max-w-6xl mx-auto px-4 sm:px-6">
 
         {/* ====================================================
-            Platform Information
+            Tabs
         ==================================================== */}
 
-        <section className="bg-white dark:bg-gray-900 rounded-3xl shadow-sm border border-gray-200 dark:border-gray-800 p-6 md:p-10 mb-10">
+        {tabs.length > 1 && (
+          <div className="relative -mt-6 mb-10">
 
-          <div className="flex flex-col md:flex-row items-center md:items-start gap-6">
+            <div className="bg-white/95 dark:bg-slate-900/95 backdrop-blur-xl rounded-2xl border border-slate-200 dark:border-slate-800 shadow-lg p-2">
 
-            {about.platformLogo && (
-              <div className="flex-shrink-0">
-                <div className="w-28 h-28 md:w-32 md:h-32 rounded-2xl bg-gray-50 dark:bg-gray-800 border border-gray-200 dark:border-gray-700 p-4 flex items-center justify-center">
-                  <img
-                    src={getAboutFileUrl(
-                      about.platformLogo
-                    )}
-                    alt={platformName}
-                    className="max-w-full max-h-full object-contain"
-                    onError={(event) => {
-                      event.currentTarget.style.display =
-                        'none';
-                    }}
-                  />
-                </div>
-              </div>
-            )}
+              <div className="flex gap-1.5 overflow-x-auto scrollbar-thin">
 
-            <div className="flex-1 text-center md:text-right">
-
-              <div className="flex items-center justify-center md:justify-start gap-3 mb-3">
-                <FaBuilding className="text-purple-600 w-6 h-6" />
-
-                <h2 className="text-3xl font-bold">
-                  {platformName}
-                </h2>
-              </div>
-
-              {about.foundedDate && (
-                <p className="text-sm text-gray-500 dark:text-gray-400 mb-5">
-                  تأسست في{' '}
-                  {formatDate(
-                    about.foundedDate
-                  )}
-                </p>
-              )}
-
-              {platformDescription && (
-                <div className="text-gray-600 dark:text-gray-300 leading-9 whitespace-pre-line text-base md:text-lg">
-                  {platformDescription}
-                </div>
-              )}
-
-            </div>
-          </div>
-        </section>
-
-        {/* ====================================================
-            Story
-        ==================================================== */}
-
-        {(about.storyAr || about.story) && (
-          <section className="bg-white dark:bg-gray-900 rounded-3xl shadow-sm border border-gray-200 dark:border-gray-800 p-7 md:p-10 mb-10">
-
-            <div className="flex items-center gap-3 mb-5">
-              <div className="w-12 h-12 rounded-xl bg-purple-100 dark:bg-purple-900/30 flex items-center justify-center">
-                <FaBookOpen className="text-purple-600 w-6 h-6" />
-              </div>
-
-              <div>
-                <h2 className="text-2xl md:text-3xl font-bold">
-                  قصتنا
-                </h2>
-
-                <p className="text-sm text-gray-500 dark:text-gray-400">
-                  من نحن وكيف بدأت رحلتنا
-                </p>
-              </div>
-            </div>
-
-            <p className="text-gray-600 dark:text-gray-300 leading-9 whitespace-pre-line text-lg">
-              {getArabicText(
-                about.storyAr,
-                about.story
-              )}
-            </p>
-
-          </section>
-        )}
-
-        {/* ====================================================
-            Vision & Mission
-        ==================================================== */}
-
-        {(about.visionAr ||
-          about.vision ||
-          about.missionAr ||
-          about.mission) && (
-          <section className="grid grid-cols-1 lg:grid-cols-2 gap-6 mb-10">
-
-            {(about.visionAr ||
-              about.vision) && (
-              <div className="bg-white dark:bg-gray-900 rounded-3xl shadow-sm border border-gray-200 dark:border-gray-800 p-7 md:p-9">
-
-                <div className="flex items-center gap-4 mb-5">
-                  <div className="w-14 h-14 rounded-2xl bg-blue-100 dark:bg-blue-900/30 flex items-center justify-center">
-                    <FaEye className="text-blue-600 w-7 h-7" />
-                  </div>
-
-                  <h2 className="text-2xl font-bold">
-                    رؤيتنا
-                  </h2>
-                </div>
-
-                <p className="text-gray-600 dark:text-gray-300 leading-9 whitespace-pre-line text-lg">
-                  {getArabicText(
-                    about.visionAr,
-                    about.vision
-                  )}
-                </p>
-              </div>
-            )}
-
-            {(about.missionAr ||
-              about.mission) && (
-              <div className="bg-white dark:bg-gray-900 rounded-3xl shadow-sm border border-gray-200 dark:border-gray-800 p-7 md:p-9">
-
-                <div className="flex items-center gap-4 mb-5">
-                  <div className="w-14 h-14 rounded-2xl bg-green-100 dark:bg-green-900/30 flex items-center justify-center">
-                    <FaBullseye className="text-green-600 w-7 h-7" />
-                  </div>
-
-                  <h2 className="text-2xl font-bold">
-                    رسالتنا
-                  </h2>
-                </div>
-
-                <p className="text-gray-600 dark:text-gray-300 leading-9 whitespace-pre-line text-lg">
-                  {getArabicText(
-                    about.missionAr,
-                    about.mission
-                  )}
-                </p>
-              </div>
-            )}
-
-          </section>
-        )}
-
-        {/* ====================================================
-            Values
-        ==================================================== */}
-
-        {values.length > 0 && (
-          <section className="mb-12">
-
-            <div className="text-center mb-8">
-              <div className="inline-flex items-center gap-3">
-                <FaCheckCircle className="text-purple-600 w-7 h-7" />
-
-                <h2 className="text-3xl font-bold">
-                  قيمنا الجوهرية
-                </h2>
-              </div>
-
-              <p className="text-gray-500 dark:text-gray-400 mt-2">
-                المبادئ التي توجه عمل منصة ارتقاء
-              </p>
-            </div>
-
-            <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-5">
-
-              {values.map(
-                (value, index) => (
-                  <article
-                    key={`${value.titleAr || value.title || 'value'}-${index}`}
-                    className="bg-white dark:bg-gray-900 rounded-2xl p-6 border border-gray-200 dark:border-gray-800 shadow-sm hover:shadow-lg transition"
-                  >
-                    <div className="w-14 h-14 rounded-2xl bg-purple-100 dark:bg-purple-900/30 flex items-center justify-center text-2xl mb-5">
-                      {value.icon || '⭐'}
-                    </div>
-
-                    <h3 className="text-xl font-bold mb-3">
-                      {getArabicText(
-                        value.titleAr,
-                        value.title,
-                        'قيمة'
-                      )}
-                    </h3>
-
-                    {(value.descriptionAr ||
-                      value.description) && (
-                      <p className="text-gray-500 dark:text-gray-400 leading-7">
-                        {getArabicText(
-                          value.descriptionAr,
-                          value.description
-                        )}
-                      </p>
-                    )}
-                  </article>
-                )
-              )}
-
-            </div>
-          </section>
-        )}
-
-        {/* ====================================================
-            Statistics
-        ==================================================== */}
-
-        {stats.length > 0 && (
-          <section className="mb-12">
-
-            <div className="text-center mb-8">
-              <h2 className="text-3xl font-bold">
-                أرقام وإحصاءات
-              </h2>
-
-              <p className="text-gray-500 dark:text-gray-400 mt-2">
-                مؤشرات مختارة عن المنصة
-              </p>
-            </div>
-
-            <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
-
-              {stats.map(
-                (stat, index) => {
-                  const icon =
-                    stat.icon === 'users'
-                      ? <FaUsers />
-                      : stat.icon === 'award'
-                      ? <FaAward />
-                      : stat.icon === 'building'
-                      ? <FaBuilding />
-                      : stat.icon === 'globe'
-                      ? <FaGlobe />
-                      : <FaChartBar />;
+                {tabs.map((tab) => {
+                  const active =
+                    activeTab ===
+                    tab.id;
 
                   return (
-                    <div
-                      key={`${stat.labelAr || stat.label || 'stat'}-${index}`}
-                      className="bg-white dark:bg-gray-900 rounded-2xl p-6 text-center border border-gray-200 dark:border-gray-800 shadow-sm"
+                    <button
+                      key={tab.id}
+                      type="button"
+                      onClick={() =>
+                        setActiveTab(
+                          tab.id
+                        )
+                      }
+                      className={`
+                        flex-shrink-0
+                        inline-flex
+                        items-center
+                        justify-center
+                        gap-2
+                        px-4
+                        py-2.5
+                        rounded-xl
+                        text-xs
+                        md:text-sm
+                        font-medium
+                        transition-all
+                        duration-200
+                        ${
+                          active
+                            ? 'bg-purple-600 text-white shadow-md'
+                            : 'text-slate-600 dark:text-slate-300 hover:bg-slate-100 dark:hover:bg-slate-800'
+                        }
+                      `}
                     >
-                      <div className="w-14 h-14 rounded-full bg-purple-100 dark:bg-purple-900/30 flex items-center justify-center text-purple-600 text-xl mx-auto mb-4">
-                        {icon}
-                      </div>
+                      <span className="text-sm">
+                        {tab.icon}
+                      </span>
 
-                      <div className="text-3xl md:text-4xl font-extrabold mb-2">
-                        {stat.value ?? '—'}
-                      </div>
-
-                      <div className="text-sm text-gray-500 dark:text-gray-400">
-                        {getArabicText(
-                          stat.labelAr,
-                          stat.label,
-                          'إحصائية'
-                        )}
-                      </div>
-                    </div>
+                      {tab.label}
+                    </button>
                   );
-                }
-              )}
+                })}
+
+              </div>
+            </div>
+          </div>
+        )}
+
+        {/* ====================================================
+            OVERVIEW
+        ==================================================== */}
+
+        {activeTab ===
+          'overview' && (
+          <section className="pb-12">
+
+            <div className="grid grid-cols-1 md:grid-cols-3 gap-5">
+
+              {/* Platform Card */}
+
+              <div className="md:col-span-2 bg-white dark:bg-slate-900 rounded-2xl border border-slate-200 dark:border-slate-800 p-6 shadow-sm">
+
+                <div className="flex items-center gap-3 mb-5">
+
+                  <div className="w-10 h-10 rounded-xl bg-purple-100 dark:bg-purple-900/30 flex items-center justify-center">
+                    <FaBuilding className="text-purple-600" />
+                  </div>
+
+                  <div>
+                    <h2 className="text-lg font-bold">
+                      {platformName}
+                    </h2>
+
+                    {about.foundedDate && (
+                      <p className="text-xs text-slate-400 mt-1">
+                        تأسست في{' '}
+                        {formatDate(
+                          about.foundedDate
+                        )}
+                      </p>
+                    )}
+                  </div>
+
+                </div>
+
+                <div className="h-px bg-slate-100 dark:bg-slate-800 mb-5" />
+
+                <div className="flex items-start gap-4">
+
+                  {about.platformLogo && (
+                    <img
+                      src={getAboutFileUrl(
+                        about.platformLogo
+                      )}
+                      alt={platformName}
+                      className="w-16 h-16 rounded-xl object-contain bg-slate-50 dark:bg-slate-800 p-2 flex-shrink-0"
+                    />
+                  )}
+
+                  <div className="text-sm text-slate-600 dark:text-slate-300 leading-7">
+                    هذه المنصة الرقمية تجمع الخدمات والمحتوى الأكاديمي في بيئة منظمة تساعد المستخدمين على الوصول إلى المعرفة والخدمات المتخصصة بصورة واضحة واحترافية.
+                  </div>
+
+                </div>
+
+              </div>
+
+              {/* Quick Info */}
+
+              <div className="bg-gradient-to-br from-purple-600 to-indigo-700 rounded-2xl p-6 text-white shadow-sm">
+
+                <FaRocket className="w-7 h-7 mb-5 opacity-90" />
+
+                <h3 className="text-lg font-bold mb-3">
+                  ارتقاء | IRTEQA
+                </h3>
+
+                <p className="text-xs leading-6 text-white/80">
+                  تجربة أكاديمية رقمية تجمع المعرفة والخدمات والتقنيات الحديثة في بيئة واحدة.
+                </p>
+
+                {about.isPublished && (
+                  <div className="mt-6 flex items-center gap-2 text-xs">
+                    <FaCheckCircle />
+                    <span>
+                      المنصة منشورة ومتاحة
+                    </span>
+                  </div>
+                )}
+
+              </div>
 
             </div>
+
           </section>
         )}
 
         {/* ====================================================
-            Team
+            STORY
         ==================================================== */}
 
-        {team.length > 0 && (
-          <section className="mb-12">
+        {activeTab ===
+          'story' &&
+          (about.storyAr ||
+            about.story) && (
+            <section className="pb-12">
 
-            <div className="text-center mb-8">
-              <div className="inline-flex items-center gap-3">
-                <FaUsers className="text-purple-600 w-7 h-7" />
+              <div className="bg-white dark:bg-slate-900 rounded-2xl border border-slate-200 dark:border-slate-800 p-6 md:p-8 shadow-sm">
 
-                <h2 className="text-3xl font-bold">
-                  فريق العمل
-                </h2>
+                <div className="flex items-center gap-3 mb-6">
+
+                  <div className="w-11 h-11 rounded-xl bg-purple-100 dark:bg-purple-900/30 flex items-center justify-center">
+                    <FaBookOpen className="text-purple-600" />
+                  </div>
+
+                  <div>
+                    <h2 className="text-xl font-bold">
+                      قصتنا
+                    </h2>
+
+                    <p className="text-xs text-slate-400 mt-1">
+                      رحلتنا وهويتنا
+                    </p>
+                  </div>
+
+                </div>
+
+                <p className="text-sm text-slate-600 dark:text-slate-300 leading-8 whitespace-pre-line">
+                  {text(
+                    about.storyAr,
+                    about.story
+                  )}
+                </p>
+
               </div>
-            </div>
 
-            <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-6">
+            </section>
+          )}
 
-              {team.map(
-                (member, index) => (
-                  <article
-                    key={`${member.nameAr || member.name || 'member'}-${index}`}
-                    className="bg-white dark:bg-gray-900 rounded-3xl p-7 border border-gray-200 dark:border-gray-800 shadow-sm text-center"
-                  >
+        {/* ====================================================
+            VISION / MISSION
+        ==================================================== */}
 
-                    {member.imageId ? (
-                      <img
-                        src={getAboutFileUrl(
-                          member.imageId
-                        )}
-                        alt={getArabicText(
-                          member.nameAr,
-                          member.name,
-                          'عضو الفريق'
-                        )}
-                        className="w-28 h-28 rounded-full object-cover mx-auto mb-5 border-4 border-purple-100 dark:border-purple-900/30"
-                      />
-                    ) : (
-                      <div className="w-28 h-28 rounded-full bg-purple-100 dark:bg-purple-900/30 text-purple-600 flex items-center justify-center text-4xl font-bold mx-auto mb-5">
-                        {getArabicText(
-                          member.nameAr,
-                          member.name,
-                          '?'
-                        ).charAt(0)}
-                      </div>
+        {activeTab ===
+          'vision' && (
+          <section className="pb-12">
+
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-5">
+
+              {(about.visionAr ||
+                about.vision) && (
+                <div className="bg-white dark:bg-slate-900 rounded-2xl border border-slate-200 dark:border-slate-800 p-6 shadow-sm">
+
+                  <div className="w-11 h-11 rounded-xl bg-blue-100 dark:bg-blue-900/30 flex items-center justify-center mb-5">
+                    <FaEye className="text-blue-600" />
+                  </div>
+
+                  <h2 className="text-lg font-bold mb-3">
+                    رؤيتنا
+                  </h2>
+
+                  <p className="text-sm text-slate-600 dark:text-slate-300 leading-7 whitespace-pre-line">
+                    {text(
+                      about.visionAr,
+                      about.vision
                     )}
+                  </p>
 
-                    <h3 className="text-xl font-bold">
-                      {getArabicText(
-                        member.nameAr,
-                        member.name,
-                        'عضو الفريق'
-                      )}
-                    </h3>
+                </div>
+              )}
 
-                    {(member.positionAr ||
-                      member.position) && (
-                      <p className="text-purple-600 font-medium mt-1">
-                        {getArabicText(
-                          member.positionAr,
-                          member.position
-                        )}
-                      </p>
+              {(about.missionAr ||
+                about.mission) && (
+                <div className="bg-white dark:bg-slate-900 rounded-2xl border border-slate-200 dark:border-slate-800 p-6 shadow-sm">
+
+                  <div className="w-11 h-11 rounded-xl bg-green-100 dark:bg-green-900/30 flex items-center justify-center mb-5">
+                    <FaBullseye className="text-green-600" />
+                  </div>
+
+                  <h2 className="text-lg font-bold mb-3">
+                    رسالتنا
+                  </h2>
+
+                  <p className="text-sm text-slate-600 dark:text-slate-300 leading-7 whitespace-pre-line">
+                    {text(
+                      about.missionAr,
+                      about.mission
                     )}
+                  </p>
 
-                    {(member.bioAr ||
-                      member.bio) && (
-                      <p className="text-gray-500 dark:text-gray-400 leading-7 mt-4">
-                        {getArabicText(
-                          member.bioAr,
-                          member.bio
-                        )}
-                      </p>
-                    )}
-
-                    {(member.email ||
-                      member.linkedin ||
-                      member.twitter) && (
-                      <div className="flex justify-center gap-4 mt-5">
-
-                        {member.email && (
-                          <a
-                            href={`mailto:${member.email}`}
-                            className="text-gray-400 hover:text-purple-600 transition"
-                            aria-label="Email"
-                          >
-                            <FaEnvelope />
-                          </a>
-                        )}
-
-                        {member.linkedin && (
-                          <a
-                            href={member.linkedin}
-                            target="_blank"
-                            rel="noopener noreferrer"
-                            className="text-gray-400 hover:text-blue-600 transition"
-                            aria-label="LinkedIn"
-                          >
-                            <FaLinkedin />
-                          </a>
-                        )}
-
-                        {member.twitter && (
-                          <a
-                            href={member.twitter}
-                            target="_blank"
-                            rel="noopener noreferrer"
-                            className="text-gray-400 hover:text-blue-400 transition"
-                            aria-label="Twitter"
-                          >
-                            <FaTwitter />
-                          </a>
-                        )}
-
-                      </div>
-                    )}
-
-                  </article>
-                )
+                </div>
               )}
 
             </div>
+
           </section>
         )}
 
         {/* ====================================================
-            Achievements
+            VALUES
         ==================================================== */}
 
-        {achievements.length > 0 && (
-          <section className="mb-12">
+        {activeTab ===
+          'values' &&
+          values.length > 0 && (
+            <section className="pb-12">
 
-            <div className="text-center mb-8">
-              <div className="inline-flex items-center gap-3">
-                <FaAward className="text-yellow-500 w-7 h-7" />
+              <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
 
-                <h2 className="text-3xl font-bold">
-                  إنجازاتنا
-                </h2>
-              </div>
-            </div>
+                {values.map(
+                  (value, index) => (
+                    <div
+                      key={`${value.titleAr || value.title || 'value'}-${index}`}
+                      className="bg-white dark:bg-slate-900 rounded-2xl border border-slate-200 dark:border-slate-800 p-5 shadow-sm hover:shadow-md transition"
+                    >
 
-            <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+                      <div className="w-11 h-11 rounded-xl bg-purple-100 dark:bg-purple-900/30 flex items-center justify-center text-xl mb-4">
+                        {value.icon ||
+                          <FaCheckCircle className="text-purple-600" />}
+                      </div>
 
-              {achievements.map(
-                (achievement, index) => (
-                  <article
-                    key={`${achievement.titleAr || achievement.title || 'achievement'}-${index}`}
-                    className="bg-white dark:bg-gray-900 rounded-3xl p-6 border border-gray-200 dark:border-gray-800 shadow-sm"
-                  >
+                      <h3 className="text-sm font-bold mb-2">
+                        {text(
+                          value.titleAr,
+                          value.title,
+                          'قيمة'
+                        )}
+                      </h3>
 
-                    <div className="flex flex-col sm:flex-row gap-5">
-
-                      {achievement.imageId && (
-                        <img
-                          src={getAboutFileUrl(
-                            achievement.imageId
+                      {(value.descriptionAr ||
+                        value.description) && (
+                        <p className="text-xs text-slate-500 dark:text-slate-400 leading-6">
+                          {text(
+                            value.descriptionAr,
+                            value.description
                           )}
-                          alt={getArabicText(
-                            achievement.titleAr,
-                            achievement.title,
-                            'إنجاز'
-                          )}
-                          className="w-full sm:w-28 h-40 sm:h-28 object-cover rounded-2xl"
-                        />
+                        </p>
                       )}
 
-                      <div className="flex-1">
+                    </div>
+                  )
+                )}
 
-                        <div className="flex items-start gap-3">
-                          <FaAward className="text-yellow-500 mt-1 flex-shrink-0" />
+              </div>
 
-                          <h3 className="text-xl font-bold">
-                            {getArabicText(
-                              achievement.titleAr,
-                              achievement.title,
-                              'إنجاز'
-                            )}
-                          </h3>
+            </section>
+          )}
+
+        {/* ====================================================
+            STATS
+        ==================================================== */}
+
+        {activeTab ===
+          'stats' &&
+          stats.length > 0 && (
+            <section className="pb-12">
+
+              <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
+
+                {stats.map(
+                  (stat, index) => {
+
+                    let icon =
+                      <FaChartBar />;
+
+                    if (
+                      stat.icon ===
+                      'users'
+                    ) {
+                      icon =
+                        <FaUsers />;
+                    } else if (
+                      stat.icon ===
+                      'award'
+                    ) {
+                      icon =
+                        <FaAward />;
+                    } else if (
+                      stat.icon ===
+                      'building'
+                    ) {
+                      icon =
+                        <FaBuilding />;
+                    } else if (
+                      stat.icon ===
+                      'globe'
+                    ) {
+                      icon =
+                        <FaGlobe />;
+                    }
+
+                    return (
+                      <div
+                        key={`${stat.labelAr || stat.label || 'stat'}-${index}`}
+                        className="bg-white dark:bg-slate-900 rounded-2xl border border-slate-200 dark:border-slate-800 p-5 text-center shadow-sm"
+                      >
+
+                        <div className="w-11 h-11 rounded-xl bg-purple-100 dark:bg-purple-900/30 flex items-center justify-center mx-auto mb-3 text-purple-600">
+                          {icon}
                         </div>
 
-                        {(achievement.descriptionAr ||
-                          achievement.description) && (
-                          <p className="text-gray-500 dark:text-gray-400 leading-7 mt-3">
-                            {getArabicText(
-                              achievement.descriptionAr,
-                              achievement.description
-                            )}
-                          </p>
-                        )}
+                        <div className="text-2xl font-bold">
+                          {stat.value ??
+                            '—'}
+                        </div>
 
-                        {achievement.date && (
-                          <p className="text-sm text-gray-400 mt-4">
-                            {formatDate(
-                              achievement.date
-                            )}
-                          </p>
-                        )}
+                        <div className="text-xs text-slate-500 dark:text-slate-400 mt-1">
+                          {text(
+                            stat.labelAr,
+                            stat.label,
+                            'إحصائية'
+                          )}
+                        </div>
 
                       </div>
-                    </div>
+                    );
+                  }
+                )}
 
-                  </article>
-                )
-              )}
-
-            </div>
-          </section>
-        )}
-
-        {/* ====================================================
-            Testimonials
-        ==================================================== */}
-
-        {testimonials.length > 0 && (
-          <section className="mb-12">
-
-            <div className="text-center mb-8">
-              <div className="inline-flex items-center gap-3">
-                <FaStar className="text-yellow-400 w-7 h-7" />
-
-                <h2 className="text-3xl font-bold">
-                  آراء عملائنا
-                </h2>
               </div>
 
-              <p className="text-gray-500 dark:text-gray-400 mt-2">
-                تجارب وانطباعات مستخدمي المنصة
-              </p>
-            </div>
+            </section>
+          )}
 
-            <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+        {/* ====================================================
+            TEAM
+        ==================================================== */}
 
-              {testimonials.map(
-                (testimonial, index) => (
-                  <article
-                    key={`${testimonial.nameAr || testimonial.name || 'testimonial'}-${index}`}
-                    className="bg-white dark:bg-gray-900 rounded-3xl p-7 border border-gray-200 dark:border-gray-800 shadow-sm"
-                  >
+        {activeTab ===
+          'team' &&
+          team.length > 0 && (
+            <section className="pb-12">
 
-                    <div className="flex items-center gap-4 mb-5">
+              <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-5">
 
-                      {testimonial.imageId ? (
+                {team.map(
+                  (member, index) => (
+                    <article
+                      key={`${member.nameAr || member.name || 'member'}-${index}`}
+                      className="bg-white dark:bg-slate-900 rounded-2xl border border-slate-200 dark:border-slate-800 p-6 shadow-sm text-center"
+                    >
+
+                      {member.imageId ? (
                         <img
                           src={getAboutFileUrl(
-                            testimonial.imageId
+                            member.imageId
                           )}
-                          alt={getArabicText(
-                            testimonial.nameAr,
-                            testimonial.name,
-                            'عميل'
+                          alt={text(
+                            member.nameAr,
+                            member.name,
+                            'عضو الفريق'
                           )}
-                          className="w-16 h-16 rounded-full object-cover"
+                          className="w-24 h-24 rounded-full object-cover mx-auto mb-4 border-4 border-purple-50 dark:border-purple-900/20"
                         />
                       ) : (
-                        <div className="w-16 h-16 rounded-full bg-purple-100 dark:bg-purple-900/30 text-purple-600 flex items-center justify-center text-xl font-bold">
-                          {getArabicText(
-                            testimonial.nameAr,
-                            testimonial.name,
+                        <div className="w-24 h-24 rounded-full bg-purple-100 dark:bg-purple-900/30 text-purple-600 flex items-center justify-center text-2xl font-bold mx-auto mb-4">
+                          {text(
+                            member.nameAr,
+                            member.name,
                             '?'
                           ).charAt(0)}
                         </div>
                       )}
 
-                      <div>
-                        <h3 className="font-bold text-lg">
-                          {getArabicText(
-                            testimonial.nameAr,
-                            testimonial.name,
-                            'عميل'
-                          )}
-                        </h3>
+                      <h3 className="text-base font-bold">
+                        {text(
+                          member.nameAr,
+                          member.name,
+                          'عضو الفريق'
+                        )}
+                      </h3>
 
-                        {(testimonial.positionAr ||
-                          testimonial.position) && (
-                          <p className="text-sm text-gray-500 dark:text-gray-400">
-                            {getArabicText(
-                              testimonial.positionAr,
-                              testimonial.position
+                      {(member.positionAr ||
+                        member.position) && (
+                        <p className="text-xs text-purple-600 mt-1">
+                          {text(
+                            member.positionAr,
+                            member.position
+                          )}
+                        </p>
+                      )}
+
+                      {(member.bioAr ||
+                        member.bio) && (
+                        <p className="text-xs text-slate-500 dark:text-slate-400 leading-6 mt-3">
+                          {text(
+                            member.bioAr,
+                            member.bio
+                          )}
+                        </p>
+                      )}
+
+                      {(member.email ||
+                        member.linkedin ||
+                        member.twitter) && (
+                        <div className="flex justify-center gap-4 mt-4">
+
+                          {member.email && (
+                            <a
+                              href={`mailto:${member.email}`}
+                              className="text-slate-400 hover:text-purple-600"
+                            >
+                              <FaEnvelope />
+                            </a>
+                          )}
+
+                          {member.linkedin && (
+                            <a
+                              href={
+                                member.linkedin
+                              }
+                              target="_blank"
+                              rel="noopener noreferrer"
+                              className="text-slate-400 hover:text-blue-600"
+                            >
+                              <FaLinkedin />
+                            </a>
+                          )}
+
+                          {member.twitter && (
+                            <a
+                              href={
+                                member.twitter
+                              }
+                              target="_blank"
+                              rel="noopener noreferrer"
+                              className="text-slate-400 hover:text-sky-500"
+                            >
+                              <FaTwitter />
+                            </a>
+                          )}
+
+                        </div>
+                      )}
+
+                    </article>
+                  )
+                )}
+
+              </div>
+
+            </section>
+          )}
+
+        {/* ====================================================
+            ACHIEVEMENTS
+        ==================================================== */}
+
+        {activeTab ===
+          'achievements' &&
+          achievements.length > 0 && (
+            <section className="pb-12">
+
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-5">
+
+                {achievements.map(
+                  (
+                    achievement,
+                    index
+                  ) => (
+                    <article
+                      key={`${achievement.titleAr || achievement.title || 'achievement'}-${index}`}
+                      className="bg-white dark:bg-slate-900 rounded-2xl border border-slate-200 dark:border-slate-800 p-5 shadow-sm"
+                    >
+
+                      <div className="flex gap-4">
+
+                        {achievement.imageId && (
+                          <img
+                            src={getAboutFileUrl(
+                              achievement.imageId
                             )}
-                          </p>
+                            alt={text(
+                              achievement.titleAr,
+                              achievement.title,
+                              'إنجاز'
+                            )}
+                            className="w-20 h-20 rounded-xl object-cover flex-shrink-0"
+                          />
+                        )}
+
+                        <div className="flex-1">
+
+                          <div className="flex items-center gap-2 mb-2">
+                            <FaAward className="text-amber-500" />
+
+                            <h3 className="text-sm font-bold">
+                              {text(
+                                achievement.titleAr,
+                                achievement.title,
+                                'إنجاز'
+                              )}
+                            </h3>
+                          </div>
+
+                          {(achievement.descriptionAr ||
+                            achievement.description) && (
+                            <p className="text-xs text-slate-500 dark:text-slate-400 leading-6">
+                              {text(
+                                achievement.descriptionAr,
+                                achievement.description
+                              )}
+                            </p>
+                          )}
+
+                          {achievement.date && (
+                            <p className="text-[11px] text-slate-400 mt-3">
+                              {formatDate(
+                                achievement.date
+                              )}
+                            </p>
+                          )}
+
+                        </div>
+
+                      </div>
+
+                    </article>
+                  )
+                )}
+
+              </div>
+
+            </section>
+          )}
+
+        {/* ====================================================
+            TESTIMONIALS
+        ==================================================== */}
+
+        {activeTab ===
+          'testimonials' &&
+          testimonials.length > 0 && (
+            <section className="pb-12">
+
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-5">
+
+                {testimonials.map(
+                  (
+                    testimonial,
+                    index
+                  ) => (
+                    <article
+                      key={`${testimonial.nameAr || testimonial.name || 'testimonial'}-${index}`}
+                      className="relative bg-white dark:bg-slate-900 rounded-2xl border border-slate-200 dark:border-slate-800 p-6 shadow-sm"
+                    >
+
+                      <FaQuoteRight className="absolute top-5 left-5 text-purple-100 dark:text-purple-900/30 w-8 h-8" />
+
+                      <div className="flex items-center gap-3 mb-4">
+
+                        {testimonial.imageId ? (
+                          <img
+                            src={getAboutFileUrl(
+                              testimonial.imageId
+                            )}
+                            alt={text(
+                              testimonial.nameAr,
+                              testimonial.name,
+                              'عميل'
+                            )}
+                            className="w-12 h-12 rounded-full object-cover"
+                          />
+                        ) : (
+                          <div className="w-12 h-12 rounded-full bg-purple-100 dark:bg-purple-900/30 text-purple-600 flex items-center justify-center font-bold">
+                            {text(
+                              testimonial.nameAr,
+                              testimonial.name,
+                              '?'
+                            ).charAt(0)}
+                          </div>
+                        )}
+
+                        <div>
+                          <h3 className="text-sm font-bold">
+                            {text(
+                              testimonial.nameAr,
+                              testimonial.name,
+                              'عميل'
+                            )}
+                          </h3>
+
+                          {(testimonial.positionAr ||
+                            testimonial.position) && (
+                            <p className="text-[11px] text-slate-400 mt-0.5">
+                              {text(
+                                testimonial.positionAr,
+                                testimonial.position
+                              )}
+                            </p>
+                          )}
+                        </div>
+
+                      </div>
+
+                      <div className="flex gap-1 mb-3">
+                        {renderStars(
+                          testimonial.rating
                         )}
                       </div>
 
-                    </div>
-
-                    <div className="flex gap-1 mb-4">
-                      {renderStars(
-                        testimonial.rating
+                      {(testimonial.contentAr ||
+                        testimonial.content) && (
+                        <p className="text-xs text-slate-600 dark:text-slate-300 leading-7 whitespace-pre-line">
+                          “
+                          {text(
+                            testimonial.contentAr,
+                            testimonial.content
+                          )}
+                          ”
+                        </p>
                       )}
-                    </div>
 
-                    {(testimonial.contentAr ||
-                      testimonial.content) && (
-                      <blockquote className="text-gray-600 dark:text-gray-300 leading-8 whitespace-pre-line">
-                        “
-                        {getArabicText(
-                          testimonial.contentAr,
-                          testimonial.content
-                        )}
-                        ”
-                      </blockquote>
-                    )}
+                    </article>
+                  )
+                )}
 
-                  </article>
-                )
-              )}
+              </div>
 
-            </div>
-          </section>
-        )}
+            </section>
+          )}
 
         {/* ====================================================
-            Contact
+            CONTACT
         ==================================================== */}
 
-        {contact &&
-          (
-            contact.email ||
-            contact.phone ||
-            contact.address ||
-            contact.addressAr ||
-            contact.workingHours ||
-            contact.workingHoursAr ||
-            contact.mapUrl
-          ) && (
-            <section className="bg-white dark:bg-gray-900 rounded-3xl shadow-sm border border-gray-200 dark:border-gray-800 p-7 md:p-10 mb-8">
+        {activeTab ===
+          'contact' && (
+          <section className="pb-12">
 
-              <div className="text-center mb-8">
-                <div className="inline-flex items-center gap-3">
-                  <FaPhone className="text-purple-600 w-7 h-7" />
+            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
 
-                  <h2 className="text-3xl font-bold">
-                    تواصل معنا
-                  </h2>
+              {contact?.email && (
+                <div className="bg-white dark:bg-slate-900 rounded-2xl border border-slate-200 dark:border-slate-800 p-5 text-center shadow-sm">
+
+                  <FaEnvelope className="text-purple-600 w-6 h-6 mx-auto mb-3" />
+
+                  <p className="text-xs text-slate-400 mb-1">
+                    البريد الإلكتروني
+                  </p>
+
+                  <a
+                    href={`mailto:${contact.email}`}
+                    className="text-sm font-medium hover:text-purple-600 break-all"
+                  >
+                    {contact.email}
+                  </a>
+
                 </div>
-              </div>
+              )}
 
-              <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
+              {contact?.phone && (
+                <div className="bg-white dark:bg-slate-900 rounded-2xl border border-slate-200 dark:border-slate-800 p-5 text-center shadow-sm">
 
-                {contact.email && (
-                  <div className="text-center p-6 rounded-2xl bg-gray-50 dark:bg-gray-800">
-                    <FaEnvelope className="w-8 h-8 text-purple-600 mx-auto mb-3" />
+                  <FaPhone className="text-purple-600 w-6 h-6 mx-auto mb-3" />
 
-                    <p className="text-sm text-gray-500 dark:text-gray-400 mb-1">
-                      البريد الإلكتروني
-                    </p>
+                  <p className="text-xs text-slate-400 mb-1">
+                    رقم الهاتف
+                  </p>
 
-                    <a
-                      href={`mailto:${contact.email}`}
-                      className="font-semibold hover:text-purple-600 break-all"
-                    >
-                      {contact.email}
-                    </a>
-                  </div>
-                )}
+                  <a
+                    href={`tel:${contact.phone}`}
+                    className="text-sm font-medium"
+                  >
+                    {contact.phone}
+                  </a>
 
-                {contact.phone && (
-                  <div className="text-center p-6 rounded-2xl bg-gray-50 dark:bg-gray-800">
-                    <FaPhone className="w-8 h-8 text-purple-600 mx-auto mb-3" />
+                </div>
+              )}
 
-                    <p className="text-sm text-gray-500 dark:text-gray-400 mb-1">
-                      رقم الهاتف
-                    </p>
+              {(contact?.address ||
+                contact?.addressAr) && (
+                <div className="bg-white dark:bg-slate-900 rounded-2xl border border-slate-200 dark:border-slate-800 p-5 text-center shadow-sm">
 
-                    <a
-                      href={`tel:${contact.phone}`}
-                      className="font-semibold"
-                    >
-                      {contact.phone}
-                    </a>
-                  </div>
-                )}
+                  <FaMapMarkerAlt className="text-purple-600 w-6 h-6 mx-auto mb-3" />
 
-                {(contact.address ||
-                  contact.addressAr) && (
-                  <div className="text-center p-6 rounded-2xl bg-gray-50 dark:bg-gray-800">
-                    <FaMapMarkerAlt className="w-8 h-8 text-purple-600 mx-auto mb-3" />
+                  <p className="text-xs text-slate-400 mb-1">
+                    العنوان
+                  </p>
 
-                    <p className="text-sm text-gray-500 dark:text-gray-400 mb-1">
-                      العنوان
-                    </p>
+                  <p className="text-sm font-medium leading-6">
+                    {text(
+                      contact.addressAr,
+                      contact.address
+                    )}
+                  </p>
 
-                    <p className="font-semibold leading-7">
-                      {getArabicText(
-                        contact.addressAr,
-                        contact.address
-                      )}
-                    </p>
-                  </div>
-                )}
+                </div>
+              )}
 
-              </div>
+              {(contact?.workingHours ||
+                contact?.workingHoursAr) && (
+                <div className="bg-white dark:bg-slate-900 rounded-2xl border border-slate-200 dark:border-slate-800 p-5 text-center shadow-sm">
 
-              {(contact.workingHours ||
-                contact.workingHoursAr) && (
-                <div className="mt-6 pt-6 border-t border-gray-200 dark:border-gray-800 text-center">
-                  <FaClock className="w-7 h-7 text-purple-600 mx-auto mb-2" />
+                  <FaClock className="text-purple-600 w-6 h-6 mx-auto mb-3" />
 
-                  <p className="text-sm text-gray-500 dark:text-gray-400">
+                  <p className="text-xs text-slate-400 mb-1">
                     ساعات العمل
                   </p>
 
-                  <p className="font-semibold mt-1">
-                    {getArabicText(
+                  <p className="text-sm font-medium leading-6">
+                    {text(
                       contact.workingHoursAr,
                       contact.workingHours
                     )}
                   </p>
+
                 </div>
               )}
 
-              {contact.mapUrl && (
-                <div className="text-center mt-6">
-                  <a
-                    href={contact.mapUrl}
-                    target="_blank"
-                    rel="noopener noreferrer"
-                    className="inline-flex items-center gap-2 px-6 py-3 rounded-xl bg-purple-600 text-white font-semibold hover:bg-purple-700 transition"
-                  >
-                    <FaMapMarkerAlt />
-                    عرض الموقع على الخريطة
-                    <FaExternalLinkAlt className="w-3 h-3" />
-                  </a>
+            </div>
+
+            {/* Map */}
+
+            {contact?.mapUrl && (
+              <div className="text-center mt-6">
+
+                <a
+                  href={contact.mapUrl}
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  className="inline-flex items-center gap-2 px-5 py-2.5 rounded-xl bg-purple-600 text-white text-sm font-medium hover:bg-purple-700 transition"
+                >
+                  <FaMapMarkerAlt />
+                  عرض الموقع على الخريطة
+                  <FaExternalLinkAlt className="w-3 h-3" />
+                </a>
+
+              </div>
+            )}
+
+            {/* Social */}
+
+            {social &&
+              Object.values(
+                social
+              ).some(Boolean) && (
+                <div className="mt-8">
+
+                  <h3 className="text-sm font-bold text-center mb-4">
+                    تابعنا على منصات التواصل
+                  </h3>
+
+                  <div className="flex justify-center gap-3">
+
+                    {social.facebook && (
+                      <a
+                        href={
+                          social.facebook
+                        }
+                        target="_blank"
+                        rel="noopener noreferrer"
+                        className="w-10 h-10 rounded-xl bg-blue-600 text-white flex items-center justify-center hover:scale-105 transition"
+                      >
+                        <FaFacebook />
+                      </a>
+                    )}
+
+                    {social.twitter && (
+                      <a
+                        href={
+                          social.twitter
+                        }
+                        target="_blank"
+                        rel="noopener noreferrer"
+                        className="w-10 h-10 rounded-xl bg-sky-500 text-white flex items-center justify-center hover:scale-105 transition"
+                      >
+                        <FaTwitter />
+                      </a>
+                    )}
+
+                    {social.instagram && (
+                      <a
+                        href={
+                          social.instagram
+                        }
+                        target="_blank"
+                        rel="noopener noreferrer"
+                        className="w-10 h-10 rounded-xl bg-pink-600 text-white flex items-center justify-center hover:scale-105 transition"
+                      >
+                        <FaInstagram />
+                      </a>
+                    )}
+
+                    {social.youtube && (
+                      <a
+                        href={
+                          social.youtube
+                        }
+                        target="_blank"
+                        rel="noopener noreferrer"
+                        className="w-10 h-10 rounded-xl bg-red-600 text-white flex items-center justify-center hover:scale-105 transition"
+                      >
+                        <FaYoutube />
+                      </a>
+                    )}
+
+                    {social.linkedin && (
+                      <a
+                        href={
+                          social.linkedin
+                        }
+                        target="_blank"
+                        rel="noopener noreferrer"
+                        className="w-10 h-10 rounded-xl bg-blue-700 text-white flex items-center justify-center hover:scale-105 transition"
+                      >
+                        <FaLinkedin />
+                      </a>
+                    )}
+
+                    {social.whatsapp && (
+                      <a
+                        href={
+                          social.whatsapp
+                        }
+                        target="_blank"
+                        rel="noopener noreferrer"
+                        className="w-10 h-10 rounded-xl bg-green-500 text-white flex items-center justify-center hover:scale-105 transition"
+                      >
+                        <FaWhatsapp />
+                      </a>
+                    )}
+
+                  </div>
+
                 </div>
               )}
 
-            </section>
-          )}
+            {/* Profile PDF */}
 
-        {/* ====================================================
-            Social Media
-        ==================================================== */}
+            {about.profileFileId && (
+              <div className="text-center mt-8">
 
-        {social &&
-          Object.values(social).some(Boolean) && (
-            <section className="mb-10">
-
-              <div className="text-center mb-5">
-                <h2 className="text-xl font-bold">
-                  تابعنا على منصات التواصل
-                </h2>
-              </div>
-
-              <div className="flex justify-center flex-wrap gap-4">
-
-                {social.facebook && (
-                  <a
-                    href={social.facebook}
-                    target="_blank"
-                    rel="noopener noreferrer"
-                    aria-label="Facebook"
-                    className="w-12 h-12 rounded-full bg-blue-600 text-white flex items-center justify-center hover:scale-105 transition"
-                  >
-                    <FaFacebook className="w-5 h-5" />
-                  </a>
-                )}
-
-                {social.twitter && (
-                  <a
-                    href={social.twitter}
-                    target="_blank"
-                    rel="noopener noreferrer"
-                    aria-label="Twitter"
-                    className="w-12 h-12 rounded-full bg-sky-500 text-white flex items-center justify-center hover:scale-105 transition"
-                  >
-                    <FaTwitter className="w-5 h-5" />
-                  </a>
-                )}
-
-                {social.instagram && (
-                  <a
-                    href={social.instagram}
-                    target="_blank"
-                    rel="noopener noreferrer"
-                    aria-label="Instagram"
-                    className="w-12 h-12 rounded-full bg-pink-600 text-white flex items-center justify-center hover:scale-105 transition"
-                  >
-                    <FaInstagram className="w-5 h-5" />
-                  </a>
-                )}
-
-                {social.youtube && (
-                  <a
-                    href={social.youtube}
-                    target="_blank"
-                    rel="noopener noreferrer"
-                    aria-label="YouTube"
-                    className="w-12 h-12 rounded-full bg-red-600 text-white flex items-center justify-center hover:scale-105 transition"
-                  >
-                    <FaYoutube className="w-5 h-5" />
-                  </a>
-                )}
-
-                {social.linkedin && (
-                  <a
-                    href={social.linkedin}
-                    target="_blank"
-                    rel="noopener noreferrer"
-                    aria-label="LinkedIn"
-                    className="w-12 h-12 rounded-full bg-blue-700 text-white flex items-center justify-center hover:scale-105 transition"
-                  >
-                    <FaLinkedin className="w-5 h-5" />
-                  </a>
-                )}
-
-                {social.whatsapp && (
-                  <a
-                    href={social.whatsapp}
-                    target="_blank"
-                    rel="noopener noreferrer"
-                    aria-label="WhatsApp"
-                    className="w-12 h-12 rounded-full bg-green-500 text-white flex items-center justify-center hover:scale-105 transition"
-                  >
-                    <FaWhatsapp className="w-5 h-5" />
-                  </a>
-                )}
+                <a
+                  href={getAboutFileUrl(
+                    about.profileFileId
+                  )}
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  className="inline-flex items-center gap-2 px-5 py-2.5 rounded-xl border border-purple-600 text-purple-600 text-sm font-medium hover:bg-purple-600 hover:text-white transition"
+                >
+                  <FaFileAlt />
+                  عرض ملف التعريف
+                  <FaExternalLinkAlt className="w-3 h-3" />
+                </a>
 
               </div>
-            </section>
-          )}
-
-        {/* ====================================================
-            Profile File
-        ==================================================== */}
-
-        {about.profileFileId && (
-          <section className="text-center pb-10">
-
-            <a
-              href={getAboutFileUrl(
-                about.profileFileId
-              )}
-              target="_blank"
-              rel="noopener noreferrer"
-              className="inline-flex items-center gap-3 px-7 py-3.5 rounded-xl bg-purple-600 text-white font-semibold shadow-sm hover:bg-purple-700 transition"
-            >
-              <FaFileAlt className="w-5 h-5" />
-
-              عرض ملف التعريف
-
-              <FaExternalLinkAlt className="w-3 h-3" />
-            </a>
+            )}
 
           </section>
         )}

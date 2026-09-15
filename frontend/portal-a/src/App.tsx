@@ -36,6 +36,7 @@ import Library from './pages/Library';
 import Videos from './pages/Videos';
 import AdminVideosLibrary from './pages/Admin/AdminVideos';
 import AdminInfographics from './pages/Admin/AdminInfographics';
+import AdminProfile from './pages/Admin/AdminProfile';
 import Infographics from './pages/Infographics';
 import AdminOffers from './pages/Admin/AdminOffers';
 import Offers from './pages/Offers';
@@ -207,6 +208,13 @@ const AppRoutes = () => {
       <Route path="/admin-videos" element={
         <ProtectedRoute allowedRoles={['portal_admin', 'super_admin']}>
           <AdminVideos />
+        </ProtectedRoute>
+      } />
+
+
+      <Route path="/admin-profile" element={
+        <ProtectedRoute allowedRoles={['portal_admin', 'super_admin']}>
+          <AdminProfile />
         </ProtectedRoute>
       } />
 
