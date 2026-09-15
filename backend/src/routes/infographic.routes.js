@@ -19,8 +19,19 @@ const router = express.Router();
 // ============================================================
 // ✅ مسارات العرض والتحميل العامة (للزوار)
 // ============================================================
-router.get('/:id/view', optionalAuth, viewInfographic);
-router.get('/:id/download', optionalAuth, downloadInfographic);
+router.get(
+  '/:id/view',
+  authenticate,
+  requirePortalContext,
+  viewInfographic
+);
+
+router.get(
+  '/:id/download',
+  authenticate,
+  requirePortalContext,
+  downloadInfographic
+);
 
 // ============================================================
 // ✅ مسارات القراءة العامة

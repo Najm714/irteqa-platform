@@ -77,226 +77,605 @@ const io = new SocketServer(httpServer, {
 io.use(authenticateSocket);
 
 // ============================================================
-// ✅ اتصال Socket.IO - مع دعم المكالمات المباشرة
+// ✅ التحقق المركزي من صلاحية Socket للوصول إلى Request
 // ============================================================
 
+const getAuthorizedRequest = async (socket, requestId) => {
+  if (!requestId) {
+    throw new Error('REQUEST_ID_REQUIRED');
+  }
+
+  if (!socket.accountId) {
+    throw new Error('AUTHENTICATION_REQUIRED');
+  }
+
+  if (!socket.portalId) {
+    throw new Error('PORTAL_ID_REQUIRED');
+  }
+
+  const request = await Request.findOne({
+    _id: requestId,
+    portalId: socket.portalId,
+    isActive: true,
+    isDeleted: { $ne: true },
+  }).select(
+    '_id portalId accountId specialistId status'
+  );
+
+  if (!request) {
+    throw new Error('REQUEST_NOT_FOUND');
+  }
+
+  const accountId = String(socket.accountId);
+  const role = socket.account?.role;
+
+  const isOwner =
+    request.accountId &&
+    String(request.accountId) === accountId;
+
+  const isSpecialist =
+    request.specialistId &&
+    String(request.specialistId) === accountId;
+
+  const isPortalAdmin =
+    role === 'portal_admin';
+
+  const isSuperAdmin =
+    role === 'super_admin';
+
+  if (
+    !isOwner &&
+    !isSpecialist &&
+    !isPortalAdmin &&
+    !isSuperAdmin
+  ) {
+    throw new Error('REQUEST_ACCESS_DENIED');
+  }
+
+  return request;
+};
+
+// ============================================================
+// ✅ اتصال Socket.IO - مع دعم المكالمات المباشرة
+// ============================================================
 io.on('connection', (socket) => {
-  console.log(`🔌 Client connected: ${socket.id} (Account: ${socket.accountId})`);
+  console.log(
+    `🔌 Client connected: ${socket.id} (Account: ${socket.accountId}, Portal: ${socket.portalId})`
+  );
 
-  // ===== الانضمام إلى غرفة الطلب =====
-  socket.on('join-request', (requestId) => {
-    socket.join(`request-${requestId}`);
-    console.log(`📌 Account ${socket.accountId} joined request ${requestId}`);
-    
-    socket.to(`request-${requestId}`).emit('user-connected', {
-      userId: socket.accountId,
-      userName: socket.account?.profile?.fullName || socket.account?.username,
-      socketId: socket.id,
-    });
+  // ============================================================
+  // Helper: التحقق من وجود Socket آخر داخل نفس الطلب والبوابة
+  // ============================================================
+
+  const getSocketInAuthorizedRoom = (request, socketId) => {
+    if (!socketId) return null;
+
+    const roomName = `request-${request._id}`;
+    const room = io.sockets.adapter.rooms.get(roomName);
+
+    if (!room || !room.has(socketId)) {
+      return null;
+    }
+
+    const targetSocket = io.sockets.sockets.get(socketId);
+
+    if (!targetSocket) {
+      return null;
+    }
+
+    // حماية إضافية: يجب أن يكون الـ Socket الآخر في نفس البوابة
+    if (
+      !targetSocket.portalId ||
+      String(targetSocket.portalId) !== String(socket.portalId)
+    ) {
+      return null;
+    }
+
+    return targetSocket;
+  };
+
+  // ============================================================
+  // الانضمام إلى غرفة الطلب
+  // ============================================================
+
+  socket.on('join-request', async (requestId) => {
+    try {
+      const request = await getAuthorizedRequest(socket, requestId);
+
+      const roomName = `request-${request._id}`;
+
+      socket.join(roomName);
+
+      console.log(
+        `📌 Account ${socket.accountId} joined request ${request._id}` +
+        ` | portal=${socket.portalId}`
+      );
+
+      socket.to(roomName).emit('user-connected', {
+        userId: socket.accountId,
+        userName:
+          socket.account?.profile?.fullName ||
+          socket.account?.username,
+        socketId: socket.id,
+      });
+    } catch (error) {
+      console.warn(
+        `🚫 Socket join denied: account=${socket.accountId}, ` +
+        `request=${requestId}, portal=${socket.portalId}, ` +
+        `reason=${error.message}`
+      );
+
+      socket.emit('socket-error', {
+        code: error.message,
+        message: 'You are not authorized to access this request',
+      });
+    }
   });
 
-  // ===== مغادرة غرفة الطلب =====
-  socket.on('leave-request', (requestId) => {
-    socket.leave(`request-${requestId}`);
-    console.log(`📌 Account ${socket.accountId} left request ${requestId}`);
+  // ============================================================
+  // مغادرة غرفة الطلب
+  // ============================================================
+
+  socket.on('leave-request', async (requestId) => {
+    try {
+      const request = await getAuthorizedRequest(socket, requestId);
+
+      const roomName = `request-${request._id}`;
+
+      socket.leave(roomName);
+
+      console.log(
+        `📌 Account ${socket.accountId} left request ${request._id}` +
+        ` | portal=${socket.portalId}`
+      );
+    } catch (error) {
+      console.warn(
+        `🚫 Socket leave denied: account=${socket.accountId}, ` +
+        `request=${requestId}, portal=${socket.portalId}, ` +
+        `reason=${error.message}`
+      );
+
+      socket.emit('socket-error', {
+        code: error.message,
+        message: 'You are not authorized to leave this request',
+      });
+    }
   });
 
-  // ===== الرسائل الفورية =====
+  // ============================================================
+  // إرسال رسالة
+  // ============================================================
+
   socket.on('send-message', async (data) => {
     try {
-      io.to(`request-${data.requestId}`).emit('new-message', {
+      const request = await getAuthorizedRequest(
+        socket,
+        data?.requestId
+      );
+
+      const roomName = `request-${request._id}`;
+
+      io.to(roomName).emit('new-message', {
         ...data,
+        requestId: request._id,
         senderId: socket.accountId,
-        senderName: socket.account?.profile?.fullName || socket.account?.username,
+        senderName:
+          socket.account?.profile?.fullName ||
+          socket.account?.username,
         timestamp: new Date(),
       });
     } catch (error) {
       console.error('❌ Error sending message:', error);
-      socket.emit('error', { message: 'Failed to send message' });
+
+      socket.emit('socket-error', {
+        code: error.message,
+        message: 'Failed to send message',
+      });
     }
   });
 
-  // ===== حالة الكتابة =====
-  socket.on('typing', (data) => {
-    socket.to(`request-${data.requestId}`).emit('user-typing', {
-      userId: socket.accountId,
-      name: socket.account?.profile?.fullName || socket.account?.username,
-      isTyping: data.isTyping,
-    });
-  });
+  // ============================================================
+  // مؤشر الكتابة
+  // ============================================================
 
-  // ===== تحديث حالة الطلب =====
-  socket.on('status-update', (data) => {
-    io.to(`request-${data.requestId}`).emit('status-changed', {
-      requestId: data.requestId,
-      status: data.status,
-      updatedBy: socket.accountId,
-      updatedByName: socket.account?.profile?.fullName || socket.account?.username,
-      timestamp: new Date(),
-    });
+  socket.on('typing', async (data) => {
+    try {
+      const request = await getAuthorizedRequest(
+        socket,
+        data?.requestId
+      );
+
+      socket.to(`request-${request._id}`).emit('user-typing', {
+        userId: socket.accountId,
+        name:
+          socket.account?.profile?.fullName ||
+          socket.account?.username,
+        isTyping: Boolean(data?.isTyping),
+      });
+    } catch (error) {
+      console.warn(
+        `🚫 Typing denied: account=${socket.accountId}, ` +
+        `request=${data?.requestId}, portal=${socket.portalId}, ` +
+        `reason=${error.message}`
+      );
+    }
   });
 
   // ============================================================
-  // ✅ ✅ WebRTC Signaling - المكالمات المباشرة (محدث)
+  // تحديث حالة الطلب عبر Socket
   // ============================================================
 
-  // ===== بدء مكالمة (إرسال فقط للمستخدم المستهدف) =====
-  socket.on('call-user', (data) => {
-    console.log(`📞 Call request from ${socket.accountId}`);
-    console.log('  - Request ID:', data.requestId);
-    console.log('  - Target User ID:', data.targetUserId);
-    console.log('  - Type:', data.type || 'video');
-    
-    const roomName = `request-${data.requestId}`;
-    const room = io.sockets.adapter.rooms.get(roomName);
-    
-    let targetSocket = null;
-    
-    if (room) {
-      for (const socketId of room) {
-        const s = io.sockets.sockets.get(socketId);
-        if (s && s.accountId?.toString() === data.targetUserId) {
-          targetSocket = s;
-          break;
+  socket.on('status-update', async (data) => {
+    try {
+      const request = await getAuthorizedRequest(
+        socket,
+        data?.requestId
+      );
+
+      io.to(`request-${request._id}`).emit('status-changed', {
+        requestId: request._id,
+        status: data?.status,
+        updatedBy: socket.accountId,
+        updatedByName:
+          socket.account?.profile?.fullName ||
+          socket.account?.username,
+        timestamp: new Date(),
+      });
+    } catch (error) {
+      console.error('❌ Status update denied:', error);
+
+      socket.emit('socket-error', {
+        code: error.message,
+        message: 'Failed to update request status',
+      });
+    }
+  });
+
+  // ============================================================
+  // بدء المكالمة
+  // ============================================================
+
+  socket.on('call-user', async (data) => {
+    try {
+      const request = await getAuthorizedRequest(
+        socket,
+        data?.requestId
+      );
+
+      const targetSocket = getSocketInAuthorizedRoom(
+        request,
+        data?.targetSocketId
+      );
+
+      // دعم targetUserId الموجود في الواجهة الحالية
+      let finalTargetSocket = targetSocket;
+
+      if (!finalTargetSocket && data?.targetUserId) {
+        const roomName = `request-${request._id}`;
+        const room = io.sockets.adapter.rooms.get(roomName);
+
+        if (room) {
+          for (const socketId of room) {
+            const candidate = io.sockets.sockets.get(socketId);
+
+            if (
+              candidate &&
+              candidate.portalId &&
+              String(candidate.portalId) === String(socket.portalId) &&
+              String(candidate.accountId) === String(data.targetUserId)
+            ) {
+              finalTargetSocket = candidate;
+              break;
+            }
+          }
         }
       }
-    }
-    
-    if (targetSocket) {
-      console.log(`✅ Sending incoming-call to target user: ${data.targetUserId}`);
-      targetSocket.emit('incoming-call', {
+
+      if (!finalTargetSocket) {
+        socket.emit('call-error', {
+          message: 'المستخدم المستهدف غير متصل حالياً',
+        });
+        return;
+      }
+
+      console.log(
+        `📞 Call request from ${socket.accountId}` +
+        ` to ${finalTargetSocket.accountId}` +
+        ` | request=${request._id}` +
+        ` | portal=${socket.portalId}`
+      );
+
+      finalTargetSocket.emit('incoming-call', {
         callerId: socket.accountId,
-        callerName: socket.account?.profile?.fullName || socket.account?.username,
+        callerName:
+          socket.account?.profile?.fullName ||
+          socket.account?.username,
         callerSocketId: socket.id,
-        requestId: data.requestId,
-        offer: data.offer,
-        type: data.type || 'video',
-        isScheduled: data.isScheduled || false,
-        scheduledAt: data.scheduledAt || null,
+        requestId: request._id,
+        offer: data?.offer,
+        type: data?.type || 'video',
+        isScheduled: data?.isScheduled || false,
+        scheduledAt: data?.scheduledAt || null,
       });
-    } else {
-      console.log(`❌ Target user ${data.targetUserId} not found in room ${roomName}`);
+    } catch (error) {
+      console.error('❌ Call request denied:', error);
+
       socket.emit('call-error', {
-        message: 'المستخدم المستهدف غير متصل حالياً',
+        code: error.message,
+        message: 'You are not authorized to start this call',
       });
     }
-  });
-
-  // ===== قبول المكالمة (إرسال فقط للمتصل) =====
-  socket.on('accept-call', (data) => {
-    console.log(`📞 Call accepted by ${socket.accountId}`);
-    console.log('  - Request ID:', data.requestId);
-    console.log('  - Caller Socket ID:', data.callerSocketId);
-    
-    const roomName = `request-${data.requestId}`;
-    const room = io.sockets.adapter.rooms.get(roomName);
-    
-    if (room) {
-      for (const socketId of room) {
-        const s = io.sockets.sockets.get(socketId);
-        if (s && s.id === data.callerSocketId) {
-          console.log(`✅ Sending call-accepted to caller: ${s.id}`);
-          s.emit('call-accepted', {
-            calleeId: socket.accountId,
-            calleeName: socket.account?.profile?.fullName || socket.account?.username,
-            calleeSocketId: socket.id,
-            answer: data.answer,
-          });
-          break;
-        }
-      }
-    }
-  });
-
-  // ===== رفض المكالمة (إرسال فقط للمتصل) =====
-  socket.on('reject-call', (data) => {
-    console.log(`📞 Call rejected by ${socket.accountId}`);
-    console.log('  - Request ID:', data.requestId);
-    console.log('  - Caller Socket ID:', data.callerSocketId);
-    
-    const roomName = `request-${data.requestId}`;
-    const room = io.sockets.adapter.rooms.get(roomName);
-    
-    if (room) {
-      for (const socketId of room) {
-        const s = io.sockets.sockets.get(socketId);
-        if (s && s.id === data.callerSocketId) {
-          console.log(`✅ Sending call-rejected to caller: ${s.id}`);
-          s.emit('call-rejected', {
-            userId: socket.accountId,
-            userName: socket.account?.profile?.fullName || socket.account?.username,
-          });
-          break;
-        }
-      }
-    }
-  });
-
-  // ===== إنهاء المكالمة (إرسال للطرف الآخر فقط) =====
-  socket.on('end-call', (data) => {
-    console.log(`📞 Call ended by ${socket.accountId}`);
-    console.log('  - Request ID:', data.requestId);
-    
-    const roomName = `request-${data.requestId}`;
-    const room = io.sockets.adapter.rooms.get(roomName);
-    
-    if (room) {
-      for (const socketId of room) {
-        const s = io.sockets.sockets.get(socketId);
-        if (s && s.id !== socket.id) {
-          console.log(`✅ Sending call-ended to: ${s.id}`);
-          s.emit('call-ended', {
-            userId: socket.accountId,
-            userName: socket.account?.profile?.fullName || socket.account?.username,
-          });
-          break;
-        }
-      }
-    }
-  });
-
-  // ===== مرشحات ICE (إرسال للطرف الآخر فقط) =====
-  socket.on('ice-candidate', (data) => {
-    console.log(`🧊 ICE candidate from ${socket.accountId}`);
-    console.log('  - Request ID:', data.requestId);
-    
-    const roomName = `request-${data.requestId}`;
-    const room = io.sockets.adapter.rooms.get(roomName);
-    
-    if (room) {
-      for (const socketId of room) {
-        const s = io.sockets.sockets.get(socketId);
-        if (s && s.id !== socket.id) {
-          s.emit('ice-candidate', {
-            userId: socket.accountId,
-            candidate: data.candidate,
-          });
-          break;
-        }
-      }
-    }
-  });
-
-  // ===== تحديث حالة المكالمة =====
-  socket.on('call-status', (data) => {
-    console.log(`📞 Call status update from ${socket.accountId}: ${data.status}`);
-    socket.to(`request-${data.requestId}`).emit('call-status-update', {
-      userId: socket.accountId,
-      userName: socket.account?.profile?.fullName || socket.account?.username,
-      status: data.status,
-    });
   });
 
   // ============================================================
-  // ✅ انقطاع الاتصال
+  // قبول المكالمة
+  // ============================================================
+
+  socket.on('accept-call', async (data) => {
+    try {
+      const request = await getAuthorizedRequest(
+        socket,
+        data?.requestId
+      );
+
+      const callerSocket = getSocketInAuthorizedRoom(
+        request,
+        data?.callerSocketId
+      );
+
+      if (!callerSocket) {
+        socket.emit('call-error', {
+          message: 'المتصل غير موجود في نفس الطلب',
+        });
+        return;
+      }
+
+      console.log(
+        `📞 Call accepted by ${socket.accountId}` +
+        ` | request=${request._id}` +
+        ` | portal=${socket.portalId}`
+      );
+
+      callerSocket.emit('call-accepted', {
+        calleeId: socket.accountId,
+        calleeName:
+          socket.account?.profile?.fullName ||
+          socket.account?.username,
+        calleeSocketId: socket.id,
+        requestId: request._id.toString(),
+        answer: data?.answer,
+      });
+    } catch (error) {
+      console.error('❌ Accept call denied:', error);
+
+      socket.emit('call-error', {
+        code: error.message,
+        message: 'You are not authorized to accept this call',
+      });
+    }
+  });
+
+  // ============================================================
+  // رفض المكالمة
+  // ============================================================
+
+  socket.on('reject-call', async (data) => {
+    try {
+      const request = await getAuthorizedRequest(
+        socket,
+        data?.requestId
+      );
+
+      const callerSocket = getSocketInAuthorizedRoom(
+        request,
+        data?.callerSocketId
+      );
+
+      if (!callerSocket) {
+        socket.emit('call-error', {
+          message: 'المتصل غير موجود في نفس الطلب',
+        });
+        return;
+      }
+
+      console.log(
+        `📞 Call rejected by ${socket.accountId}` +
+        ` | request=${request._id}` +
+        ` | portal=${socket.portalId}`
+      );
+
+callerSocket.emit('call-rejected', {
+  userId: socket.accountId,
+  userName:
+    socket.account?.profile?.fullName ||
+    socket.account?.username,
+  requestId: request._id.toString(),
+});
+
+    } catch (error) {
+      console.error('❌ Reject call denied:', error);
+
+      socket.emit('call-error', {
+        code: error.message,
+        message: 'You are not authorized to reject this call',
+      });
+    }
+  });
+// ============================================================
+// إنهاء المكالمة
+// ============================================================
+
+socket.on('end-call', async (data) => {
+  try {
+    const request = await getAuthorizedRequest(
+      socket,
+      data?.requestId
+    );
+
+    const targetSocketId = data?.targetSocketId;
+
+    if (!targetSocketId) {
+      console.warn(
+        `⚠️ End call ignored: no targetSocketId | ` +
+        `account=${socket.accountId}, request=${request._id}`
+      );
+      return;
+    }
+
+    const targetSocket = getSocketInAuthorizedRoom(
+      request,
+      targetSocketId
+    );
+
+    if (!targetSocket) {
+      console.warn(
+        `⚠️ End call target not found or not authorized: ` +
+        `target=${targetSocketId}, request=${request._id}, ` +
+        `portal=${socket.portalId}`
+      );
+      return;
+    }
+
+    console.log(
+      `📞 Call ended by ${socket.accountId}` +
+      ` -> ${targetSocket.accountId}` +
+      ` | request=${request._id}` +
+      ` | portal=${socket.portalId}`
+    );
+targetSocket.emit('call-ended', {
+  userId: socket.accountId,
+  userName:
+    socket.account?.profile?.fullName ||
+    socket.account?.username,
+  socketId: socket.id,
+  requestId: request._id.toString(),
+});
+
+  } catch (error) {
+    console.error('❌ End call denied:', error);
+
+    socket.emit('call-error', {
+      code: error.message,
+      message: 'You are not authorized to end this call',
+    });
+  }
+});
+
+// ============================================================
+// ICE Candidate
+// ============================================================
+
+socket.on('ice-candidate', async (data) => {
+  try {
+    const request = await getAuthorizedRequest(
+      socket,
+      data?.requestId
+    );
+
+    const targetSocketId = data?.targetSocketId;
+
+    if (!targetSocketId) {
+      console.warn(
+        `⚠️ ICE candidate ignored: no targetSocketId | ` +
+        `account=${socket.accountId}, request=${request._id}`
+      );
+      return;
+    }
+
+    const targetSocket = getSocketInAuthorizedRoom(
+      request,
+      targetSocketId
+    );
+
+    if (!targetSocket) {
+      console.warn(
+        `⚠️ ICE target not found or not authorized: ` +
+        `target=${targetSocketId}, request=${request._id}, ` +
+        `portal=${socket.portalId}`
+      );
+      return;
+    }
+    
+targetSocket.emit('ice-candidate', {
+  userId: socket.accountId,
+  socketId: socket.id,
+  requestId: request._id.toString(),
+  candidate: data?.candidate,
+});
+
+  } catch (error) {
+    console.warn(
+      `🚫 ICE candidate denied: account=${socket.accountId}, ` +
+      `request=${data?.requestId}, portal=${socket.portalId}, ` +
+      `reason=${error.message}`
+    );
+
+    socket.emit('socket-error', {
+      code: error.message,
+      message: 'You are not authorized for this request',
+    });
+  }
+});
+
+  // ============================================================
+  // تحديث حالة المكالمة
+  // ============================================================
+
+  socket.on('call-status', async (data) => {
+    try {
+      const request = await getAuthorizedRequest(
+        socket,
+        data?.requestId
+      );
+
+      socket.to(`request-${request._id}`).emit(
+        'call-status-update',
+        {
+          userId: socket.accountId,
+          userName:
+            socket.account?.profile?.fullName ||
+            socket.account?.username,
+          status: data?.status,
+        }
+      );
+    } catch (error) {
+      console.warn(
+        `🚫 Call status denied: account=${socket.accountId}, ` +
+        `request=${data?.requestId}, portal=${socket.portalId}, ` +
+        `reason=${error.message}`
+      );
+
+      socket.emit('socket-error', {
+        code: error.message,
+        message: 'You are not authorized for this request',
+      });
+    }
+  });
+
+  // ============================================================
+  // انقطاع الاتصال
   // ============================================================
 
   socket.on('disconnect', () => {
-    console.log(`🔌 Client disconnected: ${socket.id} (Account: ${socket.accountId})`);
-    io.emit('user-disconnected', {
-      userId: socket.accountId,
-      socketId: socket.id,
-    });
+    console.log(
+      `🔌 Client disconnected: ${socket.id}` +
+      ` (Account: ${socket.accountId}, Portal: ${socket.portalId})`
+    );
+
+    // لا نستخدم io.emit هنا حتى لا يصل الحدث إلى Portal أخرى.
+    // نرسل إشعار الانقطاع فقط إلى غرف Requests التي كان Socket
+    // عضوًا فيها، وبالتالي تبقى الأحداث معزولة حسب Request/Portal.
+
+    for (const roomName of socket.rooms) {
+      if (!roomName.startsWith('request-')) {
+        continue;
+      }
+
+      socket.to(roomName).emit('user-disconnected', {
+        userId: socket.accountId,
+        socketId: socket.id,
+      });
+    }
   });
 });
 

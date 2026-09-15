@@ -1,6 +1,6 @@
 // frontend/portal-a/src/services/paymentApi.ts
 const API_URL = import.meta.env.VITE_API_URL || 'http://localhost:5001/api';
-const PORTAL_ID = '6aa45ad70a89ed89eeb18e41';
+const PORTAL_ID = import.meta.env.VITE_PORTAL_ID || '';
 
 export interface PaymentData {
   portalId: string;

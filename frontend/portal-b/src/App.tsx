@@ -1,76 +1,377 @@
-import './index.css'
+// src/App.tsx
+import React from 'react';
+import { BrowserRouter, Routes, Route, useLocation } from 'react-router-dom';
+
+// Pages
+import Home from './pages/Home';
+import Services from './pages/Services';
+import AdminSections from './pages/AdminSections';
+import CustomerDashboard from './pages/Dashboard/CustomerDashboard';
+import AdminDashboard from './pages/AdminDashboard';
+import Explanations from './pages/Explanations';
+import AdminExplanations from './pages/AdminExplanations';
+import MaterialDetail from './pages/MaterialDetail';
+import Business from './pages/Business';
+import Login from './pages/Login';
+import Register from './pages/Register';
+import Reviews from './pages/Reviews';
+import AdminServices from './pages/AdminServices';
+import AdminVideos from './pages/AdminVideos';
+import AdminUsers from './pages/AdminUsers';
+import RequestService from './pages/RequestService';
+import AdminPayments from './pages/AdminPayments';
+import AdminSubscriptions from './pages/AdminSubscriptions';
+import AdminRequests from './pages/Admin/AdminRequests';
+import AdminSettings from './pages/AdminSettings';
+import AdminServiceDetails from './pages/AdminServiceDetails';
+import AdminServiceForms from './pages/AdminServiceForms';
+import ServiceDetails from './pages/ServiceDetails';
+import CustomerRequests from './pages/Requests/CustomerRequests';
+import SpecialistRequests from './pages/Requests/SpecialistRequests';
+import RequestWorkspace from './pages/RequestWorkspace';
+import ChangePassword from './pages/Dashboard/ChangePassword';
+import AdminReports from './pages/AdminReports';
+import AdminLibrary from './pages/Admin/AdminLibrary';
+import Library from './pages/Library';
+import Videos from './pages/Videos';
+import AdminVideosLibrary from './pages/Admin/AdminVideos';
+import AdminInfographics from './pages/Admin/AdminInfographics';
+import Infographics from './pages/Infographics';
+import AdminOffers from './pages/Admin/AdminOffers';
+import Offers from './pages/Offers';
+import AdminAbout from './pages/Admin/AdminAbout';
+import About from './pages/About';
+import AcademicCharter from './pages/Policies/AcademicCharter';
+import IntellectualProperty from './pages/Policies/IntellectualProperty';
+import PrivacyPolicy from './pages/Policies/PrivacyPolicy';
+import TermsOfService from './pages/Policies/TermsOfService';
+import PaymentRefundPolicy from './pages/Policies/PaymentRefundPolicy';
+import CookiePolicy from './pages/Policies/CookiePolicy';
+
+// Specialist Pages
+import SpecialistDashboard from './pages/Specialist/SpecialistDashboard';
+
+// Layout
+import MainLayout from './components/layout/MainLayout';
+
+// Context
+import { ThemeProvider } from './context/ThemeContext';
+import { AuthProvider } from './context/AuthContext';
+import { SidebarProvider } from './context/SidebarContext';
+import ProtectedRoute from './components/common/ProtectedRoute';
+
+// Styles
+import './index.css';
+
+// ============================================================
+// ✅ AppRoutes - يستخدم useLocation + key لإعادة إنشاء Routes
+// ============================================================
+const AppRoutes = () => {
+  const location = useLocation();
+
+  return (
+    <Routes location={location} key={location.pathname}>
+      {/* Auth Routes */}
+      <Route path="/login" element={<Login />} />
+      <Route path="/register" element={<Register />} />
+
+      {/* Routes العامة */}
+      <Route path="/" element={<MainLayout />}>
+        <Route index element={<Home />} />
+        <Route path="services" element={<Services />} />
+        <Route path="explanations" element={<Explanations />} />
+        <Route path="business" element={<Business />} />
+      </Route>
+
+      {/* Routes العميل */}
+      <Route path="/Library" element={
+        <ProtectedRoute allowedRoles={['customer', 'specialist', 'portal_admin', 'super_admin']}>
+          <Library />
+        </ProtectedRoute>
+      } />
+
+      <Route path="/Videos" element={
+        <ProtectedRoute allowedRoles={['customer', 'specialist', 'portal_admin', 'super_admin']}>
+          <Videos />
+        </ProtectedRoute>
+      } />
+
+      {/* ✅ لوحة العميل - مسار واحد فقط مع :tab */}
+      <Route path="/dashboard" element={
+        <ProtectedRoute allowedRoles={['customer']}>
+          <CustomerDashboard />
+        </ProtectedRoute>
+      } />
+
+      <Route path="/dashboard/:tab" element={
+        <ProtectedRoute allowedRoles={['customer']}>
+          <CustomerDashboard />
+        </ProtectedRoute>
+      } />
+
+      {/* Routes المختص */}
+      <Route path="/specialist" element={
+        <ProtectedRoute allowedRoles={['specialist']}>
+          <SpecialistDashboard />
+        </ProtectedRoute>
+      } />
+
+      <Route path="/specialist/:tab" element={
+        <ProtectedRoute allowedRoles={['specialist']}>
+          <SpecialistDashboard />
+        </ProtectedRoute>
+      } />
+
+      {/* Routes الطلبات */}
+      <Route path="/my-requests" element={
+        <ProtectedRoute allowedRoles={['customer']}>
+          <CustomerRequests />
+        </ProtectedRoute>
+      } />
+
+      <Route path="/specialist-requests" element={
+        <ProtectedRoute allowedRoles={['specialist']}>
+          <SpecialistRequests />
+        </ProtectedRoute>
+      } />
+
+      <Route path="/admin-requests" element={
+        <ProtectedRoute allowedRoles={['portal_admin', 'super_admin']}>
+          <AdminRequests />
+        </ProtectedRoute>
+      } />
+
+      <Route path="/request/:id" element={
+        <ProtectedRoute allowedRoles={['customer', 'specialist', 'portal_admin', 'super_admin']}>
+          <RequestWorkspace />
+        </ProtectedRoute>
+      } />
+
+      {/* Routes الخدمات */}
+      <Route path="/request-service/:id" element={
+        <ProtectedRoute allowedRoles={['customer', 'specialist', 'portal_admin', 'super_admin']}>
+          <RequestService />
+        </ProtectedRoute>
+      } />
+
+      <Route path="/service/:id" element={
+        <ProtectedRoute allowedRoles={['customer', 'specialist', 'portal_admin', 'super_admin']}>
+          <ServiceDetails />
+        </ProtectedRoute>
+      } />
+
+      <Route path="/material-detail/:id" element={
+        <ProtectedRoute allowedRoles={['customer', 'specialist', 'portal_admin', 'super_admin']}>
+          <MaterialDetail />
+        </ProtectedRoute>
+      } />
+
+      {/* Routes المشتركة */}
+      <Route path="/reviews" element={
+        <ProtectedRoute allowedRoles={['customer', 'specialist', 'portal_admin', 'super_admin']}>
+          <Reviews />
+        </ProtectedRoute>
+      } />
+
+      <Route path="/change-password" element={
+        <ProtectedRoute allowedRoles={['customer', 'specialist', 'portal_admin', 'super_admin']}>
+          <ChangePassword />
+        </ProtectedRoute>
+      } />
+
+      {/* Routes الإدارية */}
+      <Route path="/admin-dashboard" element={
+        <ProtectedRoute allowedRoles={['portal_admin', 'super_admin']}>
+          <AdminDashboard />
+        </ProtectedRoute>
+      } />
+
+      <Route path="/admin-services" element={
+        <ProtectedRoute allowedRoles={['portal_admin', 'super_admin']}>
+          <AdminServices />
+        </ProtectedRoute>
+      } />
+
+      <Route path="/admin-sections" element={
+        <ProtectedRoute allowedRoles={['portal_admin', 'super_admin']}>
+          <AdminSections />
+        </ProtectedRoute>
+      } />
+
+      <Route path="/admin-explanations" element={
+        <ProtectedRoute allowedRoles={['portal_admin', 'super_admin']}>
+          <AdminExplanations />
+        </ProtectedRoute>
+      } />
+
+      <Route path="/admin-videos" element={
+        <ProtectedRoute allowedRoles={['portal_admin', 'super_admin']}>
+          <AdminVideos />
+        </ProtectedRoute>
+      } />
+
+      <Route path="/admin-users" element={
+        <ProtectedRoute allowedRoles={['portal_admin', 'super_admin']}>
+          <AdminUsers />
+        </ProtectedRoute>
+      } />
+
+      <Route path="/admin-videos-library" element={
+        <ProtectedRoute allowedRoles={['portal_admin', 'super_admin']}>
+          <AdminVideosLibrary />
+        </ProtectedRoute>
+      } />
+
+      <Route path="/videos-library" element={
+        <ProtectedRoute allowedRoles={['customer', 'specialist', 'portal_admin', 'super_admin']}>
+          <Library />
+        </ProtectedRoute>
+      } />
+
+      <Route path="/admin-offers" element={
+        <ProtectedRoute allowedRoles={['portal_admin', 'super_admin']}>
+          <AdminOffers />
+        </ProtectedRoute>
+      } />
+
+      <Route path="/offers" element={
+        <ProtectedRoute allowedRoles={['customer', 'specialist', 'portal_admin', 'super_admin']}>
+          <Offers />
+        </ProtectedRoute>
+      } />
+
+      <Route path="/admin-payments" element={
+        <ProtectedRoute allowedRoles={['portal_admin', 'super_admin']}>
+          <AdminPayments />
+        </ProtectedRoute>
+      } />
+
+      <Route path="/admin-subscriptions" element={
+        <ProtectedRoute allowedRoles={['portal_admin', 'super_admin']}>
+          <AdminSubscriptions />
+        </ProtectedRoute>
+      } />
+
+      <Route path="/admin-reports" element={
+        <ProtectedRoute allowedRoles={['portal_admin', 'super_admin']}>
+          <AdminReports />
+        </ProtectedRoute>
+      } />
+
+      <Route path="/admin-service-details" element={
+        <ProtectedRoute allowedRoles={['portal_admin', 'super_admin']}>
+          <AdminServiceDetails />
+        </ProtectedRoute>
+      } />
+
+      <Route path="/admin-service-forms" element={
+        <ProtectedRoute allowedRoles={['portal_admin', 'super_admin']}>
+          <AdminServiceForms />
+        </ProtectedRoute>
+      } />
+
+      <Route path="/admin-settings" element={
+        <ProtectedRoute allowedRoles={['portal_admin', 'super_admin']}>
+          <AdminSettings />
+        </ProtectedRoute>
+      } />
+
+      <Route path="/admin-library" element={
+        <ProtectedRoute allowedRoles={['portal_admin', 'super_admin']}>
+          <AdminLibrary />
+        </ProtectedRoute>
+      } />
+
+      <Route path="/admin-infographics" element={
+        <ProtectedRoute allowedRoles={['portal_admin', 'super_admin']}>
+          <AdminInfographics />
+        </ProtectedRoute>
+      } />
+
+      <Route path="/infographics" element={
+        <ProtectedRoute allowedRoles={['customer', 'specialist', 'portal_admin', 'super_admin']}>
+          <Infographics />
+        </ProtectedRoute>
+      } />
+
+      <Route path="/admin-about" element={
+        <ProtectedRoute allowedRoles={['portal_admin', 'super_admin']}>
+          <AdminAbout />
+        </ProtectedRoute>
+      } />
+
+      <Route path="/about" element={
+        <ProtectedRoute allowedRoles={['customer', 'specialist', 'portal_admin', 'super_admin']}>
+          <About />
+        </ProtectedRoute>
+      } />
+
+      <Route path="/policies/academic-charter" element={
+        <ProtectedRoute>
+          <AcademicCharter />
+        </ProtectedRoute>
+      } />
+
+      <Route path="/policies/intellectual-property" element={
+        <ProtectedRoute>
+          <IntellectualProperty />
+        </ProtectedRoute>
+      } />
+
+      <Route path="/policies/privacy" element={
+        <ProtectedRoute>
+          <PrivacyPolicy />
+        </ProtectedRoute>
+      } />
+
+      <Route path="/policies/terms" element={
+        <ProtectedRoute>
+          <TermsOfService />
+        </ProtectedRoute>
+      } />
+
+      <Route path="/policies/payment-refund" element={
+        <ProtectedRoute>
+          <PaymentRefundPolicy />
+        </ProtectedRoute>
+      } />
+
+      <Route path="/policies/cookies" element={
+        <ProtectedRoute>
+          <CookiePolicy />
+        </ProtectedRoute>
+      } />
+
+      {/* 404 */}
+      <Route path="*" element={
+        <div className="min-h-screen flex items-center justify-center bg-gray-50 dark:bg-gray-900">
+          <div className="text-center">
+            <h1 className="text-6xl font-bold text-gray-900 dark:text-white">404</h1>
+            <p className="text-gray-600 dark:text-gray-400 mt-2">الصفحة غير موجودة</p>
+            <a href="/" className="mt-4 inline-block px-6 py-2 bg-purple-600 text-white rounded-lg hover:bg-purple-700 transition-colors">
+              العودة للرئيسية
+            </a>
+          </div>
+        </div>
+      } />
+    </Routes>
+  );
+};
 
 function App() {
+
+
   return (
-    <div className="min-h-screen bg-gray-50">
-      {/* Header */}
-      <header className="bg-white shadow-sm border-b border-gray-200">
-        <div className="container-custom py-4">
-          <div className="flex items-center justify-between">
-            <div className="flex items-center gap-2">
-              <span className="text-2xl font-bold text-primary-600">ارتقاء</span>
-              <span className="text-sm text-gray-500 bg-gray-100 px-2 py-1 rounded">البوابة المهنية</span>
-            </div>
-            <div className="flex items-center gap-4">
-              <button className="btn-primary text-sm">تسجيل الدخول</button>
-              <button className="btn-secondary text-sm">إنشاء حساب</button>
-            </div>
-          </div>
-        </div>
-      </header>
-
-      {/* Hero Section */}
-      <section className="container-custom py-16">
-        <div className="text-center max-w-3xl mx-auto">
-          <h1 className="text-4xl md:text-5xl font-bold text-gray-900 mb-4">
-            منصة ارتقاء
-            <span className="text-primary-600 block mt-2">البوابة المهنية</span>
-          </h1>
-          <p className="text-lg text-gray-600 mb-8">
-            بوابتك المتخصصة للخدمات المهنية والتطوير الوظيفي. نقدم استشارات وحلولاً مهنية متكاملة.
-          </p>
-          <div className="flex flex-wrap justify-center gap-4">
-            <button className="btn-primary text-lg px-8 py-3">
-              استكشف الخدمات
-            </button>
-            <button className="btn-secondary text-lg px-8 py-3">
-              تعلم أكثر
-            </button>
-          </div>
-        </div>
-      </section>
-
-      {/* Features */}
-      <section className="container-custom py-12">
-        <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
-          <div className="card text-center">
-            <div className="text-4xl mb-3">💼</div>
-            <h3 className="text-xl font-semibold mb-2">استشارات مهنية</h3>
-            <p className="text-gray-600">استشارات متخصصة في الإدارة والأعمال</p>
-          </div>
-          <div className="card text-center">
-            <div className="text-4xl mb-3">📊</div>
-            <h3 className="text-xl font-semibold mb-2">تحليل الأعمال</h3>
-            <p className="text-gray-600">تحليل مالي وإداري متقدم</p>
-          </div>
-          <div className="card text-center">
-            <div className="text-4xl mb-3">🚀</div>
-            <h3 className="text-xl font-semibold mb-2">تطوير وظيفي</h3>
-            <p className="text-gray-600">دعم التطوير المهني والوظيفي</p>
-          </div>
-        </div>
-      </section>
-
-      {/* Footer */}
-      <footer className="bg-white border-t border-gray-200 mt-12">
-        <div className="container-custom py-6">
-          <div className="text-center text-gray-500 text-sm">
-            © 2026 منصة ارتقاء. جميع الحقوق محفوظة.
-          </div>
-        </div>
-      </footer>
-    </div>
-  )
+    <ThemeProvider>
+      <AuthProvider>
+        <SidebarProvider>
+          <BrowserRouter>
+            <AppRoutes />
+          </BrowserRouter>
+        </SidebarProvider>
+      </AuthProvider>
+    </ThemeProvider>
+  );
 }
 
-export default App
+export default App;

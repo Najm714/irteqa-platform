@@ -7,7 +7,7 @@ import { getNotificationService } from '../services/notification.service.js';
 // ============================================================
 export const getNotifications = async (req, res) => {
   try {
-    const portalId = req.portalId || req.headers['x-portal-id'];
+    const portalId = req.portalId;
     const accountId = req.accountId || req.user?.id;
     const {
       limit = 20,
@@ -61,7 +61,7 @@ export const getNotifications = async (req, res) => {
 };
 export const getUnreadCount = async (req, res) => {
   try {
-    const portalId = req.portalId || req.headers['x-portal-id'];
+    const portalId = req.portalId;
     const accountId = req.accountId || req.user?.id;
 
     if (!portalId) {
@@ -137,7 +137,7 @@ export const markAsRead = async (req, res) => {
 // ============================================================
 export const markAllAsRead = async (req, res) => {
   try {
-    const portalId = req.portalId || req.headers['x-portal-id'];
+    const portalId = req.portalId;
     const accountId = req.accountId || req.user?.id;
 
     if (!portalId) {
@@ -207,7 +207,7 @@ export const deleteNotification = async (req, res) => {
 // ============================================================
 export const deleteAllNotifications = async (req, res) => {
   try {
-    const portalId = req.portalId || req.headers['x-portal-id'];
+    const portalId = req.portalId;
     const accountId = req.accountId || req.user?.id;
 
     if (!portalId) {
@@ -245,7 +245,7 @@ export const deleteAllNotifications = async (req, res) => {
 // ============================================================
 export const createNotification = async (req, res) => {
   try {
-    const portalId = req.portalId || req.headers['x-portal-id'];
+    const portalId = req.portalId;
     const accountId = req.accountId || req.user?.id;
     const {
       targetAccountId,
@@ -314,7 +314,7 @@ export const getNotificationById = async (req, res) => {
   try {
     const { id } = req.params;
     const accountId = req.accountId || req.user?.id;
-    const portalId = req.portalId || req.headers['x-portal-id'];
+    const portalId = req.portalId;
 
     if (!portalId) {
       return res.status(400).json({
@@ -358,7 +358,7 @@ export const getNotificationById = async (req, res) => {
 // ============================================================
 export const sendBulkNotifications = async (req, res) => {
   try {
-    const portalId = req.portalId || req.headers['x-portal-id'];
+    const portalId = req.portalId;
     const accountId = req.accountId || req.user?.id;
     const {
       accountIds,

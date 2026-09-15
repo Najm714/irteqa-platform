@@ -46,7 +46,7 @@ const saveFile = async ({ file, portalId, accountId, category = 'service_form', 
 
 export const uploadServiceFormFile = async (req, res) => {
   try {
-    const portalId = req.portalId || req.headers['x-portal-id'] || req.body.portalId;
+    const portalId = req.portalId;
     const accountId = req.accountId || req.user?.id;
 
     console.log('📤 Uploading service form file...');
@@ -110,7 +110,7 @@ export const uploadServiceFormFile = async (req, res) => {
 
 export const createServiceForm = async (req, res) => {
   try {
-    const portalId = req.portalId || req.headers['x-portal-id'] || req.body.portalId;
+    const portalId = req.portalId;
     const { id: userId } = req.user || {};
 
     const {
@@ -251,7 +251,7 @@ export const createServiceForm = async (req, res) => {
 
 export const getServiceForms = async (req, res) => {
   try {
-    const portalId = req.portalId || req.headers['x-portal-id'] || req.query.portalId;
+    const portalId = req.portalId;
     const { sectionId, serviceId, isPublished } = req.query;
 
     if (!portalId) {
@@ -293,7 +293,7 @@ export const getServiceForms = async (req, res) => {
 export const getServiceFormById = async (req, res) => {
   try {
     const { id } = req.params;
-    const portalId = req.portalId || req.headers['x-portal-id'];
+    const portalId = req.portalId;
 
     const serviceForm = await ServiceForm.findOne({ 
       _id: id, 
@@ -332,7 +332,7 @@ export const getServiceFormById = async (req, res) => {
 export const updateServiceForm = async (req, res) => {
   try {
     const { id } = req.params;
-    const portalId = req.portalId || req.headers['x-portal-id'];
+    const portalId = req.portalId;
     const updates = req.body;
 
     const serviceForm = await ServiceForm.findOne({ _id: id, portalId });
@@ -378,7 +378,7 @@ export const updateServiceForm = async (req, res) => {
 export const deleteServiceForm = async (req, res) => {
   try {
     const { id } = req.params;
-    const portalId = req.portalId || req.headers['x-portal-id'];
+    const portalId = req.portalId;
 
     const serviceForm = await ServiceForm.findOne({ _id: id, portalId });
     if (!serviceForm) {
@@ -412,7 +412,7 @@ export const deleteServiceForm = async (req, res) => {
 export const toggleServiceFormStatus = async (req, res) => {
   try {
     const { id } = req.params;
-    const portalId = req.portalId || req.headers['x-portal-id'];
+    const portalId = req.portalId;
 
     const serviceForm = await ServiceForm.findOne({ _id: id, portalId });
     if (!serviceForm) {

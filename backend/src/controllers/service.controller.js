@@ -17,7 +17,7 @@ const generateSlug = (text) => {
 // ===== إنشاء خدمة جديدة =====
 export const createService = async (req, res) => {
   try {
-    const portalId = req.portalId || req.headers['x-portal-id'] || req.body.portalId;
+    const portalId = req.portalId;
     const { id: userId } = req.user || {};
 
     const {
@@ -156,7 +156,7 @@ export const createService = async (req, res) => {
 // ===== الحصول على جميع الخدمات =====
 export const getServices = async (req, res) => {
   try {
-    const portalId = req.portalId || req.headers['x-portal-id'] || req.query.portalId;
+    const portalId = req.portalId;
     const { sectionId, isPublished, isFeatured } = req.query;
 
     if (!portalId) {
@@ -196,7 +196,7 @@ export const getServices = async (req, res) => {
 export const getServiceById = async (req, res) => {
   try {
     const { id } = req.params;
-    const portalId = req.portalId || req.headers['x-portal-id'];
+    const portalId = req.portalId;
 
     const service = await Service.findOne({ 
       _id: id, 
@@ -228,7 +228,7 @@ export const getServiceById = async (req, res) => {
 export const updateService = async (req, res) => {
   try {
     const { id } = req.params;
-    const portalId = req.portalId || req.headers['x-portal-id'];
+    const portalId = req.portalId;
     const updates = req.body;
 
     const service = await Service.findOne({ _id: id, portalId });
@@ -300,7 +300,7 @@ export const updateService = async (req, res) => {
 export const deleteService = async (req, res) => {
   try {
     const { id } = req.params;
-    const portalId = req.portalId || req.headers['x-portal-id'];
+    const portalId = req.portalId;
 
     const service = await Service.findOne({ _id: id, portalId });
     if (!service) {
@@ -332,7 +332,7 @@ export const deleteService = async (req, res) => {
 export const toggleServiceStatus = async (req, res) => {
   try {
     const { id } = req.params;
-    const portalId = req.portalId || req.headers['x-portal-id'];
+    const portalId = req.portalId;
 
     const service = await Service.findOne({ _id: id, portalId });
     if (!service) {
@@ -364,7 +364,7 @@ export const toggleServiceStatus = async (req, res) => {
 export const toggleServiceFeatured = async (req, res) => {
   try {
     const { id } = req.params;
-    const portalId = req.portalId || req.headers['x-portal-id'];
+    const portalId = req.portalId;
 
     const service = await Service.findOne({ _id: id, portalId });
     if (!service) {

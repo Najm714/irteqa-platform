@@ -1,14 +1,27 @@
 // backend/src/controllers/identity.controller.js
+
 import { CustomerIdentity } from '../models/CustomerIdentity.model.js'
 import { Account } from '../models/Account.model.js'
 
-// ✅ الحصول على جميع حسابات العميل
+// ============================================================
+// الحصول على حسابات العميل داخل البوابة الحالية فقط
+// ============================================================
+
 export const getCustomerAccounts = async (req, res) => {
   try {
     const { identityId } = req.params
     const portalId = req.portalId
 
+    if (!portalId) {
+      return res.status(400).json({
+        success: false,
+        message: 'Portal ID is required',
+        code: 'PORTAL_ID_REQUIRED',
+      })
+    }
+
     const identity = await CustomerIdentity.findById(identityId)
+
     if (!identity) {
       return res.status(404).json({
         success: false,
@@ -16,41 +29,34 @@ export const getCustomerAccounts = async (req, res) => {
       })
     }
 
-    // التحقق من صلاحية المدير
-    const isAdmin = req.account.role === 'portal_admin' || req.account.role === 'super_admin'
-    
-    // العميل العادي يرى فقط حساباته في بوابته
-    let accounts = []
-    if (isAdmin) {
-      // المدير يرى جميع الحسابات
-      for (const link of identity.linkedAccounts) {
-        const account = await Account.findById(link.accountId)
-          .populate('portalId')
-          .select('-passwordHash')
-        if (account) {
-          accounts.push({
-            account,
-            portal: account.portalId,
-            linkedAt: link.linkedAt,
-          })
-        }
+    // ========================================================
+    // جميع المستخدمين — بما فيهم SUPER_ADMIN — يعملون ضمن
+    // portal context الحالي.
+    // SUPER_ADMIN يستطيع تغيير البوابة من خلال portal context.
+    // ========================================================
+
+    const accounts = []
+
+    for (const link of identity.linkedAccounts) {
+      // لا نسمح بعرض حساب من بوابة أخرى
+      if (link.portalId.toString() !== portalId.toString()) {
+        continue
       }
-    } else {
-      // العميل يرى فقط حسابه في البوابة الحالية
-      const currentLink = identity.linkedAccounts.find(
-        link => link.portalId.toString() === portalId.toString()
-      )
-      if (currentLink) {
-        const account = await Account.findById(currentLink.accountId)
-          .populate('portalId')
-          .select('-passwordHash')
-        if (account) {
-          accounts.push({
-            account,
-            portal: account.portalId,
-            linkedAt: currentLink.linkedAt,
-          })
-        }
+
+      const account = await Account.findOne({
+        _id: link.accountId,
+        portalId,
+        isDeleted: { $ne: true },
+      })
+        .populate('portalId')
+        .select('-passwordHash')
+
+      if (account) {
+        accounts.push({
+          account,
+          portal: account.portalId,
+          linkedAt: link.linkedAt,
+        })
       }
     }
 
@@ -69,6 +75,7 @@ export const getCustomerAccounts = async (req, res) => {
     })
   } catch (error) {
     console.error('❌ Error in getCustomerAccounts:', error)
+
     res.status(500).json({
       success: false,
       message: error.message,
@@ -76,14 +83,37 @@ export const getCustomerAccounts = async (req, res) => {
   }
 }
 
-// ✅ ربط حسابين للعميل (للمدير فقط)
+// ============================================================
+// ربط حساب العميل داخل البوابة الحالية فقط
+// ============================================================
+
 export const linkCustomerAccounts = async (req, res) => {
   try {
-    const { identityId, portalId, accountId } = req.body
+    const { identityId, accountId } = req.body
+    const portalId = req.portalId
     const adminId = req.accountId
 
+    if (!portalId) {
+      return res.status(400).json({
+        success: false,
+        message: 'Portal ID is required',
+        code: 'PORTAL_ID_REQUIRED',
+      })
+    }
+
+    if (!identityId || !accountId) {
+      return res.status(400).json({
+        success: false,
+        message: 'identityId and accountId are required',
+      })
+    }
+
+    // ========================================================
     // البحث عن الهوية
+    // ========================================================
+
     const identity = await CustomerIdentity.findById(identityId)
+
     if (!identity) {
       return res.status(404).json({
         success: false,
@@ -91,17 +121,49 @@ export const linkCustomerAccounts = async (req, res) => {
       })
     }
 
-    // التحقق من وجود الحساب
-    const account = await Account.findById(accountId)
+    // ========================================================
+    // الحساب يجب أن يكون من البوابة الحالية فقط
+    // ========================================================
+
+    const account = await Account.findOne({
+      _id: accountId,
+      portalId,
+      isDeleted: { $ne: true },
+    })
+
     if (!account) {
       return res.status(404).json({
         success: false,
-        message: 'Account not found',
+        message: 'Account not found in the current portal',
       })
     }
 
-    // ربط الحساب
-    await identity.linkAccount(portalId, accountId, adminId)
+    // ========================================================
+    // منع الربط إذا كان الحساب مرتبطًا بالفعل ببوابة أخرى
+    // ========================================================
+
+    const existingLink = identity.linkedAccounts.find(
+      link => link.accountId.toString() === accountId.toString()
+    )
+
+    if (existingLink && existingLink.portalId.toString() !== portalId.toString()) {
+      return res.status(403).json({
+        success: false,
+        message: 'This account belongs to another portal',
+        code: 'CROSS_PORTAL_LINK_FORBIDDEN',
+      })
+    }
+
+    // ========================================================
+    // ربط الحساب باستخدام portalId الموثوق من middleware
+    // وليس portalId القادم من المستخدم
+    // ========================================================
+
+    await identity.linkAccount(
+      portalId,
+      accountId,
+      adminId
+    )
 
     res.json({
       success: true,
@@ -117,6 +179,7 @@ export const linkCustomerAccounts = async (req, res) => {
     })
   } catch (error) {
     console.error('❌ Error in linkCustomerAccounts:', error)
+
     res.status(500).json({
       success: false,
       message: error.message,
@@ -124,11 +187,22 @@ export const linkCustomerAccounts = async (req, res) => {
   }
 }
 
-// ✅ البحث عن العميل (للمدير)
+// ============================================================
+// البحث عن العميل داخل البوابة الحالية فقط
+// ============================================================
+
 export const searchCustomer = async (req, res) => {
   try {
     const { query } = req.query
     const portalId = req.portalId
+
+    if (!portalId) {
+      return res.status(400).json({
+        success: false,
+        message: 'Portal ID is required',
+        code: 'PORTAL_ID_REQUIRED',
+      })
+    }
 
     if (!query || query.length < 2) {
       return res.status(400).json({
@@ -136,6 +210,10 @@ export const searchCustomer = async (req, res) => {
         message: 'Search query must be at least 2 characters',
       })
     }
+
+    // ========================================================
+    // البحث عن الهويات المرتبطة فعليًا بالبوابة الحالية فقط
+    // ========================================================
 
     const identities = await CustomerIdentity.find({
       $or: [
@@ -145,34 +223,54 @@ export const searchCustomer = async (req, res) => {
         { nationalId: { $regex: query, $options: 'i' } },
       ],
       isActive: true,
+      linkedAccounts: {
+        $elemMatch: {
+          portalId,
+        },
+      },
     })
 
-    // جلب الحسابات لكل هوية
     const results = []
+
     for (const identity of identities) {
       const accounts = []
+
       for (const link of identity.linkedAccounts) {
-        const account = await Account.findById(link.accountId)
+        // لا نعرض إلا الحسابات التابعة للبوابة الحالية
+        if (link.portalId.toString() !== portalId.toString()) {
+          continue
+        }
+
+        const account = await Account.findOne({
+          _id: link.accountId,
+          portalId,
+          isDeleted: { $ne: true },
+        })
           .populate('portalId')
           .select('-passwordHash')
+
         if (account) {
           accounts.push({
             account,
             portal: account.portalId,
-            isCurrentPortal: account.portalId._id.toString() === portalId.toString(),
+            isCurrentPortal: true,
+            linkedAt: link.linkedAt,
           })
         }
       }
-      results.push({
-        identity: {
-          id: identity._id,
-          email: identity.email,
-          fullName: identity.fullName,
-          phone: identity.phone,
-        },
-        accounts,
-        totalAccounts: accounts.length,
-      })
+
+      if (accounts.length > 0) {
+        results.push({
+          identity: {
+            id: identity._id,
+            email: identity.email,
+            fullName: identity.fullName,
+            phone: identity.phone,
+          },
+          accounts,
+          totalAccounts: accounts.length,
+        })
+      }
     }
 
     res.json({
@@ -182,6 +280,7 @@ export const searchCustomer = async (req, res) => {
     })
   } catch (error) {
     console.error('❌ Error in searchCustomer:', error)
+
     res.status(500).json({
       success: false,
       message: error.message,

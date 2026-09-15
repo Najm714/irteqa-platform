@@ -2,15 +2,13 @@
 import { Offer } from '../models/offer.model.js';
 import { File } from '../models/File.model.js';
 import storageService from '../services/storage.service.js';
-import jwt from 'jsonwebtoken';
-import { Account } from '../models/Account.model.js';
 
 // ============================================================
 // ✅ إضافة عرض جديد
 // ============================================================
 export const addOffer = async (req, res) => {
   try {
-    const portalId = req.portalId || req.headers['x-portal-id'];
+    const portalId = req.portalId;
     const accountId = req.accountId || req.user?.id;
     const {
       title,
@@ -121,7 +119,7 @@ export const addOffer = async (req, res) => {
 // ============================================================
 export const getOffers = async (req, res) => {
   try {
-    const portalId = req.portalId || req.headers['x-portal-id'];
+    const portalId = req.portalId;
     const { 
       category, 
       search, 
@@ -197,7 +195,7 @@ export const getOffers = async (req, res) => {
 export const getOfferById = async (req, res) => {
   try {
     const { id } = req.params;
-    const portalId = req.portalId || req.headers['x-portal-id'];
+    const portalId = req.portalId;
 
     const offer = await Offer.findOne({ _id: id, portalId, isDeleted: { $ne: true } })
       .populate('imageId', 'originalName size mimeType storageKey')
@@ -233,17 +231,29 @@ export const getOfferById = async (req, res) => {
     });
   }
 };
-
 // ============================================================
 // ✅ تحديث عرض
 // ============================================================
 export const updateOffer = async (req, res) => {
   try {
     const { id } = req.params;
-    const portalId = req.portalId || req.headers['x-portal-id'];
+    const portalId = req.portalId;
     const updates = req.body;
 
-    const offer = await Offer.findOne({ _id: id, portalId, isDeleted: { $ne: true } });
+    if (!portalId) {
+      return res.status(400).json({
+        success: false,
+        message: 'Portal context is required',
+        code: 'PORTAL_ID_REQUIRED',
+      });
+    }
+
+    const offer = await Offer.findOne({
+      _id: id,
+      portalId,
+      isDeleted: { $ne: true },
+    });
+
     if (!offer) {
       return res.status(404).json({
         success: false,
@@ -251,12 +261,51 @@ export const updateOffer = async (req, res) => {
       });
     }
 
+    // ========================================================
+    // التحقق من imageId الجديد
+    // يجب أن تكون الصورة تابعة لنفس الـ Portal
+    // ========================================================
+    if (updates.imageId !== undefined) {
+      if (updates.imageId === null || updates.imageId === '') {
+        offer.imageId = null;
+      } else {
+        const image = await File.findOne({
+          _id: updates.imageId,
+          portalId,
+          isDeleted: { $ne: true },
+        });
+
+        if (!image) {
+          return res.status(403).json({
+            success: false,
+            message:
+              'Image file is not authorized for this portal.',
+            code: 'IMAGE_PORTAL_ACCESS_DENIED',
+          });
+        }
+
+        offer.imageId = image._id;
+      }
+    }
+
     const allowedFields = [
-      'title', 'titleAr', 'description', 'descriptionAr',
-      'imageId', 'discountType', 'discountValue',
-      'originalPrice', 'currency', 'startDate', 'endDate',
-      'category', 'categoryAr', 'tags', 'isPublished',
-      'isFeatured', 'isActive', 'order',
+      'title',
+      'titleAr',
+      'description',
+      'descriptionAr',
+      'discountType',
+      'discountValue',
+      'originalPrice',
+      'currency',
+      'startDate',
+      'endDate',
+      'category',
+      'categoryAr',
+      'tags',
+      'isPublished',
+      'isFeatured',
+      'isActive',
+      'order',
     ];
 
     for (const field of allowedFields) {
@@ -268,15 +317,24 @@ export const updateOffer = async (req, res) => {
     if (updates.startDate) {
       offer.startDate = new Date(updates.startDate);
     }
+
     if (updates.endDate) {
       offer.endDate = new Date(updates.endDate);
     }
 
     offer.updatedAt = new Date();
+
     await offer.save();
 
-    const populated = await Offer.findById(offer._id)
-      .populate('imageId', 'originalName size mimeType storageKey')
+    const populated = await Offer.findOne({
+      _id: offer._id,
+      portalId,
+      isDeleted: { $ne: true },
+    })
+      .populate(
+        'imageId',
+        'originalName size mimeType storageKey portalId isDeleted'
+      )
       .populate('createdBy', 'profile.fullName');
 
     res.json({
@@ -286,9 +344,10 @@ export const updateOffer = async (req, res) => {
     });
   } catch (error) {
     console.error('❌ Error in updateOffer:', error);
+
     res.status(500).json({
       success: false,
-      message: error.message,
+      message: error.message || 'Failed to update offer',
     });
   }
 };
@@ -299,7 +358,7 @@ export const updateOffer = async (req, res) => {
 export const deleteOffer = async (req, res) => {
   try {
     const { id } = req.params;
-    const portalId = req.portalId || req.headers['x-portal-id'];
+    const portalId = req.portalId;
     const accountId = req.accountId || req.user?.id;
 
     const offer = await Offer.findOne({ _id: id, portalId, isDeleted: { $ne: true } });
@@ -327,64 +386,44 @@ export const deleteOffer = async (req, res) => {
     });
   }
 };
-
 // ============================================================
 // ✅ عرض صورة العرض
 // ============================================================
 export const viewOfferImage = async (req, res) => {
   try {
     const { id } = req.params;
-    const portalId = req.headers['x-portal-id'] || req.query.portalId;
-    
-    console.log('🖼️ Viewing offer image:', id);
-    
-    // ✅ الحصول على التوكن من Query String
-    const tokenFromQuery = req.query.token;
-    let account = null;
-    
-    if (tokenFromQuery) {
-      try {
-        const decoded = jwt.verify(tokenFromQuery, process.env.JWT_SECRET);
-        if (decoded) {
-          account = await Account.findById(decoded.id || decoded._id);
-          console.log('✅ Account found via query token:', account?._id);
-        }
-      } catch (err) {
-        console.log('⚠️ Token from query invalid:', err.message);
-      }
-    }
-    
-    if (!account) {
-      account = req.account;
-    }
+    const portalId = req.portalId;
 
-    if (!account) {
-      return res.status(401).json({
+    console.log('🖼️ Viewing offer image:', id);
+    console.log('  - Portal:', portalId);
+
+    if (!portalId) {
+      return res.status(400).json({
         success: false,
-        message: 'Unauthorized - Please login',
-        code: 'NO_TOKEN',
+        message: 'Portal context is required',
+        code: 'PORTAL_ID_REQUIRED',
       });
     }
 
-    // ✅ البحث عن العرض
-    const offer = await Offer.findOne({ 
-      _id: id, 
-      isDeleted: { $ne: true } 
-    }).populate('imageId');
+    // ✅ البحث عن العرض داخل الـ Portal المحدد فقط
+    const offer = await Offer.findOne({
+      _id: id,
+      portalId,
+      isDeleted: { $ne: true },
+    }).populate({
+      path: 'imageId',
+      select:
+        'originalName size mimeType storageKey portalId accountId isDeleted',
+      match: {
+        portalId,
+        isDeleted: { $ne: true },
+      },
+    });
 
     if (!offer) {
       return res.status(404).json({
         success: false,
         message: 'Offer not found',
-      });
-    }
-
-    // ✅ التحقق من البوابة
-    const accountPortalId = account.portalId?.toString() || account.portalId;
-    if (offer.portalId.toString() !== (portalId || accountPortalId)) {
-      return res.status(403).json({
-        success: false,
-        message: 'Access denied - Invalid portal',
       });
     }
 
@@ -398,25 +437,70 @@ export const viewOfferImage = async (req, res) => {
     if (!offer.imageId) {
       return res.status(404).json({
         success: false,
-        message: 'Image not found',
+        message: 'Image not found in this portal',
+        code: 'IMAGE_PORTAL_MISMATCH',
       });
     }
 
-    // ✅ عرض الصورة
-    const fileBuffer = await storageService.getFile(offer.imageId);
-    
-    res.setHeader('Content-Type', offer.imageId.mimeType || 'image/jpeg');
-    res.setHeader('Content-Length', offer.imageId.size);
-    res.setHeader('Cache-Control', 'public, max-age=86400');
-    res.setHeader('Access-Control-Allow-Origin', '*');
-    res.setHeader('Content-Disposition', `inline; filename="${encodeURIComponent(offer.imageId.originalName)}"`);
-    
+    // ✅ دفاع إضافي:
+    // يجب أن يكون ملف الصورة تابعًا لنفس Portal الخاص بالعرض
+    if (
+      !offer.imageId.portalId ||
+      offer.imageId.portalId.toString() !== portalId.toString()
+    ) {
+      console.warn(
+        `🚫 Offer image portal mismatch: ` +
+        `offer=${offer._id}, ` +
+        `image=${offer.imageId._id}, ` +
+        `requestedPortal=${portalId}`
+      );
+
+      return res.status(403).json({
+        success: false,
+        message: 'Image does not belong to this portal',
+        code: 'IMAGE_PORTAL_ACCESS_DENIED',
+      });
+    }
+
+    // ✅ جلب الصورة من التخزين
+    const fileBuffer = await storageService.getFile(
+      offer.imageId
+    );
+
+    res.setHeader(
+      'Content-Type',
+      offer.imageId.mimeType || 'image/jpeg'
+    );
+
+    res.setHeader(
+      'Content-Length',
+      fileBuffer.length
+    );
+
+    res.setHeader(
+      'Cache-Control',
+      'public, max-age=86400'
+    );
+
+    res.setHeader(
+      'Access-Control-Allow-Origin',
+      '*'
+    );
+
+    res.setHeader(
+      'Content-Disposition',
+      `inline; filename="${encodeURIComponent(
+        offer.imageId.originalName
+      )}"`
+    );
+
     return res.send(fileBuffer);
   } catch (error) {
     console.error('❌ Error in viewOfferImage:', error);
-    res.status(500).json({
+
+    return res.status(500).json({
       success: false,
-      message: error.message,
+      message: error.message || 'Failed to view offer image',
     });
   }
 };
@@ -426,7 +510,7 @@ export const viewOfferImage = async (req, res) => {
 // ============================================================
 export const getOfferStats = async (req, res) => {
   try {
-    const portalId = req.portalId || req.headers['x-portal-id'];
+    const portalId = req.portalId;
 
     const [total, published, featured, active, byCategory] = await Promise.all([
       Offer.countDocuments({ portalId, isDeleted: { $ne: true } }),
@@ -478,7 +562,7 @@ export const getOfferStats = async (req, res) => {
 export const trackOfferClick = async (req, res) => {
   try {
     const { id } = req.params;
-    const portalId = req.portalId || req.headers['x-portal-id'];
+    const portalId = req.portalId;
 
     const offer = await Offer.findOne({ _id: id, portalId, isDeleted: { $ne: true } });
     if (!offer) {

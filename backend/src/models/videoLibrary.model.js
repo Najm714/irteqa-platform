@@ -208,19 +208,43 @@ VideoLibrarySchema.methods.hasValidUrl = function() {
 };
 
 // ✅ طريقة للتحقق من الصلاحية
+// ✅ طريقة للتحقق من صلاحية مشاهدة الفيديو
 VideoLibrarySchema.methods.canView = function(user, subscription) {
-  if (user?.role === 'portal_admin' || user?.role === 'super_admin') {
+  if (!user) {
+    return false;
+  }
+
+  // Super Admin يتم التحقق من الـ Portal الخاص به
+  // بواسطة requirePortalContext قبل الوصول إلى الفيديو.
+  if (user.role === 'super_admin') {
     return true;
   }
-  
+
+  // جميع المستخدمين العاديين يجب أن يكونوا تابعين
+  // لنفس الـ Portal الخاص بالفيديو.
+  if (
+    !this.portalId ||
+    !user.portalId ||
+    this.portalId.toString() !== user.portalId.toString()
+  ) {
+    return false;
+  }
+
+  // Portal Admin لديه صلاحية مشاهدة فيديوهات الـ Portal الخاص به.
+  if (user.role === 'portal_admin') {
+    return true;
+  }
+
+  // الفيديو غير المشفر متاح لمستخدمي الـ Portal نفسه.
   if (!this.isEncrypted) {
     return true;
   }
-  
+
+  // الفيديو المشفر يتطلب اشتراكًا فعالًا.
   if (subscription && subscription.status === 'active') {
     return true;
   }
-  
+
   return false;
 };
 

@@ -10,15 +10,19 @@ import {
   getOfferStats,
   trackOfferClick,
 } from '../controllers/offer.controller.js';
-import { authenticate } from '../middleware/auth.js';
+import { authenticate, optionalAuth } from '../middleware/auth.js';
 import { requirePortalContext } from '../middleware/portalContext.js';
 import { requirePermission } from '../middleware/authorization.js';
 
 const router = express.Router();
 
 // ✅ مسار عرض صورة العرض - عام (يقرأ التوكن من Query)
-router.get('/:id/image', viewOfferImage);
-
+router.get(
+  '/:id/image',
+  optionalAuth,
+  requirePortalContext,
+  viewOfferImage
+);
 // ✅ جميع المسارات الأخرى تتطلب مصادقة
 router.use(authenticate);
 router.use(requirePortalContext);

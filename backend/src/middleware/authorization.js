@@ -6,7 +6,6 @@
 
 const portalRolePermissions = {
   customer: [
-    // الصلاحيات الأساسية للعميل
     'read_own_requests',
     'create_requests',
     'update_own_requests',
@@ -15,18 +14,18 @@ const portalRolePermissions = {
     'create_messages',
     'read_own_messages',
     'upload_own_files',
-    'upload_files',           // ✅ رفع الملفات
-    'upload_payment_proof',   // ✅ رفع إثبات الدفع
+    'upload_files',
+    'upload_payment_proof',
     'read_own_files',
     'manage_own_profile',
     'view_payments',
-    'create_subscription',    // ✅ إنشاء اشتراك
-    'read_subscriptions',     // ✅ قراءة الاشتراكات
-    'read_payments',          // ✅ قراءة المدفوعات
-    'create_payments',        // ✅ إنشاء مدفوعات
-    'read_files',             // ✅ قراءة الملفات
+    'create_subscription',
+    'read_subscriptions',
+    'read_payments',
+    'create_payments',
+    'read_files',
   ],
-  
+
   specialist: [
     'read_assigned_requests',
     'update_assigned_requests',
@@ -41,9 +40,8 @@ const portalRolePermissions = {
     'read_files',
     'read_payments',
   ],
-  
+
   portal_admin: [
-    // صلاحيات إدارة البوابة كاملة
     'manage_portal',
     'manage_users',
     'manage_specialists',
@@ -68,99 +66,278 @@ const portalRolePermissions = {
     'manage_all_subscriptions',
     'manage_all_content',
   ],
-  
-  super_admin: ['*'], // ✅ جميع الصلاحيات
+
+  super_admin: ['*'],
 };
 
+// ============================================================
+// ✅ تحويل الصلاحيات إلى مصفوفة
+// ============================================================
+
+const normalizePermissions = (requiredPermissions) => {
+  if (Array.isArray(requiredPermissions)) {
+    return requiredPermissions.filter(Boolean);
+  }
+
+  return requiredPermissions ? [requiredPermissions] : [];
+};
+
+// ============================================================
+// ✅ التحقق من تطابق الحساب مع البوابة
+// ============================================================
+// ============================================================
+// ✅ التحقق من تطابق الحساب مع البوابة
+// ============================================================
+
+const ensurePortalAccess = (account, portalId) => {
+  if (!account) {
+    return {
+      allowed: false,
+      code: 'AUTH_REQUIRED',
+      message: 'Authentication required.',
+    };
+  }
+
+  // Super admin يستطيع إدارة أي بوابة،
+  // بشرط أن يكون portalId محددًا وصحيحًا من portalContext.
+  if (account.role === 'super_admin') {
+    return {
+      allowed: true,
+    };
+  }
+
+  if (!portalId) {
+    return {
+      allowed: false,
+      code: 'PORTAL_ID_REQUIRED',
+      message: 'Portal context is required.',
+    };
+  }
+
+  if (!account.portalId) {
+    return {
+      allowed: false,
+      code: 'ACCOUNT_PORTAL_REQUIRED',
+      message: 'Your account is not assigned to a portal.',
+    };
+  }
+
+  // account.portalId قد يكون:
+  // 1) ObjectId
+  // 2) populated Portal document
+  const accountPortalId =
+    account.portalId?._id || account.portalId;
+
+  if (
+    accountPortalId.toString() !==
+    portalId.toString()
+  ) {
+    return {
+      allowed: false,
+      code: 'PORTAL_ACCESS_DENIED',
+      message: 'You are not authorized to access this portal.',
+    };
+  }
+
+  return {
+    allowed: true,
+  };
+};
 // ============================================================
 // ✅ دالة التحقق من الصلاحيات
 // ============================================================
 
 export const requirePermission = (requiredPermissions = []) => {
   return async (req, res, next) => {
-    const account = req.account;
-    const portal = req.portal;
-
-    console.log('🔍 requirePermission - account:', account?._id);
-    console.log('🔍 requirePermission - role:', account?.role);
-    console.log('🔍 requirePermission - requiredPermissions:', requiredPermissions);
-
-    // ✅ التحقق من وجود الحساب
-    if (!account) {
-      return res.status(401).json({
-        success: false,
-        message: 'Authentication required.',
-        code: 'AUTH_REQUIRED',
-      });
-    }
-
-    // ✅ التحقق من نشاط الحساب
-    if (!account.isActive) {
-      return res.status(403).json({
-        success: false,
-        message: 'Account is deactivated.',
-        code: 'ACCOUNT_INACTIVE',
-      });
-    }
-
-    // ✅ Super admin لديه صلاحيات كاملة
-    if (account.role === 'super_admin') {
-      console.log('✅ Super admin granted all permissions');
-      return next();
-    }
-
-    // ✅ Portal admin لديه صلاحيات كاملة في بوابته
-    if (account.role === 'portal_admin') {
-      console.log('✅ Portal admin granted all permissions');
-      return next();
-    }
-
-    // ✅ التأكد من أن requiredPermissions هي مصفوفة
-    const permissions = Array.isArray(requiredPermissions) 
-      ? requiredPermissions 
-      : [requiredPermissions].filter(Boolean);
-
-    // ✅ إذا لم تكن هناك صلاحيات مطلوبة، السماح بالوصول
-    if (permissions.length === 0) {
-      console.log('✅ No specific permissions required, allowing access');
-      return next();
-    }
-
-    // ✅ التحقق من صلاحيات البوابة
     try {
-      const portalId = portal?._id || req.portalId || account.portalId;
+      const account = req.account;
+
+      console.log('🔍 requirePermission - account:', account?._id);
+      console.log('🔍 requirePermission - role:', account?.role);
+      console.log(
+        '🔍 requirePermission - requiredPermissions:',
+        requiredPermissions
+      );
+
+      // --------------------------------------------------------
+      // التحقق من وجود الحساب
+      // --------------------------------------------------------
+
+      if (!account) {
+        return res.status(401).json({
+          success: false,
+          message: 'Authentication required.',
+          code: 'AUTH_REQUIRED',
+        });
+      }
+
+      // --------------------------------------------------------
+      // التحقق من نشاط الحساب
+      // --------------------------------------------------------
+
+      if (!account.isActive) {
+        return res.status(403).json({
+          success: false,
+          message: 'Account is deactivated.',
+          code: 'ACCOUNT_INACTIVE',
+        });
+      }
+
+      // --------------------------------------------------------
+      // تحديد البوابة من الـ secure portal context
+      // --------------------------------------------------------
+
+const portalId =
+  req.portalId ||
+  req.portal?._id ||
+  null;
+
+console.log('========== PORTAL ACCESS DEBUG ==========');
+console.log('account._id:', account?._id?.toString());
+console.log('account.role:', account?.role);
+console.log('account.portalId:', account?.portalId?.toString());
+console.log('req.portalId:', req.portalId?.toString());
+console.log('req.portal._id:', req.portal?._id?.toString());
+console.log('computed portalId:', portalId?.toString());
+console.log('=========================================');
+      // --------------------------------------------------------
+      // Super Admin
+      // --------------------------------------------------------
+
+      if (account.role === 'super_admin') {
+        if (!portalId) {
+          return res.status(400).json({
+            success: false,
+            message: 'Portal context is required for super admin.',
+            code: 'PORTAL_ID_REQUIRED',
+          });
+        }
+
+        console.log(
+          '✅ Super admin granted access to portal:',
+          portalId.toString()
+        );
+
+        return next();
+      }
+
+      // --------------------------------------------------------
+      // جميع المستخدمين غير Super Admin
+      // يجب أن تكون لهم بوابة محددة
+      // ويجب أن تطابق بوابتهم الشخصية
+      // --------------------------------------------------------
+
+      const portalAccess = ensurePortalAccess(account, portalId);
+
       
-      // ✅ التحقق من كل صلاحية
-      const hasAllPermissions = permissions.every(permission => {
-        // التحقق من الصلاحية في حساب المستخدم
-        const hasPermission = account.hasPortalPermission?.(portalId, permission);
-        console.log(`🔍 Permission check: ${permission} = ${hasPermission}`);
+      if (!portalAccess.allowed) {
+        console.warn(
+          `🚫 Portal permission blocked: account=${account._id}, ` +
+          `accountPortal=${account.portalId}, requestedPortal=${portalId}`
+        );
+
+        return res.status(
+          portalAccess.code === 'PORTAL_ID_REQUIRED' ||
+          portalAccess.code === 'ACCOUNT_PORTAL_REQUIRED'
+            ? 400
+            : 403
+        ).json({
+          success: false,
+          message: portalAccess.message,
+          code: portalAccess.code,
+        });
+      }
+
+      // --------------------------------------------------------
+      // Portal Admin
+      //
+      // مهم:
+      // لا نعطيه next() قبل التحقق من البوابة.
+      // بعد التأكد من أن البوابة هي بوابته، يحصل على
+      // صلاحيات إدارة البوابة.
+      // --------------------------------------------------------
+
+      if (account.role === 'portal_admin') {
+        console.log(
+          '✅ Portal admin authorized for own portal:',
+          portalId.toString()
+        );
+
+        return next();
+      }
+
+      // --------------------------------------------------------
+      // الصلاحيات المطلوبة
+      // --------------------------------------------------------
+
+      const permissions = normalizePermissions(requiredPermissions);
+
+      if (permissions.length === 0) {
+        return next();
+      }
+
+      // --------------------------------------------------------
+      // التحقق من صلاحيات الحساب الخاصة بالبوابة
+      // --------------------------------------------------------
+
+      const hasAllAccountPermissions = permissions.every((permission) => {
+        const hasPermission =
+          typeof account.hasPortalPermission === 'function'
+            ? account.hasPortalPermission(portalId, permission)
+            : false;
+
+        console.log(
+          `🔍 Permission check: ${permission} = ${hasPermission}`
+        );
+
         return hasPermission;
       });
 
-      if (!hasAllPermissions) {
-        // ✅ محاولة الحصول على الصلاحيات من الدور مباشرة
-        const rolePermissions = portalRolePermissions[account.role] || [];
-        const hasByRole = permissions.every(permission => 
-          rolePermissions.includes(permission) || rolePermissions.includes('*')
+      if (hasAllAccountPermissions) {
+        console.log(
+          '✅ Permission granted through account permissions:',
+          permissions
         );
 
-        if (!hasByRole) {
-          return res.status(403).json({
-            success: false,
-            message: 'Insufficient permissions for this portal.',
-            required: permissions,
-            userRole: account.role,
-            userPermissions: account.permissions || rolePermissions || [],
-            code: 'INSUFFICIENT_PERMISSIONS',
-          });
-        }
+        return next();
       }
 
-      console.log('✅ Permission granted for:', permissions);
-      next();
+      // --------------------------------------------------------
+      // fallback إلى صلاحيات الدور
+      // --------------------------------------------------------
+
+      const rolePermissions =
+        portalRolePermissions[account.role] || [];
+
+      const hasByRole = permissions.every(
+        (permission) =>
+          rolePermissions.includes(permission) ||
+          rolePermissions.includes('*')
+      );
+
+      if (!hasByRole) {
+        return res.status(403).json({
+          success: false,
+          message: 'Insufficient permissions for this portal.',
+          required: permissions,
+          userRole: account.role,
+          userPermissions:
+            account.permissions?.length > 0
+              ? account.permissions
+              : rolePermissions,
+          code: 'INSUFFICIENT_PERMISSIONS',
+        });
+      }
+
+      console.log(
+        '✅ Permission granted through role:',
+        permissions
+      );
+
+      return next();
     } catch (error) {
       console.error('❌ Permission check error:', error);
+
       return res.status(500).json({
         success: false,
         message: 'Permission check failed',
@@ -187,20 +364,19 @@ export const requireRole = (allowedRoles = []) => {
       });
     }
 
-    // ✅ التأكد من أن allowedRoles هي مصفوفة
-    const roles = Array.isArray(allowedRoles) ? allowedRoles : [allowedRoles].filter(Boolean);
+    const roles = Array.isArray(allowedRoles)
+      ? allowedRoles.filter(Boolean)
+      : [allowedRoles].filter(Boolean);
 
-    // ✅ Super admin لديه صلاحيات كاملة
+    // Super admin يتجاوز فحص الدور
     if (account.role === 'super_admin') {
       return next();
     }
 
-    // ✅ إذا لم تكن هناك أدوار مطلوبة، السماح بالوصول
     if (roles.length === 0) {
       return next();
     }
 
-    // ✅ التحقق من الدور
     if (!roles.includes(account.role)) {
       return res.status(403).json({
         success: false,
@@ -210,7 +386,7 @@ export const requireRole = (allowedRoles = []) => {
       });
     }
 
-    next();
+    return next();
   };
 };
 
@@ -220,7 +396,6 @@ export const requireRole = (allowedRoles = []) => {
 
 export const requirePortalAdmin = async (req, res, next) => {
   const account = req.account;
-  const portal = req.portal;
 
   if (!account) {
     return res.status(401).json({
@@ -230,30 +405,92 @@ export const requirePortalAdmin = async (req, res, next) => {
     });
   }
 
-  // ✅ Super admin لديه صلاحيات كاملة
+  // Super admin يستطيع إدارة أي بوابة
+  // لكن يجب أن يكون portalContext موجودًا.
   if (account.role === 'super_admin') {
+    if (!req.portalId && !req.portal?._id) {
+      return res.status(400).json({
+        success: false,
+        message: 'Portal context is required for super admin.',
+        code: 'PORTAL_ID_REQUIRED',
+      });
+    }
+
     return next();
   }
 
-  // ✅ التحقق من أن المستخدم مدير لهذه البوابة
   try {
-    const portalId = portal?._id || req.portalId || account.portalId;
-    const isPortalAdmin = account.role === 'portal_admin' &&
-      account.hasPortalPermission?.(portalId, 'manage_portal');
+    const portalId =
+      req.portalId ||
+      req.portal?._id ||
+      null;
 
-    if (!isPortalAdmin) {
+    // يجب وجود portal context
+    if (!portalId) {
+      return res.status(400).json({
+        success: false,
+        message: 'Portal context is required.',
+        code: 'PORTAL_ID_REQUIRED',
+      });
+    }
+
+    // مدير البوابة يجب أن يكون مرتبطًا ببوابة
+    if (!account.portalId) {
+      return res.status(403).json({
+        success: false,
+        message: 'Portal admin is not assigned to a portal.',
+        code: 'ACCOUNT_PORTAL_REQUIRED',
+      });
+    }
+
+    // منع Portal Admin من الوصول إلى بوابة أخرى
+    if (account.portalId.toString() !== portalId.toString()) {
+      console.warn(
+        `🚫 Portal admin cross-portal access blocked: ` +
+        `account=${account._id}, ` +
+        `accountPortal=${account.portalId}, ` +
+        `requestedPortal=${portalId}`
+      );
+
+      return res.status(403).json({
+        success: false,
+        message: 'You are not authorized to access this portal.',
+        userRole: account.role,
+        portalId,
+        code: 'PORTAL_ACCESS_DENIED',
+      });
+    }
+
+    if (account.role !== 'portal_admin') {
       return res.status(403).json({
         success: false,
         message: 'Access denied. Portal admin privileges required.',
         userRole: account.role,
-        portalId: portalId,
+        portalId,
         code: 'ADMIN_REQUIRED',
       });
     }
 
-    next();
+    // التأكد من وجود صلاحية manage_portal
+    const hasManagePortal =
+      typeof account.hasPortalPermission === 'function'
+        ? account.hasPortalPermission(portalId, 'manage_portal')
+        : false;
+
+    if (!hasManagePortal) {
+      return res.status(403).json({
+        success: false,
+        message: 'Portal admin does not have manage_portal permission.',
+        userRole: account.role,
+        portalId,
+        code: 'ADMIN_PERMISSION_REQUIRED',
+      });
+    }
+
+    return next();
   } catch (error) {
     console.error('❌ Portal admin check error:', error);
+
     return res.status(500).json({
       success: false,
       message: 'Portal admin check failed',
@@ -267,13 +504,22 @@ export const requirePortalAdmin = async (req, res, next) => {
 // ✅ دالة التحقق من ملكية المورد (IDOR Protection)
 // ============================================================
 
-export const requireResourceOwnership = (model, idParam = 'id', ownerField = 'accountId') => {
+export const requireResourceOwnership = (
+  model,
+  idParam = 'id',
+  ownerField = 'accountId'
+) => {
   return async (req, res, next) => {
     try {
       const resourceId = req.params[idParam];
       const accountId = req.accountId;
-      const portalId = req.portalId;
       const account = req.account;
+
+      // استخدام الـ portal context الآمن
+      const portalId =
+        req.portalId ||
+        req.portal?._id ||
+        null;
 
       if (!resourceId) {
         return res.status(400).json({
@@ -291,7 +537,15 @@ export const requireResourceOwnership = (model, idParam = 'id', ownerField = 'ac
         });
       }
 
-      // ✅ البحث عن المورد
+      if (!portalId) {
+        return res.status(400).json({
+          success: false,
+          message: 'Portal context is required',
+          code: 'PORTAL_ID_REQUIRED',
+        });
+      }
+
+      // البحث عن المورد داخل البوابة فقط
       const resource = await model.findOne({
         _id: resourceId,
         portalId,
@@ -306,15 +560,36 @@ export const requireResourceOwnership = (model, idParam = 'id', ownerField = 'ac
         });
       }
 
-      // ✅ المشرف العام ومدير البوابة لديهم صلاحية الوصول
-      if (account?.role === 'super_admin' || account?.role === 'portal_admin') {
+      // Super admin: بعد التأكد من portal context
+      if (account?.role === 'super_admin') {
         req.resource = resource;
         return next();
       }
 
-      // ✅ التحقق من ملكية المورد
+      // Portal admin: لا يصل إلا لموارد بوابته
+      if (account?.role === 'portal_admin') {
+        if (
+          !account.portalId ||
+          account.portalId.toString() !== portalId.toString()
+        ) {
+          return res.status(403).json({
+            success: false,
+            message: 'You are not authorized to access this portal.',
+            code: 'PORTAL_ACCESS_DENIED',
+          });
+        }
+
+        req.resource = resource;
+        return next();
+      }
+
+      // المستخدم العادي: التحقق من الملكية
       const ownerId = resource[ownerField];
-      if (!ownerId || ownerId.toString() !== accountId.toString()) {
+
+      if (
+        !ownerId ||
+        ownerId.toString() !== accountId.toString()
+      ) {
         return res.status(403).json({
           success: false,
           message: 'You do not have permission to access this resource',
@@ -323,10 +598,14 @@ export const requireResourceOwnership = (model, idParam = 'id', ownerField = 'ac
       }
 
       req.resource = resource;
-      next();
+      return next();
     } catch (error) {
-      console.error('❌ Resource ownership middleware error:', error);
-      res.status(500).json({
+      console.error(
+        '❌ Resource ownership middleware error:',
+        error
+      );
+
+      return res.status(500).json({
         success: false,
         message: 'Authorization error',
         code: 'AUTH_ERROR',
@@ -342,10 +621,19 @@ export const requireResourceOwnership = (model, idParam = 'id', ownerField = 'ac
 export const requireFileOwnership = async (req, res, next) => {
   try {
     const { File } = await import('../models/File.model.js');
-    return requireResourceOwnership(File, 'id', 'accountId')(req, res, next);
+
+    return requireResourceOwnership(
+      File,
+      'id',
+      'accountId'
+    )(req, res, next);
   } catch (error) {
-    console.error('❌ File ownership middleware error:', error);
-    res.status(500).json({
+    console.error(
+      '❌ File ownership middleware error:',
+      error
+    );
+
+    return res.status(500).json({
       success: false,
       message: 'Authorization error',
       code: 'AUTH_ERROR',
@@ -360,10 +648,19 @@ export const requireFileOwnership = async (req, res, next) => {
 export const requireRequestOwnership = async (req, res, next) => {
   try {
     const { Request } = await import('../models/Request.model.js');
-    return requireResourceOwnership(Request, 'id', 'accountId')(req, res, next);
+
+    return requireResourceOwnership(
+      Request,
+      'id',
+      'accountId'
+    )(req, res, next);
   } catch (error) {
-    console.error('❌ Request ownership middleware error:', error);
-    res.status(500).json({
+    console.error(
+      '❌ Request ownership middleware error:',
+      error
+    );
+
+    return res.status(500).json({
       success: false,
       message: 'Authorization error',
       code: 'AUTH_ERROR',
@@ -378,10 +675,18 @@ export const requireRequestOwnership = async (req, res, next) => {
 export const requireRequestAccess = () => {
   return async (req, res, next) => {
     try {
-      const requestId = req.params.id || req.params.requestId;
+      const requestId =
+        req.params.id ||
+        req.params.requestId;
+
       const accountId = req.accountId;
-      const portalId = req.portalId;
       const account = req.account;
+
+      // استخدام portal context الآمن
+      const portalId =
+        req.portalId ||
+        req.portal?._id ||
+        null;
 
       if (!requestId) {
         return res.status(400).json({
@@ -391,8 +696,28 @@ export const requireRequestAccess = () => {
         });
       }
 
-      // ✅ استيراد نموذج الطلب
-      const { Request } = await import('../models/Request.model.js');
+      if (!accountId) {
+        return res.status(401).json({
+          success: false,
+          message: 'Authentication required',
+          code: 'AUTH_REQUIRED',
+        });
+      }
+
+      if (!portalId) {
+        return res.status(400).json({
+          success: false,
+          message: 'Portal context is required',
+          code: 'PORTAL_ID_REQUIRED',
+        });
+      }
+
+      // استيراد نموذج الطلب
+      const { Request } = await import(
+        '../models/Request.model.js'
+      );
+
+      // البحث داخل البوابة الحالية فقط
       const request = await Request.findOne({
         _id: requestId,
         portalId,
@@ -407,20 +732,55 @@ export const requireRequestAccess = () => {
         });
       }
 
-      // ✅ المشرف العام أو مدير البوابة
-      if (account?.role === 'super_admin' || account?.role === 'portal_admin') {
+      // --------------------------------------------------------
+      // Super Admin
+      // --------------------------------------------------------
+
+      if (account?.role === 'super_admin') {
         req.request = request;
         return next();
       }
 
-      // ✅ العميل - يمكنه الوصول لطلباته فقط
-      if (account?.role === 'customer' && request.accountId?.toString() === accountId?.toString()) {
+      // --------------------------------------------------------
+      // Portal Admin
+      // --------------------------------------------------------
+
+      if (account?.role === 'portal_admin') {
+        if (
+          !account.portalId ||
+          account.portalId.toString() !== portalId.toString()
+        ) {
+          return res.status(403).json({
+            success: false,
+            message: 'You are not authorized to access this portal.',
+            code: 'PORTAL_ACCESS_DENIED',
+          });
+        }
+
         req.request = request;
         return next();
       }
 
-      // ✅ المختص - يمكنه الوصول للطلبات المسندة إليه
-      if (account?.role === 'specialist' && request.specialistId?.toString() === accountId?.toString()) {
+      // --------------------------------------------------------
+      // Customer
+      // --------------------------------------------------------
+
+      if (
+        account?.role === 'customer' &&
+        request.accountId?.toString() === accountId?.toString()
+      ) {
+        req.request = request;
+        return next();
+      }
+
+      // --------------------------------------------------------
+      // Specialist
+      // --------------------------------------------------------
+
+      if (
+        account?.role === 'specialist' &&
+        request.specialistId?.toString() === accountId?.toString()
+      ) {
         req.request = request;
         return next();
       }
@@ -431,8 +791,12 @@ export const requireRequestAccess = () => {
         code: 'ACCESS_DENIED',
       });
     } catch (error) {
-      console.error('❌ Request access middleware error:', error);
-      res.status(500).json({
+      console.error(
+        '❌ Request access middleware error:',
+        error
+      );
+
+      return res.status(500).json({
         success: false,
         message: 'Authorization error',
         code: 'AUTH_ERROR',

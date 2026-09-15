@@ -16,7 +16,7 @@ const generateSlug = (text) => {
 // ===== إنشاء قسم جديد =====
 export const createSection = async (req, res) => {
   try {
-    const portalId = req.portalId || req.headers['x-portal-id'] || req.body.portalId;
+    const portalId = req.portalId;
     const { id: userId } = req.user || {};
 
     const {
@@ -150,7 +150,7 @@ export const createSection = async (req, res) => {
 // ===== الحصول على جميع الأقسام =====
 export const getSections = async (req, res) => {
   try {
-    const portalId = req.portalId || req.headers['x-portal-id'] || req.query.portalId;
+    const portalId = req.portalId;
     const { isPublished, parentId } = req.query;
 
     if (!portalId) {
@@ -213,7 +213,7 @@ export const getSections = async (req, res) => {
 export const getSectionById = async (req, res) => {
   try {
     const { id } = req.params;
-    const portalId = req.portalId || req.headers['x-portal-id'];
+    const portalId = req.portalId;
 
     const section = await Section.findOne({ 
       _id: id, 
@@ -245,7 +245,7 @@ export const getSectionById = async (req, res) => {
 export const updateSection = async (req, res) => {
   try {
     const { id } = req.params;
-    const portalId = req.portalId || req.headers['x-portal-id'];
+    const portalId = req.portalId;
     const updates = req.body;
 
     const section = await Section.findOne({ _id: id, portalId });
@@ -301,7 +301,7 @@ export const updateSection = async (req, res) => {
 export const deleteSection = async (req, res) => {
   try {
     const { id } = req.params;
-    const portalId = req.portalId || req.headers['x-portal-id'];
+    const portalId = req.portalId;
 
     const section = await Section.findOne({ _id: id, portalId });
     if (!section) {
@@ -342,7 +342,7 @@ export const deleteSection = async (req, res) => {
 export const toggleSectionStatus = async (req, res) => {
   try {
     const { id } = req.params;
-    const portalId = req.portalId || req.headers['x-portal-id'];
+    const portalId = req.portalId;
 
     const section = await Section.findOne({ _id: id, portalId });
     if (!section) {

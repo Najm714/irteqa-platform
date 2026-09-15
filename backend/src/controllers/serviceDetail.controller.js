@@ -6,7 +6,7 @@ import { Section } from '../models/Section.model.js';
 // ===== إنشاء تفاصيل الخدمة =====
 export const createServiceDetail = async (req, res) => {
   try {
-    const portalId = req.portalId || req.headers['x-portal-id'] || req.body.portalId;
+    const portalId = req.portalId;
     const { id: userId } = req.user || {};
 
     const {
@@ -116,7 +116,7 @@ export const createServiceDetail = async (req, res) => {
 // ===== الحصول على جميع تفاصيل الخدمات =====
 export const getServiceDetails = async (req, res) => {
   try {
-    const portalId = req.portalId || req.headers['x-portal-id'] || req.query.portalId;
+    const portalId = req.portalId;
     const { sectionId, serviceId, isPublished } = req.query;
 
     if (!portalId) {
@@ -154,7 +154,7 @@ export const getServiceDetails = async (req, res) => {
 export const getServiceDetailById = async (req, res) => {
   try {
     const { id } = req.params;
-    const portalId = req.portalId || req.headers['x-portal-id'];
+    const portalId = req.portalId;
 
     // ✅ ابحث باستخدام serviceId (وليس _id)
     const serviceDetail = await ServiceDetail.findOne({ 
@@ -190,7 +190,7 @@ export const getServiceDetailById = async (req, res) => {
 export const updateServiceDetail = async (req, res) => {
   try {
     const { id } = req.params;
-    const portalId = req.portalId || req.headers['x-portal-id'];
+    const portalId = req.portalId;
     const updates = req.body;
 
     const serviceDetail = await ServiceDetail.findOne({ _id: id, portalId });
@@ -228,7 +228,7 @@ export const updateServiceDetail = async (req, res) => {
 export const deleteServiceDetail = async (req, res) => {
   try {
     const { id } = req.params;
-    const portalId = req.portalId || req.headers['x-portal-id'];
+    const portalId = req.portalId;
 
     const serviceDetail = await ServiceDetail.findOne({ _id: id, portalId });
     if (!serviceDetail) {
@@ -259,7 +259,7 @@ export const deleteServiceDetail = async (req, res) => {
 export const toggleServiceDetailStatus = async (req, res) => {
   try {
     const { id } = req.params;
-    const portalId = req.portalId || req.headers['x-portal-id'];
+    const portalId = req.portalId;
 
     const serviceDetail = await ServiceDetail.findOne({ _id: id, portalId });
     if (!serviceDetail) {

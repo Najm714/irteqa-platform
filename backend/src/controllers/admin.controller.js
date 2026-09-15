@@ -16,7 +16,7 @@ import { Service } from '../models/Service.model.js';
 
 export const getDashboardStats = async (req, res) => {
   try {
-    const portalId = req.portalId || req.headers['x-portal-id'];
+    const portalId = req.portalId;
     
     if (!portalId) {
       return res.status(400).json({
@@ -132,7 +132,7 @@ export const getDashboardStats = async (req, res) => {
 
 export const getChartData = async (req, res) => {
   try {
-    const portalId = req.portalId || req.headers['x-portal-id'];
+    const portalId = req.portalId;
     const { period = '30d' } = req.query;
     
     if (!portalId) {
@@ -291,7 +291,7 @@ export const updateSettings = async (req, res) => {
 // ===== جلب جميع المستخدمين =====
 export const getUsers = async (req, res) => {
   try {
-    const portalId = req.portalId || req.headers['x-portal-id'];
+    const portalId = req.portalId;
     const { role, search, isActive, limit = 20, page = 1 } = req.query;
 
     if (!portalId) {
@@ -372,7 +372,7 @@ export const getUsers = async (req, res) => {
 export const getUserById = async (req, res) => {
   try {
     const { id } = req.params;
-    const portalId = req.portalId || req.headers['x-portal-id'];
+    const portalId = req.portalId;
 
     if (!portalId) {
       return res.status(400).json({
@@ -425,7 +425,7 @@ export const getUserById = async (req, res) => {
 // ===== إنشاء مستخدم جديد =====
 export const createUser = async (req, res) => {
   try {
-    const portalId = req.portalId || req.headers['x-portal-id'];
+    const portalId = req.portalId;
     const { email, password, fullName, username, phone, role, isActive, isVerified } = req.body;
 
     console.log('📝 Creating user:', email);
@@ -514,7 +514,7 @@ export const createUser = async (req, res) => {
 export const updateUser = async (req, res) => {
   try {
     const { id } = req.params;
-    const portalId = req.portalId || req.headers['x-portal-id'];
+    const portalId = req.portalId;
     const { fullName, username, phone, role, isActive, isVerified, password } = req.body;
 
     if (!portalId) {
@@ -575,7 +575,7 @@ export const updateUser = async (req, res) => {
 export const toggleUserStatus = async (req, res) => {
   try {
     const { id } = req.params;
-    const portalId = req.portalId || req.headers['x-portal-id'];
+    const portalId = req.portalId;
 
     if (!portalId) {
       return res.status(400).json({
@@ -616,7 +616,7 @@ export const toggleUserStatus = async (req, res) => {
 export const deleteUser = async (req, res) => {
   try {
     const { id } = req.params;
-    const portalId = req.portalId || req.headers['x-portal-id'];
+    const portalId = req.portalId;
     const accountId = req.accountId || req.user?.id;
 
     if (!portalId) {
@@ -664,7 +664,7 @@ export const deleteUser = async (req, res) => {
 // ===== جلب إحصائيات المستخدمين =====
 export const getUserStats = async (req, res) => {
   try {
-    const portalId = req.portalId || req.headers['x-portal-id'];
+    const portalId = req.portalId;
 
     if (!portalId) {
       return res.status(400).json({
@@ -704,7 +704,7 @@ export const getUserStats = async (req, res) => {
 export const updateUserPermissions = async (req, res) => {
   try {
     const { id } = req.params;
-    const portalId = req.portalId || req.headers['x-portal-id'];
+    const portalId = req.portalId;
     const { permissions } = req.body;
 
     if (!portalId) {
@@ -745,7 +745,7 @@ export const updateUserPermissions = async (req, res) => {
 
 export const getAuditLog = async (req, res) => {
   try {
-    const portalId = req.portalId || req.headers['x-portal-id'];
+    const portalId = req.portalId;
     const { action, userId, limit = 50, page = 1 } = req.query;
 
     if (!portalId) {

@@ -11,7 +11,7 @@ import jwt from 'jsonwebtoken';
 // ============================================================
 export const addVideo = async (req, res) => {
   try {
-    const portalId = req.portalId || req.headers['x-portal-id'];
+    const portalId = req.portalId;
     const accountId = req.accountId || req.user?.id;
     const {
       fileId,
@@ -127,7 +127,7 @@ export const addVideo = async (req, res) => {
 // ============================================================
 export const getVideos = async (req, res) => {
   try {
-    const portalId = req.portalId || req.headers['x-portal-id'];
+    const portalId = req.portalId;
     const { category, search, isPublished, isFeatured, page = 1, limit = 20 } = req.query;
 
     console.log('📤 Fetching library videos for portal:', portalId);
@@ -200,7 +200,7 @@ export const getVideos = async (req, res) => {
 export const getVideoById = async (req, res) => {
   try {
     const { id } = req.params;
-    const portalId = req.portalId || req.headers['x-portal-id'];
+    const portalId = req.portalId;
 
     const video = await VideoLibrary.findOne({ _id: id, portalId, isDeleted: { $ne: true } })
       .populate('fileId', 'originalName size mimeType storageKey')
@@ -249,7 +249,7 @@ export const getVideoById = async (req, res) => {
 export const updateVideo = async (req, res) => {
   try {
     const { id } = req.params;
-    const portalId = req.portalId || req.headers['x-portal-id'];
+    const portalId = req.portalId;
     const updates = req.body;
 
     const video = await VideoLibrary.findOne({ _id: id, portalId, isDeleted: { $ne: true } });
@@ -301,7 +301,7 @@ export const updateVideo = async (req, res) => {
 export const deleteVideo = async (req, res) => {
   try {
     const { id } = req.params;
-    const portalId = req.portalId || req.headers['x-portal-id'];
+    const portalId = req.portalId;
     const accountId = req.accountId || req.user?.id;
 
     const video = await VideoLibrary.findOne({ _id: id, portalId, isDeleted: { $ne: true } });
@@ -330,82 +330,103 @@ export const deleteVideo = async (req, res) => {
   }
 };
 // ============================================================
-// ✅ تشغيل/تحميل فيديو من المكتبة (مُصلح)
+// تشغيل فيديو من مكتبة الفيديوهات
+// Portal-isolated + authentication-aware
 // ============================================================
 export const streamVideo = async (req, res) => {
   try {
     const { id } = req.params;
-    const portalId = req.headers['x-portal-id'] || req.query.portalId;
-    
+    const portalId = req.portalId;
+    const account = req.account;
+
     console.log('🎬 Streaming library video:', id);
     console.log('  - Portal:', portalId);
-    
-    // ✅ الحصول على التوكن من Query String
-    const tokenFromQuery = req.query.token;
-    let account = null;
-    
-    if (tokenFromQuery) {
-      try {
-        const decoded = jwt.verify(tokenFromQuery, process.env.JWT_SECRET);
-        if (decoded) {
-          account = await Account.findById(decoded.id || decoded._id);
-          console.log('✅ Account found via query token:', account?._id);
-        }
-      } catch (err) {
-        console.log('⚠️ Token from query invalid:', err.message);
-      }
-    }
-    
-    // ✅ إذا لم يتم العثور على حساب من التوكن، استخدم req.account
-    if (!account) {
-      account = req.account;
-    }
+    console.log('  - Account:', account?._id);
+    console.log('  - Role:', account?.role);
 
-    if (!account) {
-      console.log('❌ No account found, unauthorized');
-      return res.status(401).json({
+    if (!portalId) {
+      return res.status(400).json({
         success: false,
-        message: 'Unauthorized - Please login',
-        code: 'NO_TOKEN',
+        message: 'Portal context is required',
+        code: 'PORTAL_ID_REQUIRED',
       });
     }
 
-    // ✅ البحث عن الفيديو
-    const video = await VideoLibrary.findOne({ 
-      _id: id, 
-      isDeleted: { $ne: true } 
-    }).populate('fileId');
+    if (!account) {
+      return res.status(401).json({
+        success: false,
+        message: 'Unauthorized - Please login',
+        code: 'UNAUTHORIZED',
+      });
+    }
+
+    // ========================================================
+    // البحث عن الفيديو داخل الـ Portal المحدد فقط
+    // ========================================================
+    const video = await VideoLibrary.findOne({
+      _id: id,
+      portalId,
+      isDeleted: { $ne: true },
+    }).populate({
+      path: 'fileId',
+      select:
+        'originalName size mimeType storageKey portalId accountId isDeleted',
+      match: {
+        portalId,
+        isDeleted: { $ne: true },
+      },
+    });
 
     if (!video) {
       return res.status(404).json({
         success: false,
-        message: 'Video not found in library',
+        message: 'Video not found in this portal',
+        code: 'VIDEO_NOT_FOUND',
       });
     }
 
-    // ✅ التحقق من البوابة
-    const accountPortalId = account.portalId?.toString() || account.portalId;
-    if (video.portalId.toString() !== (portalId || accountPortalId)) {
+    // ========================================================
+    // التأكد مرة أخرى من أن الفيديو يتبع الـ Portal
+    // ========================================================
+    if (
+      !video.portalId ||
+      video.portalId.toString() !== portalId.toString()
+    ) {
+      console.warn(
+        `🚫 Video portal mismatch: video=${video._id}, ` +
+        `videoPortal=${video.portalId}, requestedPortal=${portalId}`
+      );
+
       return res.status(403).json({
         success: false,
-        message: 'Access denied - Invalid portal',
+        message: 'Video does not belong to this portal',
+        code: 'VIDEO_PORTAL_ACCESS_DENIED',
       });
     }
 
+    // ========================================================
+    // الفيديو يجب أن يكون منشورًا
+    // ========================================================
     if (!video.isPublished) {
       return res.status(403).json({
         success: false,
         message: 'This video is not available',
+        code: 'VIDEO_NOT_PUBLISHED',
       });
     }
 
-    // ✅ التحقق من الصلاحية
+    // ========================================================
+    // الاشتراك يجب أن يكون من نفس الـ Portal
+    // ========================================================
     const subscription = await Subscription.findOne({
-      portalId: video.portalId,
+      portalId,
       accountId: account._id,
       status: 'active',
     });
 
+    // ========================================================
+    // التحقق من صلاحية مشاهدة الفيديو
+    // ========================================================
     if (!video.canView(account, subscription)) {
       return res.status(403).json({
         success: false,
@@ -414,47 +435,124 @@ export const streamVideo = async (req, res) => {
       });
     }
 
-    // ✅ زيادة عدد المشاهدات
-    video.views += 1;
-    await video.save();
-
-    // ✅ إذا كان هناك fileId، استخدم التخزين
+    // ========================================================
+    // إذا كان الفيديو مخزنًا كملف
+    // ========================================================
     if (video.fileId) {
-      const fileBuffer = await storageService.getFile(video.fileId);
-      
-      res.setHeader('Content-Type', video.fileId.mimeType || 'video/mp4');
-      res.setHeader('Content-Length', video.fileId.size);
+      // حماية إضافية: File يجب أن يكون من نفس الـ Portal
+      if (
+        !video.fileId.portalId ||
+        video.fileId.portalId.toString() !== portalId.toString()
+      ) {
+        console.warn(
+          `🚫 Video/File portal mismatch: ` +
+          `video=${video._id}, ` +
+          `file=${video.fileId._id}, ` +
+          `requestedPortal=${portalId}`
+        );
+
+        return res.status(403).json({
+          success: false,
+          message: 'Video file does not belong to this portal',
+          code: 'VIDEO_FILE_PORTAL_ACCESS_DENIED',
+        });
+      }
+
+      // زيادة عدد المشاهدات بعد نجاح التحقق
+      video.views += 1;
+      await video.save();
+
+      const fileBuffer = await storageService.getFile(
+        video.fileId
+      );
+
+      res.setHeader(
+        'Content-Type',
+        video.fileId.mimeType || 'video/mp4'
+      );
+
+      res.setHeader(
+        'Content-Length',
+        fileBuffer.length
+      );
+
       res.setHeader('Accept-Ranges', 'bytes');
-      res.setHeader('Cache-Control', 'public, max-age=86400');
-      res.setHeader('Access-Control-Allow-Origin', '*');
-      res.setHeader('Content-Disposition', `inline; filename="${encodeURIComponent(video.fileId.originalName)}"`);
-      
+
+      res.setHeader(
+        'Cache-Control',
+        'private, no-store, no-cache, must-revalidate'
+      );
+
+      res.setHeader('Pragma', 'no-cache');
+      res.setHeader('Expires', '0');
+
+      res.setHeader(
+        'Access-Control-Allow-Origin',
+        '*'
+      );
+
+      res.setHeader(
+        'Access-Control-Allow-Methods',
+        'GET, OPTIONS'
+      );
+
+      res.setHeader(
+        'Access-Control-Allow-Headers',
+        'Authorization, Content-Type, X-Portal-Id, Range'
+      );
+
+      res.setHeader(
+        'Content-Disposition',
+        `inline; filename="${encodeURIComponent(
+          video.fileId.originalName
+        )}"`
+      );
+
+      console.log(
+        '✅ Library video streamed successfully:',
+        video._id,
+        '| Portal:',
+        portalId
+      );
+
       return res.send(fileBuffer);
     }
 
-    // ✅ إذا كان هناك videoUrl
+    // ========================================================
+    // إذا كان الفيديو يعتمد على رابط خارجي
+    // ========================================================
     if (video.videoUrl) {
+      video.views += 1;
+      await video.save();
+
       return res.redirect(video.videoUrl);
     }
 
     return res.status(404).json({
       success: false,
       message: 'Video file not found',
+      code: 'VIDEO_FILE_NOT_FOUND',
     });
   } catch (error) {
     console.error('❌ Error in streamVideo:', error);
-    res.status(500).json({
-      success: false,
-      message: error.message,
-    });
+
+    if (!res.headersSent) {
+      return res.status(500).json({
+        success: false,
+        message: error.message || 'Failed to stream video',
+      });
+    }
+
+    res.end();
   }
 };
+
 // ============================================================
 // ✅ الحصول على إحصائيات مكتبة الفيديوهات
 // ============================================================
 export const getVideoStats = async (req, res) => {
   try {
-    const portalId = req.portalId || req.headers['x-portal-id'];
+    const portalId = req.portalId;
 
     const [total, published, featured, byCategory] = await Promise.all([
       VideoLibrary.countDocuments({ portalId, isDeleted: { $ne: true } }),

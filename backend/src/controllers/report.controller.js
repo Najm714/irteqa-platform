@@ -16,7 +16,7 @@ import { Summary } from '../models/Summary.model.js';
 
 export const getRequestsReport = async (req, res) => {
   try {
-    const portalId = req.portalId || req.headers['x-portal-id'];
+    const portalId = req.portalId;
     const { startDate, endDate, status, specialistId } = req.query;
 
     console.log('📊 Generating requests report for portal:', portalId);
@@ -114,7 +114,7 @@ export const getRequestsReport = async (req, res) => {
 
 export const getPaymentsReport = async (req, res) => {
   try {
-    const portalId = req.portalId || req.headers['x-portal-id'];
+    const portalId = req.portalId;
     const { startDate, endDate, status } = req.query;
 
     console.log('📊 Generating payments report for portal:', portalId);
@@ -205,7 +205,7 @@ export const getPaymentsReport = async (req, res) => {
 
 export const getUsersReport = async (req, res) => {
   try {
-    const portalId = req.portalId || req.headers['x-portal-id'];
+    const portalId = req.portalId;
     const { startDate, endDate, role } = req.query;
 
     console.log('📊 Generating users report for portal:', portalId);
@@ -302,7 +302,7 @@ export const getUsersReport = async (req, res) => {
 
 export const getContentReport = async (req, res) => {
   try {
-    const portalId = req.portalId || req.headers['x-portal-id'];
+    const portalId = req.portalId;
     const { startDate, endDate } = req.query;
 
     console.log('📊 Generating content report for portal:', portalId);
@@ -358,7 +358,7 @@ export const getContentReport = async (req, res) => {
 
 export const getFullReport = async (req, res) => {
   try {
-    const portalId = req.portalId || req.headers['x-portal-id'];
+    const portalId = req.portalId;
     const { period = '30d' } = req.query;
 
     console.log('📊 Generating full report for portal:', portalId);
@@ -679,7 +679,7 @@ export const getFullReport = async (req, res) => {
 
 export const exportReport = async (req, res) => {
   try {
-    const portalId = req.portalId || req.headers['x-portal-id'];
+    const portalId = req.portalId;
     const { format = 'csv', period = '30d' } = req.query;
 
     console.log('📊 Exporting report for portal:', portalId);

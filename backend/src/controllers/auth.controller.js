@@ -5,39 +5,32 @@ import { Portal } from '../models/Portal.model.js';
 import { generateToken } from '../utils/jwt.js';
 import mongoose from 'mongoose';
 import { getNotificationService } from '../services/notification.service.js';
+// ============================================================
+// 🔐 تحديد البوابة بشكل صريح وآمن
+// لا يوجد fallback ولا تخمين من Host
+// ============================================================
+async function resolvePortal({ portalId }) {
+  if (!portalId) {
+    return null;
+  }
 
-// ============================================================
-// ✅ دالة مساعدة: استنتاج البوابة من Host أو portalId
-// ============================================================
-async function resolvePortal({ portalId, host }) {
   let portal = null;
 
-  // 1. إذا أُرسل portalId كـ ObjectId
-  if (portalId && String(portalId).match(/^[a-f\d]{24}$/i)) {
-    try {
-      portal = await Portal.findById(portalId);
-    } catch (err) {
-      // تجاهل، سيتم البحث بـ slug
-    }
+  // 1. البحث باستخدام ObjectId
+  if (mongoose.Types.ObjectId.isValid(String(portalId))) {
+    portal = await Portal.findById(portalId);
   }
 
-  // 2. إذا أُرسل portalId كـ slug
-  if (!portal && portalId) {
-    portal = await Portal.findOne({ slug: portalId });
-  }
-
-  // 3. استنتج من Host (مع مراعاة المنفذ)
+  // 2. إذا لم توجد، البحث باستخدام slug
   if (!portal) {
-    const port = host && host.includes(':') ? host.split(':')[1] : '80';
-    const targetSlug = port === '8080' ? 'portal-b' : 'portal-a';
-    console.log('🔍 Inferring portal from host:', host, '→ slug:', targetSlug);
-    portal = await Portal.findOne({ slug: targetSlug });
+    portal = await Portal.findOne({
+      slug: String(portalId).trim(),
+    });
   }
 
-  // 4. fallback: أول بوابة نشطة
-  if (!portal) {
-    console.log('⚠️  Falling back to first active portal');
-    portal = await Portal.findOne({ isActive: true }).sort({ createdAt: 1 });
+  // 3. البوابة يجب أن تكون موجودة ونشطة
+  if (!portal || !portal.isActive) {
+    return null;
   }
 
   return portal;
@@ -48,29 +41,40 @@ async function resolvePortal({ portalId, host }) {
 // ============================================================
 export const login = async (req, res) => {
   try {
-    const { email, password, portalId } = req.body;
-    const host = req.get('host') || '';
+const { email, password, portalId } = req.body;
 
-    console.log('🔐 Login attempt:', { email, portalId, host });
+console.log('🔐 Login attempt:', { email, portalId });
 
-    // ✅ استنتج البوابة
-    const portal = await resolvePortal({ portalId, host });
-
-    if (!portal) {
-      console.log('❌ Portal not found for host:', host);
-      return res.status(404).json({
-        success: false,
-        message: 'Portal not found for this domain.',
-      });
-    }
+// 🔐 يجب تحديد البوابة صراحةً
+const portal = await resolvePortal({ portalId });
+if (!portal) {
+  console.log('❌ Invalid, missing, or inactive portal:', portalId);
+  return res.status(400).json({
+    success: false,
+    message: 'A valid active portal must be specified.',
+  });
+}
 
     console.log('✅ Portal found:', portal.slug, '-', portal.name);
-
-    // ✅ البحث عن الحساب
-    const account = await Account.findOne({
+    // ✅ البحث عن الحساب في البوابة الحالية
+    let account = await Account.findOne({
       portalId: portal._id,
       email: email.toLowerCase(),
     }).select('+passwordHash');
+
+    // ✅ إذا لم يوجد في البوابة الحالية، ابحث عنه كـ super_admin فقط
+    if (!account) {
+      console.log('🔍 Account not found in this portal, checking super_admin...');
+      account = await Account.findOne({
+        email: email.toLowerCase(),
+        role: 'super_admin',
+      }).select('+passwordHash');
+
+      if (account) {
+        console.log('✅ super_admin found in another portal:', account.portalId);
+        console.log('   Allowing login from portal:', portal.slug);
+      }
+    }
 
     if (!account) {
       console.log('❌ Account not found:', email);
@@ -144,21 +148,19 @@ export const login = async (req, res) => {
 // ============================================================
 export const register = async (req, res) => {
   try {
-    const { portalId, email, password, fullName, username, phone } = req.body;
-    const host = req.get('host') || '';
+const { portalId, email, password, fullName, username, phone } = req.body;
 
-    console.log('📝 Register attempt:', { email, portalId, host });
+console.log('📝 Register attempt:', { email, portalId });
 
-    // ✅ استنتج البوابة
-    const portal = await resolvePortal({ portalId, host });
-
-    if (!portal) {
-      console.log('❌ Portal not found for host:', host);
-      return res.status(404).json({
-        success: false,
-        message: 'Portal not found',
-      });
-    }
+// 🔐 يجب تحديد البوابة صراحةً
+const portal = await resolvePortal({ portalId });
+if (!portal) {
+  console.log('❌ Invalid, missing, or inactive portal:', portalId);
+  return res.status(400).json({
+    success: false,
+    message: 'A valid active portal must be specified.',
+  });
+}
 
     console.log('✅ Portal found:', portal.slug, '-', portal.name);
 

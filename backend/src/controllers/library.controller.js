@@ -24,7 +24,7 @@ const uploadFileToLibrary = async (file, portalId, accountId) => {
 // ============================================================
 export const addLibraryFile = async (req, res) => {
   try {
-    const portalId = req.portalId || req.headers['x-portal-id'];
+    const portalId = req.portalId;
     const accountId = req.accountId || req.user?.id;
     const {
       fileId,
@@ -121,7 +121,7 @@ export const addLibraryFile = async (req, res) => {
 // ============================================================
 export const getLibraryFiles = async (req, res) => {
   try {
-    const portalId = req.portalId || req.headers['x-portal-id'];
+    const portalId = req.portalId;
     const { category, search, isPublished, isFeatured, page = 1, limit = 20 } = req.query;
 
     console.log('📤 Fetching library files for portal:', portalId);
@@ -181,7 +181,7 @@ export const getLibraryFiles = async (req, res) => {
 export const getLibraryFileById = async (req, res) => {
   try {
     const { id } = req.params;
-    const portalId = req.portalId || req.headers['x-portal-id'];
+    const portalId = req.portalId;
 
     const file = await LibraryFile.findOne({ _id: id, portalId, isDeleted: { $ne: true } })
       .populate('fileId', 'originalName size mimeType storageKey')
@@ -217,7 +217,7 @@ export const getLibraryFileById = async (req, res) => {
 export const updateLibraryFile = async (req, res) => {
   try {
     const { id } = req.params;
-    const portalId = req.portalId || req.headers['x-portal-id'];
+    const portalId = req.portalId;
     const updates = req.body;
 
     const file = await LibraryFile.findOne({ _id: id, portalId, isDeleted: { $ne: true } });
@@ -260,17 +260,38 @@ export const updateLibraryFile = async (req, res) => {
     });
   }
 };
-
 // ============================================================
 // ✅ حذف ملف من المكتبة
 // ============================================================
 export const deleteLibraryFile = async (req, res) => {
   try {
     const { id } = req.params;
-    const portalId = req.portalId || req.headers['x-portal-id'];
-    const accountId = req.accountId || req.user?.id;
+    const portalId = req.portalId;
+    const accountId = req.accountId;
+    const account = req.account || null;
 
-    const file = await LibraryFile.findOne({ _id: id, portalId, isDeleted: { $ne: true } });
+    if (!portalId) {
+      return res.status(400).json({
+        success: false,
+        message: 'Portal context is required',
+        code: 'PORTAL_ID_REQUIRED',
+      });
+    }
+
+    if (!accountId) {
+      return res.status(401).json({
+        success: false,
+        message: 'Authentication required',
+        code: 'UNAUTHORIZED',
+      });
+    }
+
+    const file = await LibraryFile.findOne({
+      _id: id,
+      portalId,
+      isDeleted: { $ne: true },
+    });
+
     if (!file) {
       return res.status(404).json({
         success: false,
@@ -281,7 +302,13 @@ export const deleteLibraryFile = async (req, res) => {
     file.isDeleted = true;
     file.deletedAt = new Date();
     file.deletedBy = accountId;
+
     await file.save();
+
+    console.log(
+      `🗑️ Library file deleted: ${file._id} | ` +
+      `Portal: ${portalId} | Account: ${account?._id || accountId}`
+    );
 
     res.json({
       success: true,
@@ -289,24 +316,42 @@ export const deleteLibraryFile = async (req, res) => {
     });
   } catch (error) {
     console.error('❌ Error in deleteLibraryFile:', error);
+
     res.status(500).json({
       success: false,
-      message: error.message,
+      message: error.message || 'Failed to delete library file',
     });
   }
 };
-
 // ============================================================
 // ✅ تحميل ملف من المكتبة
 // ============================================================
 export const downloadLibraryFile = async (req, res) => {
   try {
     const { id } = req.params;
-    const portalId = req.portalId || req.headers['x-portal-id'];
-    const account = req.account;
+    const portalId = req.portalId;
 
-    const libraryFile = await LibraryFile.findOne({ _id: id, portalId, isDeleted: { $ne: true } })
-      .populate('fileId');
+    if (!portalId) {
+      return res.status(400).json({
+        success: false,
+        message: 'Portal context is required',
+        code: 'PORTAL_ID_REQUIRED',
+      });
+    }
+
+    const libraryFile = await LibraryFile.findOne({
+      _id: id,
+      portalId,
+      isDeleted: { $ne: true },
+    }).populate({
+      path: 'fileId',
+      select:
+        'originalName size mimeType storageKey portalId accountId isDeleted',
+      match: {
+        portalId,
+        isDeleted: { $ne: true },
+      },
+    });
 
     if (!libraryFile) {
       return res.status(404).json({
@@ -323,10 +368,31 @@ export const downloadLibraryFile = async (req, res) => {
     }
 
     const file = libraryFile.fileId;
+
     if (!file) {
       return res.status(404).json({
         success: false,
-        message: 'File not found',
+        message: 'File not found in this portal',
+        code: 'FILE_PORTAL_MISMATCH',
+      });
+    }
+
+    // ✅ دفاع إضافي: التأكد من تطابق Portal بين LibraryFile و File
+    if (
+      !file.portalId ||
+      file.portalId.toString() !== portalId.toString()
+    ) {
+      console.warn(
+        `🚫 Library file portal mismatch: ` +
+        `library=${libraryFile._id}, ` +
+        `file=${file._id}, ` +
+        `requestedPortal=${portalId}`
+      );
+
+      return res.status(403).json({
+        success: false,
+        message: 'File does not belong to this portal',
+        code: 'FILE_PORTAL_ACCESS_DENIED',
       });
     }
 
@@ -334,31 +400,42 @@ export const downloadLibraryFile = async (req, res) => {
     libraryFile.downloads += 1;
     await libraryFile.save();
 
-    // ✅ تحميل الملف
+    // ✅ جلب الملف من التخزين
     const fileBuffer = await storageService.getFile(file);
 
     const filename = encodeURIComponent(file.originalName);
+
     res.setHeader('Content-Type', file.mimeType);
-    res.setHeader('Content-Disposition', `attachment; filename="${filename}"`);
-    res.setHeader('Content-Length', file.size);
+    res.setHeader(
+      'Content-Disposition',
+      `attachment; filename="${filename}"`
+    );
+    res.setHeader('Content-Length', fileBuffer.length);
+
+    res.setHeader(
+      'Cache-Control',
+      'private, no-store, no-cache, must-revalidate'
+    );
+
+    res.setHeader('Pragma', 'no-cache');
     res.setHeader('Access-Control-Allow-Origin', '*');
 
     res.send(fileBuffer);
   } catch (error) {
     console.error('❌ Error in downloadLibraryFile:', error);
+
     res.status(500).json({
       success: false,
-      message: error.message,
+      message: error.message || 'Failed to download library file',
     });
   }
 };
-
 // ============================================================
 // ✅ الحصول على إحصائيات المكتبة
 // ============================================================
 export const getLibraryStats = async (req, res) => {
   try {
-    const portalId = req.portalId || req.headers['x-portal-id'];
+    const portalId = req.portalId;
 
     const [total, published, featured, byCategory] = await Promise.all([
       LibraryFile.countDocuments({ portalId, isDeleted: { $ne: true } }),

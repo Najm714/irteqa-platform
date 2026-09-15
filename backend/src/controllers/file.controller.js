@@ -15,26 +15,71 @@ import { PDFDocument, rgb, degrees } from 'pdf-lib';
 const isAdmin = (account) => {
   return account?.role === 'portal_admin' || account?.role === 'super_admin';
 };
-
-// ============================================================
-// ✅ دالة مساعدة: التحقق من البوابة (مع استثناء المدير)
-// ============================================================
 const checkPortalAccess = (file, account, portalId) => {
-  // ✅ المدير له صلاحية مطلقة
-  if (isAdmin(account)) {
-    console.log('✅ Admin access - skipping portal check');
+  if (!file || !account) {
+    console.log('❌ Missing file or account');
+    return false;
+  }
+
+  const filePortalId = file.portalId?.toString();
+
+  if (!filePortalId) {
+    console.log('❌ File has no portalId');
+    return false;
+  }
+
+  // 🔐 SUPER ADMIN:
+  // Can access an explicitly selected active portal.
+  if (account.role === 'super_admin') {
+    if (!portalId) {
+      console.log('❌ Super admin portal context is required');
+      return false;
+    }
+
+    const selectedPortalId = portalId.toString();
+
+    if (filePortalId !== selectedPortalId) {
+      console.log('❌ Super admin portal mismatch:', {
+        filePortalId,
+        selectedPortalId,
+      });
+
+      return false;
+    }
+
     return true;
   }
 
-  const accountPortalId = account.portalId?.toString() || account.portalId;
-  const filePortalId = file.portalId.toString();
+  // 🔐 PORTAL ADMIN / SPECIALIST / CUSTOMER:
+  // Must access files only inside their own portal.
+  const accountPortalId = account.portalId?.toString();
 
-  if (filePortalId !== (portalId || accountPortalId)) {
-    console.log('❌ Portal mismatch:', {
+  if (!accountPortalId) {
+    console.log('❌ Account has no portalId:', {
+      accountId: account._id,
+      role: account.role,
+    });
+
+    return false;
+  }
+
+  // If a portal was explicitly requested, it must also
+  // match the account's assigned portal.
+  if (portalId && portalId.toString() !== accountPortalId) {
+    console.log('❌ Requested portal does not match account portal:', {
+      accountPortalId,
+      requestedPortalId: portalId.toString(),
+    });
+
+    return false;
+  }
+
+  if (filePortalId !== accountPortalId) {
+    console.log('❌ File portal does not match account portal:', {
       filePortalId,
       accountPortalId,
-      headerPortalId: portalId,
     });
+
     return false;
   }
 
@@ -198,13 +243,9 @@ const getAccountFromRequest = async (req) => {
 
   return account;
 };
-
-// ============================================================
-// ✅ رفع ملف
-// ============================================================
 export const uploadFile = async (req, res) => {
   try {
-    const portalId = req.portal?._id || req.portalId || req.headers['x-portal-id'] || req.body.portalId;
+    const portalId = req.portal?._id || req.portalId;
     const accountId = req.accountId || req.user?.id;
     const role = req.account?.role || 'customer';
     const { category, metadata, requestId } = req.body;
@@ -215,10 +256,19 @@ export const uploadFile = async (req, res) => {
     console.log('  - Role:', role);
     console.log('  - Category:', category);
 
+    if (!accountId) {
+      return res.status(401).json({
+        success: false,
+        message: 'Authentication required',
+        code: 'UNAUTHORIZED',
+      });
+    }
+
     if (!portalId) {
       return res.status(400).json({
         success: false,
-        message: 'Portal ID is required',
+        message: 'Portal context is required',
+        code: 'PORTAL_ID_REQUIRED',
       });
     }
 
@@ -230,17 +280,44 @@ export const uploadFile = async (req, res) => {
     }
 
     const allowedCategories = [
-      'payment_proof', 'user', 'request_file', 'request',
-      'proof', 'delivery', 'modification', 'support',
-      'profile', 'message', 'platform_sample', 'learning_content',
-      'video', 'attachment', 'content', 'summary', 'service_form',
-      'library', 'library_file', 'document', 'image', 'infographic', 'thumbnail',
-      'about', 'offer', 'promotion', 'banner', 'slide', 'cover', 'logo',
+      'payment_proof',
+      'user',
+      'request_file',
+      'request',
+      'proof',
+      'delivery',
+      'modification',
+      'support',
+      'profile',
+      'message',
+      'platform_sample',
+      'learning_content',
+      'video',
+      'attachment',
+      'content',
+      'summary',
+      'service_form',
+      'library',
+      'library_file',
+      'document',
+      'image',
+      'infographic',
+      'thumbnail',
+      'about',
+      'offer',
+      'promotion',
+      'banner',
+      'slide',
+      'cover',
+      'logo',
     ];
 
     const finalCategory = category || 'user';
 
-    if (role === 'customer' && !allowedCategories.includes(finalCategory)) {
+    if (
+      role === 'customer' &&
+      !allowedCategories.includes(finalCategory)
+    ) {
       return res.status(403).json({
         success: false,
         message: `Category "${finalCategory}" is not allowed for customers.`,
@@ -248,8 +325,17 @@ export const uploadFile = async (req, res) => {
       });
     }
 
-    const specialistAllowed = [...allowedCategories, 'work', 'final', 'delivery'];
-    if (role === 'specialist' && !specialistAllowed.includes(finalCategory)) {
+    const specialistAllowed = [
+      ...allowedCategories,
+      'work',
+      'final',
+      'delivery',
+    ];
+
+    if (
+      role === 'specialist' &&
+      !specialistAllowed.includes(finalCategory)
+    ) {
       return res.status(403).json({
         success: false,
         message: `Category "${finalCategory}" is not allowed for specialists.`,
@@ -262,11 +348,20 @@ export const uploadFile = async (req, res) => {
       portalId,
       accountId,
       category: finalCategory,
-      metadata: metadata ? (typeof metadata === 'string' ? JSON.parse(metadata) : metadata) : {},
+      metadata: metadata
+        ? typeof metadata === 'string'
+          ? JSON.parse(metadata)
+          : metadata
+        : {},
       requestId: requestId || null,
     });
 
-    console.log('✅ File uploaded successfully:', file._id);
+    console.log(
+      '✅ File uploaded successfully:',
+      file._id,
+      '| Portal:',
+      portalId
+    );
 
     res.status(201).json({
       success: true,
@@ -275,36 +370,56 @@ export const uploadFile = async (req, res) => {
     });
   } catch (error) {
     console.error('❌ Upload file error:', error);
+
     res.status(500).json({
       success: false,
       message: error.message || 'Failed to upload file',
     });
   }
 };
-
 // ============================================================
 // ✅ معاينة ملف (مع علامة مائية)
 // ============================================================
 export const viewFile = async (req, res) => {
   try {
     const fileId = req.params.id;
-    const portalId = req.headers['x-portal-id'] || req.query.portalId;
+    const portalId = req.portal?._id || req.portalId;
+    const account = req.account;
 
     console.log('👁️ Viewing file:', fileId);
-
-    const account = await getAccountFromRequest(req);
 
     if (!account) {
       return res.status(401).json({
         success: false,
-        message: 'Unauthorized - No token provided',
-        code: 'NO_TOKEN',
+        message: 'Unauthorized',
+        code: 'UNAUTHORIZED',
       });
     }
 
-    console.log('  - Account:', account._id, '| Role:', account.role);
+    if (!portalId) {
+      return res.status(400).json({
+        success: false,
+        message: 'Portal context is required',
+        code: 'PORTAL_ID_REQUIRED',
+      });
+    }
 
-    const file = await File.findOne({ _id: fileId, isDeleted: { $ne: true } });
+    console.log(
+      '  - Account:',
+      account._id,
+      '| Role:',
+      account.role,
+      '| Portal:',
+      portalId
+    );
+
+    // 🔐 البحث عن الملف داخل البوابة الحالية فقط
+    const file = await File.findOne({
+      _id: fileId,
+      portalId,
+      isDeleted: { $ne: true },
+    });
+
     if (!file) {
       return res.status(404).json({
         success: false,
@@ -312,81 +427,141 @@ export const viewFile = async (req, res) => {
       });
     }
 
-    // ✅ التحقق من البوابة (مع استثناء المدير)
+    // 🔐 التحقق من البوابة
     if (!checkPortalAccess(file, account, portalId)) {
       return res.status(403).json({
         success: false,
         message: 'Access denied - Invalid portal',
-        code: 'ACCESS_DENIED',
+        code: 'FILE_PORTAL_ACCESS_DENIED',
       });
     }
 
-    // ✅ التحقق من الصلاحية
-    const hasAccess = await canAccessFileWithSubscription(file, account);
+    // 🔐 التحقق من صلاحية مشاهدة الملف
+    const hasAccess = await canAccessFileWithSubscription(
+      file,
+      account
+    );
+
     if (!hasAccess) {
       return res.status(403).json({
         success: false,
         message: 'You do not have permission to view this file',
-        code: 'ACCESS_DENIED',
+        code: 'FILE_ACCESS_DENIED',
       });
     }
 
     let fileBuffer = await storageService.getFile(file);
-    
+
+    // إضافة علامة مائية للـ PDF
     if (file.mimeType === 'application/pdf') {
       try {
-        const userName = account.profile?.fullName || account.email || 'User';
+        const userName =
+          account.profile?.fullName ||
+          account.email ||
+          'User';
+
         const watermarkText = 'Confidential';
-        fileBuffer = await addWatermarkToPDF(fileBuffer, watermarkText, userName);
+
+        fileBuffer = await addWatermarkToPDF(
+          fileBuffer,
+          watermarkText,
+          userName
+        );
+
         console.log('✅ Watermark added to PDF');
       } catch (watermarkError) {
-        console.error('⚠️ Failed to add watermark:', watermarkError.message);
+        console.error(
+          '⚠️ Failed to add watermark:',
+          watermarkError.message
+        );
       }
     }
 
     const filename = encodeURIComponent(file.originalName);
-    res.setHeader('Content-Type', file.mimeType);
-    res.setHeader('Content-Disposition', `inline; filename="${filename}"`);
-    res.setHeader('Content-Length', fileBuffer.length);
-    res.setHeader('Cache-Control', 'no-store, no-cache, must-revalidate, private');
-    res.setHeader('Access-Control-Allow-Origin', '*');
-    res.setHeader('Access-Control-Allow-Methods', 'GET, POST, OPTIONS');
-    res.setHeader('Access-Control-Allow-Headers', 'Authorization, Content-Type, X-Portal-Id');
 
-    console.log('✅ File viewed successfully:', fileId);
+    res.setHeader('Content-Type', file.mimeType);
+    res.setHeader(
+      'Content-Disposition',
+      `inline; filename="${filename}"`
+    );
+    res.setHeader('Content-Length', fileBuffer.length);
+
+    // 🔐 منع التخزين المؤقت للملفات المحمية
+    res.setHeader(
+      'Cache-Control',
+      'no-store, no-cache, must-revalidate, private'
+    );
+
+    res.setHeader('Access-Control-Allow-Origin', '*');
+    res.setHeader(
+      'Access-Control-Allow-Methods',
+      'GET, POST, OPTIONS'
+    );
+    res.setHeader(
+      'Access-Control-Allow-Headers',
+      'Authorization, Content-Type, X-Portal-Id'
+    );
+
+    console.log(
+      '✅ File viewed successfully:',
+      fileId,
+      '| Portal:',
+      portalId
+    );
+
     res.send(fileBuffer);
   } catch (error) {
     console.error('❌ View file error:', error);
+
     res.status(500).json({
       success: false,
       message: error.message || 'Failed to view file',
     });
   }
 };
-
 // ============================================================
 // ✅ تحميل ملف مباشرة
 // ============================================================
 export const downloadFileDirect = async (req, res) => {
   try {
     const fileId = req.params.id;
-    const portalId = req.headers['x-portal-id'] || req.query.portalId;
+    const portalId = req.portal?._id || req.portalId;
+    const account = req.account;
 
     console.log('📥 Downloading file directly:', fileId);
-
-    const account = await getAccountFromRequest(req);
 
     if (!account) {
       return res.status(401).json({
         success: false,
-        message: 'Unauthorized - No token provided',
-        code: 'NO_TOKEN',
+        message: 'Unauthorized',
+        code: 'UNAUTHORIZED',
       });
     }
 
-    console.log('  - Account:', account._id, '| Role:', account.role);
+    if (!portalId) {
+      return res.status(400).json({
+        success: false,
+        message: 'Portal context is required',
+        code: 'PORTAL_ID_REQUIRED',
+      });
+    }
 
-    const file = await File.findOne({ _id: fileId, isDeleted: { $ne: true } });
+    console.log(
+      '  - Account:',
+      account._id,
+      '| Role:',
+      account.role,
+      '| Portal:',
+      portalId
+    );
+
+    // 🔐 البحث عن الملف داخل البوابة الحالية فقط
+    const file = await File.findOne({
+      _id: fileId,
+      portalId,
+      isDeleted: { $ne: true },
+    });
+
     if (!file) {
       return res.status(404).json({
         success: false,
@@ -394,102 +569,193 @@ export const downloadFileDirect = async (req, res) => {
       });
     }
 
-    // ✅ التحقق من البوابة (مع استثناء المدير)
+    // 🔐 التحقق من البوابة
     if (!checkPortalAccess(file, account, portalId)) {
       return res.status(403).json({
         success: false,
         message: 'Access denied - Invalid portal',
-        code: 'ACCESS_DENIED',
+        code: 'FILE_PORTAL_ACCESS_DENIED',
       });
     }
 
-    const hasAccess = await canAccessFileWithSubscription(file, account);
+    // 🔐 التحقق من صلاحية التحميل
+    const hasAccess = await canAccessFileWithSubscription(
+      file,
+      account
+    );
+
     if (!hasAccess) {
       return res.status(403).json({
         success: false,
         message: 'You do not have permission to download this file',
-        code: 'ACCESS_DENIED',
+        code: 'FILE_ACCESS_DENIED',
       });
     }
 
     const fileBuffer = await storageService.getFile(file);
 
     const filename = encodeURIComponent(file.originalName);
-    res.setHeader('Content-Type', file.mimeType);
-    res.setHeader('Content-Disposition', `attachment; filename="${filename}"`);
-    res.setHeader('Content-Length', file.size);
-    res.setHeader('Access-Control-Allow-Origin', '*');
-    res.setHeader('Access-Control-Allow-Methods', 'GET, POST, OPTIONS');
-    res.setHeader('Access-Control-Allow-Headers', 'Authorization, Content-Type, X-Portal-Id');
 
-    console.log('✅ File sent successfully:', fileId, 'Size:', file.size);
+    res.setHeader('Content-Type', file.mimeType);
+    res.setHeader(
+      'Content-Disposition',
+      `attachment; filename="${filename}"`
+    );
+    res.setHeader('Content-Length', fileBuffer.length);
+
+    res.setHeader('Access-Control-Allow-Origin', '*');
+    res.setHeader(
+      'Access-Control-Allow-Methods',
+      'GET, POST, OPTIONS'
+    );
+    res.setHeader(
+      'Access-Control-Allow-Headers',
+      'Authorization, Content-Type, X-Portal-Id'
+    );
+
+    console.log(
+      '✅ File sent successfully:',
+      fileId,
+      'Size:',
+      fileBuffer.length,
+      '| Portal:',
+      portalId
+    );
+
     res.send(fileBuffer);
   } catch (error) {
     console.error('❌ Download file direct error:', error);
+
     res.status(500).json({
       success: false,
       message: error.message || 'Failed to download file',
     });
   }
 };
-
 // ============================================================
 // ✅ تشغيل فيديو مباشرة (Streaming)
 // ============================================================
 export const streamVideo = async (req, res) => {
   try {
     const fileId = req.params.id;
-    const portalId = req.headers['x-portal-id'] || req.query.portalId;
+    const portalId = req.portal?._id || req.portalId;
+    const account = req.account;
 
     console.log('🎬 Streaming video:', fileId);
-
-    const account = await getAccountFromRequest(req);
 
     if (!account) {
       return res.status(401).json({
         success: false,
         message: 'Unauthorized - Please login',
-        code: 'NO_TOKEN',
+        code: 'UNAUTHORIZED',
       });
     }
 
-    const file = await File.findOne({ _id: fileId, isDeleted: { $ne: true } });
+    if (!portalId) {
+      return res.status(400).json({
+        success: false,
+        message: 'Portal context is required',
+        code: 'PORTAL_ID_REQUIRED',
+      });
+    }
+
+    console.log(
+      '  - Account:',
+      account._id,
+      '| Role:',
+      account.role,
+      '| Portal:',
+      portalId
+    );
+
+    // 🔐 البحث عن الفيديو داخل البوابة الحالية فقط
+    const file = await File.findOne({
+      _id: fileId,
+      portalId,
+      isDeleted: { $ne: true },
+    });
+
     if (!file) {
       return res.status(404).json({
         success: false,
-        message: 'File not found',
+        message: 'Video not found',
       });
     }
 
+    // 🔐 التحقق من البوابة
     if (!checkPortalAccess(file, account, portalId)) {
       return res.status(403).json({
         success: false,
         message: 'Access denied - Invalid portal',
-        code: 'ACCESS_DENIED',
+        code: 'FILE_PORTAL_ACCESS_DENIED',
       });
     }
 
-    const hasAccess = await canAccessFileWithSubscription(file, account);
+    // 🔐 التحقق من صلاحية مشاهدة الفيديو
+    const hasAccess = await canAccessFileWithSubscription(
+      file,
+      account
+    );
+
     if (!hasAccess) {
       return res.status(403).json({
         success: false,
         message: 'You do not have permission to view this video',
-        code: 'ACCESS_DENIED',
+        code: 'FILE_ACCESS_DENIED',
       });
     }
 
     const fileBuffer = await storageService.getFile(file);
 
-    res.setHeader('Content-Type', file.mimeType || 'video/mp4');
-    res.setHeader('Content-Length', file.size);
-    res.setHeader('Accept-Ranges', 'bytes');
-    res.setHeader('Cache-Control', 'public, max-age=86400');
-    res.setHeader('Access-Control-Allow-Origin', '*');
+    res.setHeader(
+      'Content-Type',
+      file.mimeType || 'video/mp4'
+    );
 
-    console.log('✅ Video stream started:', fileId, 'Size:', file.size);
+    res.setHeader(
+      'Content-Length',
+      fileBuffer.length
+    );
+
+    res.setHeader('Accept-Ranges', 'bytes');
+
+    // 🔐 الفيديو محمي، لذلك لا نستخدم public cache
+    res.setHeader(
+      'Cache-Control',
+      'private, no-store, no-cache, must-revalidate'
+    );
+
+    res.setHeader('Pragma', 'no-cache');
+    res.setHeader('Expires', '0');
+
+    res.setHeader(
+      'Access-Control-Allow-Origin',
+      '*'
+    );
+
+    res.setHeader(
+      'Access-Control-Allow-Methods',
+      'GET, OPTIONS'
+    );
+
+    res.setHeader(
+      'Access-Control-Allow-Headers',
+      'Authorization, Content-Type, X-Portal-Id'
+    );
+
+    console.log(
+      '✅ Video stream started:',
+      fileId,
+      'Size:',
+      fileBuffer.length,
+      '| Portal:',
+      portalId
+    );
+
     res.send(fileBuffer);
   } catch (error) {
     console.error('❌ Stream video error:', error);
+
     res.status(500).json({
       success: false,
       message: error.message || 'Failed to stream video',
@@ -498,26 +764,48 @@ export const streamVideo = async (req, res) => {
 };
 
 // ============================================================
-// ✅ تشغيل فيديو آمن (مع دعم التوكن)
+// ✅ تشغيل فيديو آمن (مع دعم التوكن و Range)
 // ============================================================
 export const streamVideoSecure = async (req, res) => {
   try {
     const fileId = req.params.id;
-    const portalId = req.headers['x-portal-id'] || req.query.portalId;
+    const portalId = req.portal?._id || req.portalId;
+    const account = req.account;
 
     console.log('🎬 Streaming video (secure):', fileId);
-
-    const account = await getAccountFromRequest(req);
 
     if (!account) {
       return res.status(401).json({
         success: false,
         message: 'Unauthorized - Please login',
-        code: 'NO_TOKEN',
+        code: 'UNAUTHORIZED',
       });
     }
 
-    const file = await File.findOne({ _id: fileId, isDeleted: { $ne: true } });
+    if (!portalId) {
+      return res.status(400).json({
+        success: false,
+        message: 'Portal context is required',
+        code: 'PORTAL_ID_REQUIRED',
+      });
+    }
+
+    console.log(
+      '  - Account:',
+      account._id,
+      '| Role:',
+      account.role,
+      '| Portal:',
+      portalId
+    );
+
+    // 🔐 البحث عن الفيديو داخل البوابة الحالية فقط
+    const file = await File.findOne({
+      _id: fileId,
+      portalId,
+      isDeleted: { $ne: true },
+    });
+
     if (!file) {
       return res.status(404).json({
         success: false,
@@ -525,20 +813,26 @@ export const streamVideoSecure = async (req, res) => {
       });
     }
 
+    // 🔐 التحقق من البوابة
     if (!checkPortalAccess(file, account, portalId)) {
       return res.status(403).json({
         success: false,
         message: 'Access denied - Invalid portal',
-        code: 'ACCESS_DENIED',
+        code: 'FILE_PORTAL_ACCESS_DENIED',
       });
     }
 
-    const hasAccess = await canAccessFileWithSubscription(file, account);
+    // 🔐 التحقق من صلاحية مشاهدة الفيديو
+    const hasAccess = await canAccessFileWithSubscription(
+      file,
+      account
+    );
+
     if (!hasAccess) {
       return res.status(403).json({
         success: false,
         message: 'You do not have permission to view this video',
-        code: 'ACCESS_DENIED',
+        code: 'FILE_ACCESS_DENIED',
       });
     }
 
@@ -549,70 +843,144 @@ export const streamVideoSecure = async (req, res) => {
     const headers = {
       'Content-Type': file.mimeType || 'video/mp4',
       'Accept-Ranges': 'bytes',
-      'Cache-Control': 'no-store, no-cache, must-revalidate, private',
+      'Cache-Control':
+        'no-store, no-cache, must-revalidate, private',
       'Pragma': 'no-cache',
       'Expires': '0',
       'Access-Control-Allow-Origin': '*',
       'Access-Control-Allow-Methods': 'GET, OPTIONS',
-      'Access-Control-Allow-Headers': 'Authorization, Content-Type, X-Portal-Id, Range',
+      'Access-Control-Allow-Headers':
+        'Authorization, Content-Type, X-Portal-Id, Range',
       'Content-Disposition': 'inline',
       'X-Content-Type-Options': 'nosniff',
       'Referrer-Policy': 'strict-origin-when-cross-origin',
     };
 
+    // ========================================================
+    // Range Request
+    // ========================================================
     if (range) {
-      const parts = range.replace(/bytes=/, "").split("-");
-      const start = parseInt(parts[0], 10);
-      const end = parts[1] ? parseInt(parts[1], 10) : fileSize - 1;
-      const chunksize = (end - start) + 1;
+      const match = range.match(/^bytes=(\d*)-(\d*)$/);
+
+      if (!match) {
+        return res.status(416).json({
+          success: false,
+          message: 'Invalid Range header',
+          code: 'INVALID_RANGE',
+        });
+      }
+
+      let start = match[1] ? parseInt(match[1], 10) : 0;
+      let end = match[2]
+        ? parseInt(match[2], 10)
+        : fileSize - 1;
+
+      // التعامل مع Range غير صالح
+      if (
+        Number.isNaN(start) ||
+        Number.isNaN(end) ||
+        start < 0 ||
+        end < 0 ||
+        start >= fileSize ||
+        start > end
+      ) {
+        res.writeHead(416, {
+          ...headers,
+          'Content-Range': `bytes */${fileSize}`,
+        });
+
+        return res.end();
+      }
+
+      // لا يتجاوز end حجم الملف
+      end = Math.min(end, fileSize - 1);
+
+      const chunksize = end - start + 1;
       const chunk = fileBuffer.slice(start, end + 1);
 
       res.writeHead(206, {
         ...headers,
-        'Content-Range': `bytes ${start}-${end}/${fileSize}`,
+        'Content-Range':
+          `bytes ${start}-${end}/${fileSize}`,
         'Content-Length': chunksize,
       });
+
       res.end(chunk);
-    } else {
-      res.writeHead(200, {
-        ...headers,
-        'Content-Length': fileSize,
-      });
-      res.end(fileBuffer);
+
+      console.log(
+        '✅ Video range streamed:',
+        fileId,
+        `${start}-${end}/${fileSize}`
+      );
+
+      return;
     }
 
-    console.log('✅ Video streamed securely:', fileId);
+    // ========================================================
+    // Full Video
+    // ========================================================
+    res.writeHead(200, {
+      ...headers,
+      'Content-Length': fileSize,
+    });
+
+    res.end(fileBuffer);
+
+    console.log(
+      '✅ Video streamed securely:',
+      fileId,
+      'Size:',
+      fileSize
+    );
   } catch (error) {
     console.error('❌ Stream video error:', error);
-    res.status(500).json({
-      success: false,
-      message: error.message || 'Failed to stream video',
-    });
+
+    if (!res.headersSent) {
+      return res.status(500).json({
+        success: false,
+        message:
+          error.message || 'Failed to stream video',
+      });
+    }
+
+    res.end();
   }
 };
 
-// ============================================================
-// ✅ الحصول على معلومات الملف
-// ============================================================
 export const getFileInfo = async (req, res) => {
   try {
     const fileId = req.params.id;
-    const portalId = req.portal?._id || req.portalId || req.headers['x-portal-id'];
+    const portalId = req.portal?._id || req.portalId;
 
-    const fileInfo = await storageService.getFileInfo(fileId);
+    if (!portalId) {
+      return res.status(400).json({
+        success: false,
+        message: 'Portal context is required',
+        code: 'PORTAL_ID_REQUIRED',
+      });
+    }
 
-    if (!fileInfo) {
+    const fileRecord = await File.findOne({
+      _id: fileId,
+      portalId,
+      isDeleted: { $ne: true },
+    });
+
+    if (!fileRecord) {
       return res.status(404).json({
         success: false,
         message: 'File not found',
       });
     }
 
-    const fileRecord = await File.findOne({ _id: fileId, portalId });
-    if (!fileRecord && !isAdmin(req.account)) {
+    const fileInfo = await storageService.getFileInfo(
+  fileId,
+  portalId
+);
+    if (!fileInfo) {
       return res.status(404).json({
         success: false,
-        message: 'File not found in this portal',
+        message: 'File not found',
       });
     }
 
@@ -622,6 +990,7 @@ export const getFileInfo = async (req, res) => {
     });
   } catch (error) {
     console.error('❌ Get file info error:', error);
+
     res.status(500).json({
       success: false,
       message: error.message || 'Failed to get file info',
@@ -629,15 +998,24 @@ export const getFileInfo = async (req, res) => {
   }
 };
 
-// ============================================================
-// ✅ الحصول على ملف
-// ============================================================
 export const getFile = async (req, res) => {
   try {
     const fileId = req.params.id;
-    const portalId = req.portal?._id || req.portalId || req.headers['x-portal-id'];
+    const portalId = req.portal?._id || req.portalId;
 
-    const file = await File.findOne({ _id: fileId, isDeleted: { $ne: true } })
+    if (!portalId) {
+      return res.status(400).json({
+        success: false,
+        message: 'Portal context is required',
+        code: 'PORTAL_ID_REQUIRED',
+      });
+    }
+
+    const file = await File.findOne({
+      _id: fileId,
+      portalId,
+      isDeleted: { $ne: true },
+    })
       .populate('accountId', 'profile.fullName email')
       .populate('requestId', 'title status');
 
@@ -648,19 +1026,31 @@ export const getFile = async (req, res) => {
       });
     }
 
-    if (!isAdmin(req.account) && file.portalId.toString() !== portalId) {
+    // 🔐 Additional portal validation
+    if (!checkPortalAccess(file, req.account, portalId)) {
       return res.status(403).json({
         success: false,
         message: 'Access denied',
+        code: 'FILE_PORTAL_ACCESS_DENIED',
       });
     }
 
     const fileData = file.toObject();
+
     try {
-      const url = await storageService.getFileUrl(fileId, req.account, 3600);
+      const url = await storageService.getFileUrl(
+        fileId,
+        req.account,
+        3600,
+        portalId
+      );
+
       fileData.downloadUrl = url;
     } catch (error) {
-      console.log('⚠️ Could not generate download URL:', error.message);
+      console.log(
+        '⚠️ Could not generate download URL:',
+        error.message
+      );
     }
 
     res.status(200).json({
@@ -669,22 +1059,32 @@ export const getFile = async (req, res) => {
     });
   } catch (error) {
     console.error('❌ Get file error:', error);
+
     res.status(500).json({
       success: false,
       message: error.message || 'Failed to get file',
     });
   }
 };
-
-// ============================================================
-// ✅ حذف ملف
-// ============================================================
 export const deleteFile = async (req, res) => {
   try {
     const fileId = req.params.id;
     const account = req.account;
+    const portalId = req.portal?._id || req.portalId;
 
-    await storageService.deleteFile(fileId, account);
+    if (!portalId) {
+      return res.status(400).json({
+        success: false,
+        message: 'Portal context is required',
+        code: 'PORTAL_ID_REQUIRED',
+      });
+    }
+
+    await storageService.deleteFile(
+      fileId,
+      account,
+      portalId
+    );
 
     res.status(200).json({
       success: true,
@@ -692,21 +1092,46 @@ export const deleteFile = async (req, res) => {
     });
   } catch (error) {
     console.error('❌ Delete file error:', error);
+
     res.status(500).json({
       success: false,
       message: error.message || 'Failed to delete file',
     });
   }
 };
-
 // ============================================================
-// ✅ إعادة رفع ملف مفقود
+// ✅ إعادة رفع ملف موجود مع التحقق من البوابة والملكية
 // ============================================================
 export const reuploadFile = async (req, res) => {
   try {
     const { id } = req.params;
-    const portalId = req.portalId || req.headers['x-portal-id'];
-    const accountId = req.accountId || req.user?.id;
+    const portalId = req.portal?._id || req.portalId;
+    const account = req.account;
+    const accountId = req.accountId;
+
+    if (!account) {
+      return res.status(401).json({
+        success: false,
+        message: 'Authentication required',
+        code: 'UNAUTHORIZED',
+      });
+    }
+
+    if (!portalId) {
+      return res.status(400).json({
+        success: false,
+        message: 'Portal context is required',
+        code: 'PORTAL_ID_REQUIRED',
+      });
+    }
+
+    if (!accountId) {
+      return res.status(401).json({
+        success: false,
+        message: 'Account ID is required',
+        code: 'ACCOUNT_ID_REQUIRED',
+      });
+    }
 
     if (!req.file) {
       return res.status(400).json({
@@ -715,19 +1140,56 @@ export const reuploadFile = async (req, res) => {
       });
     }
 
-    const file = await File.findOne({ _id: id, isDeleted: { $ne: true } });
+    // 🔐 البحث عن الملف داخل البوابة الحالية فقط
+    const file = await File.findOne({
+      _id: id,
+      portalId,
+      isDeleted: { $ne: true },
+    });
+
     if (!file) {
       return res.status(404).json({
         success: false,
-        message: 'File not found in database',
+        message: 'File not found in this portal',
+        code: 'FILE_NOT_FOUND',
       });
     }
 
-    console.log('🔄 Re-uploading file:', file._id);
+    // 🔐 التحقق من صلاحية الوصول للملف
+    if (!checkPortalAccess(file, account, portalId)) {
+      return res.status(403).json({
+        success: false,
+        message: 'You are not authorized to access this file',
+        code: 'FILE_PORTAL_ACCESS_DENIED',
+      });
+    }
 
+    // 🔐 إعادة الرفع مسموحة لمالك الملف أو Portal Admin أو Super Admin
+    const isOwner =
+      file.accountId?.toString() === accountId.toString();
+
+    const isPortalAdmin =
+      account.role === 'portal_admin';
+
+    const isSuperAdmin =
+      account.role === 'super_admin';
+
+    if (!isOwner && !isPortalAdmin && !isSuperAdmin) {
+      return res.status(403).json({
+        success: false,
+        message: 'You do not have permission to re-upload this file',
+        code: 'FILE_REUPLOAD_ACCESS_DENIED',
+      });
+    }
+
+    console.log(
+      `🔄 Re-uploading file: ${file._id}, portal: ${portalId}`
+    );
+
+    // رفع النسخة الجديدة باستخدام نفس البوابة
     const result = await storageService.uploadFile(
       req.file,
-      portalId || file.portalId,
+      portalId,
       accountId,
       file.category || 'request',
       file.requestId || null,
@@ -735,11 +1197,13 @@ export const reuploadFile = async (req, res) => {
     );
 
     const oldKey = file.storageKey;
+
     file.storageKey = result.key;
     file.size = req.file.size;
     file.mimeType = req.file.mimetype;
     file.originalName = req.file.originalname;
     file.updatedAt = new Date();
+
     await file.save();
 
     console.log('✅ File re-uploaded successfully');
@@ -760,6 +1224,7 @@ export const reuploadFile = async (req, res) => {
     });
   } catch (error) {
     console.error('❌ Reupload error:', error);
+
     res.status(500).json({
       success: false,
       message: error.message || 'Failed to re-upload file',

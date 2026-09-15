@@ -5,15 +5,19 @@ import {
   getAbout,
   getAboutFile,
 } from '../controllers/about.controller.js';
-import { authenticate } from '../middleware/auth.js';
+import { authenticate, optionalAuth } from '../middleware/auth.js';
 import { requirePortalContext } from '../middleware/portalContext.js';
 import { requirePermission } from '../middleware/authorization.js';
 
 const router = express.Router();
 
 // ✅ مسار عرض الملفات - عام (يقرأ التوكن من Query)
-router.get('/file/:id', getAboutFile);
-
+router.get(
+  '/file/:id',
+  optionalAuth,
+  requirePortalContext,
+  getAboutFile
+);
 // ✅ جميع المسارات الأخرى تتطلب مصادقة
 router.use(authenticate);
 router.use(requirePortalContext);

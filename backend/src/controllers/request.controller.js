@@ -3,7 +3,7 @@ import { Request } from '../models/Request.model.js';
 import { File } from '../models/File.model.js';
 import { Account } from '../models/Account.model.js';
 import { getNotificationService } from '../services/notification.service.js';
-
+import mongoose from 'mongoose';
 // ============================================================
 // ✅ دالة مساعدة: إرسال إشعار بأمان
 // ============================================================
@@ -337,6 +337,66 @@ export const createRequest = async (req, res) => {
       });
     }
 
+    if (!portalId) {
+      return res.status(400).json({
+        success: false,
+        message: 'Portal context is required',
+        code: 'PORTAL_ID_REQUIRED',
+      });
+    }
+
+    // 🔐 Security: validate all uploaded files before attaching them to the request
+    const fileIds = Array.isArray(files)
+      ? [...new Set(files.filter(Boolean).map(String))]
+      : [];
+
+    if (fileIds.length > 0) {
+      const invalidFileId = fileIds.find(
+        (fileId) => !mongoose.Types.ObjectId.isValid(fileId)
+      );
+
+      if (invalidFileId) {
+        return res.status(400).json({
+          success: false,
+          message: 'One or more file IDs are invalid.',
+          code: 'INVALID_FILE_ID',
+        });
+      }
+
+      // A request may only attach non-deleted files that:
+      // 1. belong to the same portal
+      // 2. belong to the authenticated account
+      const uploadedFiles = await File.find({
+        _id: { $in: fileIds },
+        portalId,
+        accountId,
+        isDeleted: { $ne: true },
+      }).select('_id portalId accountId isDeleted');
+
+      if (uploadedFiles.length !== fileIds.length) {
+        const validFileIds = new Set(
+          uploadedFiles.map((file) => file._id.toString())
+        );
+
+        const invalidFileIds = fileIds.filter(
+          (fileId) => !validFileIds.has(fileId)
+        );
+
+        console.warn(
+          `🚫 Invalid file attachment attempt: account=${accountId}, ` +
+          `portal=${portalId}, invalidFiles=${invalidFileIds.join(',')}`
+        );
+
+        return res.status(403).json({
+          success: false,
+          message:
+            'One or more files are not authorized for this account or portal.',
+          code: 'FILE_ACCESS_DENIED',
+          invalidFileIds,
+        });
+      }
+    }
+
     const request = new Request({
       portalId,
       accountId,
@@ -353,7 +413,8 @@ export const createRequest = async (req, res) => {
       },
     });
 
-    for (const fileId of files) {
+    // Attach only files already verified above
+    for (const fileId of fileIds) {
       request.files.push({
         fileId,
         category: 'request',
@@ -362,11 +423,17 @@ export const createRequest = async (req, res) => {
       });
     }
 
-    request.addActivity('request_created', accountId, 'customer', null, {
-      serviceId,
-      requestTypeId,
-      formData,
-    });
+    request.addActivity(
+      'request_created',
+      accountId,
+      'customer',
+      null,
+      {
+        serviceId,
+        requestTypeId,
+        formData,
+      }
+    );
 
     await request.save();
 
@@ -385,7 +452,7 @@ export const createRequest = async (req, res) => {
       priority: 'medium',
     });
 
-    // ✅ 2. إشعار لجميع المديرين (portal_admin + super_admin)
+    // ✅ 2. إشعار لجميع المديرين
     try {
       const notificationService = getNotificationService(req.app?.get('io'));
 
@@ -416,7 +483,7 @@ export const createRequest = async (req, res) => {
 
       console.log(`✅ Notified ${portalAdmins.length} portal_admin(s)`);
 
-      // 🎯 2b. إشعار لـ super_admin (جميع المشرفين)
+      // 🎯 2b. إشعار لـ super_admin
       const superAdmins = await Account.find({
         role: 'super_admin',
         isActive: true,
@@ -427,12 +494,11 @@ export const createRequest = async (req, res) => {
           portalId: request.portalId,
           accountId: admin._id,
           ...adminNotification,
-          priority: 'high', // super_admin يحصل على أولوية أعلى
+          priority: 'high',
         });
       }
 
       console.log(`✅ Notified ${superAdmins.length} super_admin(s)`);
-
     } catch (err) {
       console.error('⚠️ Admin notification error:', err.message);
     }
@@ -444,6 +510,7 @@ export const createRequest = async (req, res) => {
     });
   } catch (error) {
     console.error('❌ Error in createRequest:', error);
+
     res.status(500).json({
       success: false,
       message: error.message,
@@ -571,8 +638,33 @@ export const assignSpecialist = async (req, res) => {
       });
     }
 
+    if (!request?.portalId) {
+      return res.status(400).json({
+        success: false,
+        message: 'Request portal context is required',
+        code: 'REQUEST_PORTAL_REQUIRED',
+      });
+    }
+
+    // 🔐 Security: the specialist must belong to the same portal as the request
+    const specialist = await Account.findOne({
+      _id: specialistId,
+      portalId: request.portalId,
+      role: 'specialist',
+      isActive: true,
+    }).select('_id portalId role isActive');
+
+    if (!specialist) {
+      return res.status(403).json({
+        success: false,
+        message: 'The selected specialist is not authorized for this portal.',
+        code: 'SPECIALIST_PORTAL_ACCESS_DENIED',
+      });
+    }
+
     const oldSpecialist = request.specialistId;
-    request.specialistId = specialistId;
+
+    request.specialistId = specialist._id;
     request.status = 'assigned';
 
     request.addActivity(
@@ -580,8 +672,10 @@ export const assignSpecialist = async (req, res) => {
       accountId,
       req.account?.role || 'portal_admin',
       oldSpecialist,
-      specialistId,
-      { specialistId }
+      specialist._id,
+      {
+        specialistId: specialist._id,
+      }
     );
 
     await request.save();
@@ -589,7 +683,7 @@ export const assignSpecialist = async (req, res) => {
     // ✅ 1. إشعار للمختص
     await safeSendNotification(req, {
       portalId: request.portalId,
-      accountId: specialistId,
+      accountId: specialist._id,
       type: 'request_assigned',
       title: 'New request assigned',
       titleAr: 'تم إسناد طلب جديد إليك',
@@ -607,7 +701,7 @@ export const assignSpecialist = async (req, res) => {
       title: 'Specialist assigned',
       titleAr: 'تم تعيين مختص لطلبك',
       message: `A specialist has been assigned to your request ${request.requestNumber}`,
-      messageAr: `تم تعيين مختص للطلب رقم ${request.requestNumber}`,
+      messageAr: `تم تعيين المختص للطلب رقم ${request.requestNumber} إليك`,
       data: { requestId: request._id },
       priority: 'medium',
     });
@@ -619,13 +713,13 @@ export const assignSpecialist = async (req, res) => {
     });
   } catch (error) {
     console.error('❌ Error in assignSpecialist:', error);
+
     res.status(500).json({
       success: false,
       message: error.message,
     });
   }
 };
-
 // ============================================================
 // ✅ حذف الطلب (ناعم)
 // ============================================================
@@ -699,7 +793,6 @@ export const getRequestStats = async (req, res) => {
     });
   }
 };
-
 // ============================================================
 // ✅ إضافة ملف إلى الطلب
 // ============================================================
@@ -708,9 +801,50 @@ export const addRequestFile = async (req, res) => {
     const request = req.request;
     const accountId = req.accountId;
     const role = req.account?.role || 'customer';
+    const portalId = req.portalId;
     const { fileIds, category } = req.body;
 
-    console.log('📤 addRequestFile:', { role, category, fileIds });
+    console.log('📤 addRequestFile:', {
+      role,
+      portalId,
+      requestId: request?._id,
+      requestPortalId: request?.portalId,
+      category,
+      fileIds,
+    });
+
+    if (!portalId) {
+      return res.status(400).json({
+        success: false,
+        message: 'Portal context is required',
+        code: 'PORTAL_ID_REQUIRED',
+      });
+    }
+
+    if (!request?.portalId) {
+      return res.status(400).json({
+        success: false,
+        message: 'Request portal is missing',
+        code: 'REQUEST_PORTAL_REQUIRED',
+      });
+    }
+
+    // ========================================================
+    // ✅ تأكيد أن الطلب نفسه ضمن البوابة الحالية
+    // ========================================================
+    if (request.portalId.toString() !== portalId.toString()) {
+      console.warn('🚫 Request portal mismatch:', {
+        requestId: request._id,
+        requestPortalId: request.portalId,
+        currentPortalId: portalId,
+      });
+
+      return res.status(403).json({
+        success: false,
+        message: 'You are not authorized to access this request.',
+        code: 'REQUEST_PORTAL_ACCESS_DENIED',
+      });
+    }
 
     if (!fileIds || !Array.isArray(fileIds) || fileIds.length === 0) {
       return res.status(400).json({
@@ -726,7 +860,9 @@ export const addRequestFile = async (req, res) => {
       super_admin: ['request', 'proof', 'delivery', 'modification', 'final'],
     };
 
-    const userAllowed = allowedCategories[role] || allowedCategories.customer;
+    const userAllowed =
+      allowedCategories[role] || allowedCategories.customer;
+
     const finalCategory = category || 'request';
 
     if (!userAllowed.includes(finalCategory)) {
@@ -736,59 +872,133 @@ export const addRequestFile = async (req, res) => {
       });
     }
 
-    const files = await File.find({ _id: { $in: fileIds } });
+    // ========================================================
+    // 🔐 SECURITY:
+    // جلب الملفات من نفس البوابة فقط
+    // ========================================================
+    const files = await File.find({
+      _id: { $in: fileIds },
+      portalId: portalId,
+      isDeleted: { $ne: true },
+    });
+
+    // ========================================================
+    // 🔐 SECURITY:
+    // يجب أن تكون جميع الملفات المطلوبة موجودة
+    // وفي نفس البوابة
+    // ========================================================
     if (files.length !== fileIds.length) {
-      return res.status(404).json({
+      const foundFileIds = new Set(
+        files.map(file => file._id.toString())
+      );
+
+      const invalidFileIds = fileIds.filter(
+        fileId => !foundFileIds.has(fileId.toString())
+      );
+
+      console.warn('🚫 File portal validation failed:', {
+        requestId: request._id,
+        requestPortalId: request.portalId,
+        currentPortalId: portalId,
+        invalidFileIds,
+      });
+
+      return res.status(403).json({
         success: false,
-        message: 'Some files not found',
+        message: 'One or more files do not belong to this portal or are unavailable.',
+        code: 'FILE_PORTAL_ACCESS_DENIED',
+        invalidFileIds,
       });
     }
 
+    // ========================================================
+    // ✅ إضافة الملفات إلى الطلب
+    // ========================================================
     for (const fileId of fileIds) {
-      const file = files.find(f => f._id.toString() === fileId);
+      const file = files.find(
+        f => f._id.toString() === fileId.toString()
+      );
 
-      if (finalCategory === 'proof' || finalCategory === 'payment_proof') {
-        const exists = request.paymentProofs.some(p => p.fileId?.toString() === fileId);
+      if (!file) {
+        continue;
+      }
+
+      if (
+        finalCategory === 'proof' ||
+        finalCategory === 'payment_proof'
+      ) {
+        const exists = request.paymentProofs.some(
+          p => p.fileId?.toString() === fileId.toString()
+        );
+
         if (!exists) {
           request.paymentProofs.push({
             fileId,
-            filename: file?.originalName || '',
+            filename: file.originalName || '',
             uploadedAt: new Date(),
             verified: false,
           });
         }
       } else {
-        const exists = request.files.some(f => f.fileId?.toString() === fileId);
+        const exists = request.files.some(
+          f => f.fileId?.toString() === fileId.toString()
+        );
+
         if (!exists) {
           request.files.push({
             fileId,
             category: finalCategory,
             uploadedAt: new Date(),
             uploadedBy: accountId,
-            description: file?.originalName || '',
+            description: file.originalName || '',
           });
         }
       }
     }
 
-    if (finalCategory === 'proof' || finalCategory === 'payment_proof') {
+    // ========================================================
+    // ✅ تسجيل النشاط
+    // ========================================================
+    if (
+      finalCategory === 'proof' ||
+      finalCategory === 'payment_proof'
+    ) {
       request.paymentStatus = 'submitted';
-      request.addActivity('payment_submitted', accountId, role, null, {
-        count: fileIds.length,
-        category: finalCategory,
-      });
+
+      request.addActivity(
+        'payment_submitted',
+        accountId,
+        role,
+        null,
+        {
+          count: fileIds.length,
+          category: finalCategory,
+        }
+      );
     } else {
-      request.addActivity('file_uploaded', accountId, role, null, {
-        count: fileIds.length,
-        category: finalCategory,
-      });
+      request.addActivity(
+        'file_uploaded',
+        accountId,
+        role,
+        null,
+        {
+          count: fileIds.length,
+          category: finalCategory,
+        }
+      );
     }
 
     await request.save();
 
     const updatedRequest = await Request.findById(request._id)
-      .populate('files.fileId', 'originalName size mimeType')
-      .populate('paymentProofs.fileId', 'originalName size mimeType');
+      .populate(
+        'files.fileId',
+        'originalName size mimeType'
+      )
+      .populate(
+        'paymentProofs.fileId',
+        'originalName size mimeType'
+      );
 
     res.json({
       success: true,
@@ -800,6 +1010,7 @@ export const addRequestFile = async (req, res) => {
     });
   } catch (error) {
     console.error('❌ Error in addRequestFile:', error);
+
     res.status(500).json({
       success: false,
       message: error.message,
@@ -1130,13 +1341,11 @@ export const approveRequestScope = async (req, res) => {
   }
 };
 
-// ============================================================
-// ✅ تقديم الدفع (من قبل العميل)
-// ============================================================
 export const submitPayment = async (req, res) => {
   try {
     const request = req.request;
     const accountId = req.accountId;
+    const portalId = req.portalId;
     const { amount, paymentMethod, proofFileId } = req.body;
 
     if (!amount || parseFloat(amount) <= 0) {
@@ -1146,11 +1355,66 @@ export const submitPayment = async (req, res) => {
       });
     }
 
-    if (request.accountId?.toString() !== accountId) {
+    if (!accountId) {
+      return res.status(401).json({
+        success: false,
+        message: 'Authentication required',
+      });
+    }
+
+    if (!portalId) {
+      return res.status(400).json({
+        success: false,
+        message: 'Portal context is required',
+        code: 'PORTAL_ID_REQUIRED',
+      });
+    }
+
+    if (request.accountId?.toString() !== accountId.toString()) {
       return res.status(403).json({
         success: false,
         message: 'Only the client can submit payment',
       });
+    }
+
+    if (request.portalId?.toString() !== portalId.toString()) {
+      return res.status(403).json({
+        success: false,
+        message: 'Request does not belong to the current portal',
+        code: 'REQUEST_PORTAL_ACCESS_DENIED',
+      });
+    }
+
+    // 🔐 Security: validate payment proof file
+    if (proofFileId) {
+      if (!mongoose.Types.ObjectId.isValid(proofFileId)) {
+        return res.status(400).json({
+          success: false,
+          message: 'Invalid payment proof file ID',
+          code: 'INVALID_PROOF_FILE_ID',
+        });
+      }
+
+      const proofFile = await File.findOne({
+        _id: proofFileId,
+        portalId,
+        accountId,
+        isDeleted: { $ne: true },
+      }).select('_id portalId accountId isDeleted');
+
+      if (!proofFile) {
+        console.warn(
+          `🚫 Unauthorized payment proof attempt: ` +
+          `account=${accountId}, portal=${portalId}, file=${proofFileId}`
+        );
+
+        return res.status(403).json({
+          success: false,
+          message:
+            'The payment proof file is not authorized for this account or portal.',
+          code: 'PROOF_FILE_ACCESS_DENIED',
+        });
+      }
     }
 
     request.paymentStatus = 'submitted';
@@ -1172,19 +1436,32 @@ export const submitPayment = async (req, res) => {
       const oldStatus = request.status;
       request.status = 'in_progress';
 
-      request.addActivity('status_changed', accountId, 'customer', oldStatus, 'in_progress', {
-        reason: 'Payment verified',
-      });
+      request.addActivity(
+        'status_changed',
+        accountId,
+        'customer',
+        oldStatus,
+        'in_progress',
+        {
+          reason: 'Payment verified',
+        }
+      );
     }
 
-    request.addActivity('payment_submitted', accountId, 'customer', null, {
-      amount,
-      paymentMethod,
-    });
+    request.addActivity(
+      'payment_submitted',
+      accountId,
+      'customer',
+      null,
+      {
+        amount,
+        paymentMethod,
+      }
+    );
 
     await request.save();
 
-    // ✅ إشعار للمدير
+    // ✅ إشعار للمدير/المختص المرتبط بالطلب
     await safeSendNotification(req, {
       portalId: request.portalId,
       accountId: request.specialistId || request.accountId,
@@ -1193,7 +1470,10 @@ export const submitPayment = async (req, res) => {
       titleAr: 'تم تقديم دفعة جديدة',
       message: `Payment of ${amount} SAR submitted for request ${request.requestNumber}`,
       messageAr: `تم تقديم دفعة بمبلغ ${amount} ريال للطلب ${request.requestNumber}`,
-      data: { requestId: request._id, paymentId: proofFileId },
+      data: {
+        requestId: request._id,
+        paymentId: proofFileId || null,
+      },
       priority: 'high',
     });
 
@@ -1204,17 +1484,20 @@ export const submitPayment = async (req, res) => {
         status: request.status,
         price: request.price,
       },
-      message: request.paymentStatus === 'verified' ? '✅ تم تأكيد الدفع بنجاح' : '📤 تم تقديم طلب الدفع',
+      message:
+        request.paymentStatus === 'verified'
+          ? '✅ تم تأكيد الدفع بنجاح'
+          : '📤 تم تقديم طلب الدفع',
     });
   } catch (error) {
     console.error('❌ Error in submitPayment:', error);
+
     res.status(500).json({
       success: false,
       message: error.message,
     });
   }
 };
-
 // ============================================================
 // ✅ تأكيد الدفع (للمدير)
 // ============================================================

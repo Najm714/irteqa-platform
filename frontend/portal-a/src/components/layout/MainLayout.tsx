@@ -22,9 +22,7 @@ const MainLayout: React.FC<MainLayoutProps> = ({ children }) => {
   // روابط القائمة الرئيسية
   const mainMenuItems = [
     { to: '/', label: '🏠 الرئيسية' },
-    { to: '/services', label: '📋 الخدمات' },
     { to: '/explanations', label: '📚 الشروحات' },
-    { to: '/business', label: '💼 الأعمال والاقتصاد' },
     { to: '/library', label: '📖 المكتبة' },
     { to: '/videos', label: '🎬 الفيديوهات' },
     { to: '/infographics', label: '📊 الانفوجرافيك' },

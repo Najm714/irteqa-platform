@@ -2,15 +2,13 @@
 import { Infographic } from '../models/infographic.model.js';
 import { File } from '../models/File.model.js';
 import storageService from '../services/storage.service.js';
-import jwt from 'jsonwebtoken';
-import { Account } from '../models/Account.model.js';
 
 // ============================================================
 // ✅ إضافة إنفوجرافيك
 // ============================================================
 export const addInfographic = async (req, res) => {
   try {
-    const portalId = req.portalId || req.headers['x-portal-id'];
+    const portalId = req.portalId;
     const accountId = req.accountId || req.user?.id;
     const {
       fileId,
@@ -121,7 +119,7 @@ export const addInfographic = async (req, res) => {
 // ============================================================
 export const getInfographics = async (req, res) => {
   try {
-    const portalId = req.portalId || req.headers['x-portal-id'];
+    const portalId = req.portalId;
     const { category, search, isPublished, isFeatured, page = 1, limit = 20 } = req.query;
 
     console.log('📤 Fetching infographics for portal:', portalId);
@@ -181,7 +179,7 @@ export const getInfographics = async (req, res) => {
 export const getInfographicById = async (req, res) => {
   try {
     const { id } = req.params;
-    const portalId = req.portalId || req.headers['x-portal-id'];
+    const portalId = req.portalId;
 
     const infographic = await Infographic.findOne({ _id: id, portalId, isDeleted: { $ne: true } })
       .populate('fileId', 'originalName size mimeType storageKey')
@@ -211,17 +209,29 @@ export const getInfographicById = async (req, res) => {
     });
   }
 };
-
 // ============================================================
 // ✅ تحديث إنفوجرافيك
 // ============================================================
 export const updateInfographic = async (req, res) => {
   try {
     const { id } = req.params;
-    const portalId = req.portalId || req.headers['x-portal-id'];
+    const portalId = req.portalId;
     const updates = req.body;
 
-    const infographic = await Infographic.findOne({ _id: id, portalId, isDeleted: { $ne: true } });
+    if (!portalId) {
+      return res.status(400).json({
+        success: false,
+        message: 'Portal context is required',
+        code: 'PORTAL_ID_REQUIRED',
+      });
+    }
+
+    const infographic = await Infographic.findOne({
+      _id: id,
+      portalId,
+      isDeleted: { $ne: true },
+    });
+
     if (!infographic) {
       return res.status(404).json({
         success: false,
@@ -229,10 +239,44 @@ export const updateInfographic = async (req, res) => {
       });
     }
 
+    // ========================================================
+    // التحقق من thumbnailId الجديد
+    // يجب أن يكون الملف تابعًا لنفس الـ Portal
+    // ========================================================
+    if (updates.thumbnailId !== undefined) {
+      if (updates.thumbnailId === null || updates.thumbnailId === '') {
+        infographic.thumbnailId = null;
+      } else {
+        const thumbnail = await File.findOne({
+          _id: updates.thumbnailId,
+          portalId,
+          isDeleted: { $ne: true },
+        });
+
+        if (!thumbnail) {
+          return res.status(403).json({
+            success: false,
+            message:
+              'Thumbnail file is not authorized for this portal.',
+            code: 'THUMBNAIL_PORTAL_ACCESS_DENIED',
+          });
+        }
+
+        infographic.thumbnailId = thumbnail._id;
+      }
+    }
+
     const allowedFields = [
-      'title', 'titleAr', 'description', 'descriptionAr',
-      'category', 'categoryAr', 'tags', 'isPublished',
-      'isFeatured', 'order', 'thumbnailId',
+      'title',
+      'titleAr',
+      'description',
+      'descriptionAr',
+      'category',
+      'categoryAr',
+      'tags',
+      'isPublished',
+      'isFeatured',
+      'order',
     ];
 
     for (const field of allowedFields) {
@@ -242,11 +286,19 @@ export const updateInfographic = async (req, res) => {
     }
 
     infographic.updatedAt = new Date();
+
     await infographic.save();
 
-    const populated = await Infographic.findById(infographic._id)
-      .populate('fileId', 'originalName size mimeType storageKey')
-      .populate('thumbnailId', 'originalName size mimeType storageKey')
+    const populated = await Infographic.findOne({
+      _id: infographic._id,
+      portalId,
+      isDeleted: { $ne: true },
+    })
+      .populate('fileId', 'originalName size mimeType storageKey portalId')
+      .populate(
+        'thumbnailId',
+        'originalName size mimeType storageKey portalId'
+      )
       .populate('createdBy', 'profile.fullName');
 
     res.json({
@@ -256,9 +308,10 @@ export const updateInfographic = async (req, res) => {
     });
   } catch (error) {
     console.error('❌ Error in updateInfographic:', error);
+
     res.status(500).json({
       success: false,
-      message: error.message,
+      message: error.message || 'Failed to update infographic',
     });
   }
 };
@@ -269,7 +322,7 @@ export const updateInfographic = async (req, res) => {
 export const deleteInfographic = async (req, res) => {
   try {
     const { id } = req.params;
-    const portalId = req.portalId || req.headers['x-portal-id'];
+    const portalId = req.portalId;
     const accountId = req.accountId || req.user?.id;
 
     const infographic = await Infographic.findOne({ _id: id, portalId, isDeleted: { $ne: true } });
@@ -297,50 +350,51 @@ export const deleteInfographic = async (req, res) => {
     });
   }
 };
-
-// ============================================================
-// ✅ تحميل/عرض إنفوجرافيك
-// ============================================================
 export const viewInfographic = async (req, res) => {
   try {
     const { id } = req.params;
-    const portalId = req.headers['x-portal-id'] || req.query.portalId;
-    
+    const account = req.account;
+    const portalId = req.portalId;
+
     console.log('🖼️ Viewing infographic:', id);
-    
-    // ✅ الحصول على التوكن من Query String
-    const tokenFromQuery = req.query.token;
-    let account = null;
-    
-    if (tokenFromQuery) {
-      try {
-        const decoded = jwt.verify(tokenFromQuery, process.env.JWT_SECRET);
-        if (decoded) {
-          account = await Account.findById(decoded.id || decoded._id);
-          console.log('✅ Account found via query token:', account?._id);
-        }
-      } catch (err) {
-        console.log('⚠️ Token from query invalid:', err.message);
-      }
-    }
-    
-    if (!account) {
-      account = req.account;
-    }
+    console.log(
+      '  - Account:',
+      account?._id,
+      '| Role:',
+      account?.role,
+      '| Portal:',
+      portalId
+    );
 
     if (!account) {
       return res.status(401).json({
         success: false,
         message: 'Unauthorized - Please login',
-        code: 'NO_TOKEN',
+        code: 'UNAUTHORIZED',
       });
     }
 
-    // ✅ البحث عن الإنفوجرافيك
-    const infographic = await Infographic.findOne({ 
-      _id: id, 
-      isDeleted: { $ne: true } 
-    }).populate('fileId');
+    if (!portalId) {
+      return res.status(400).json({
+        success: false,
+        message: 'Portal context is required',
+        code: 'PORTAL_ID_REQUIRED',
+      });
+    }
+
+    const infographic = await Infographic.findOne({
+      _id: id,
+      portalId,
+      isDeleted: { $ne: true },
+    }).populate({
+      path: 'fileId',
+      select:
+        'originalName size mimeType storageKey portalId accountId isDeleted',
+      match: {
+        portalId,
+        isDeleted: { $ne: true },
+      },
+    });
 
     if (!infographic) {
       return res.status(404).json({
@@ -349,12 +403,11 @@ export const viewInfographic = async (req, res) => {
       });
     }
 
-    // ✅ التحقق من البوابة
-    const accountPortalId = account.portalId?.toString() || account.portalId;
-    if (infographic.portalId.toString() !== (portalId || accountPortalId)) {
-      return res.status(403).json({
+    if (!infographic.fileId) {
+      return res.status(404).json({
         success: false,
-        message: 'Access denied - Invalid portal',
+        message: 'Infographic file not found in this portal',
+        code: 'INFOGRAPHIC_FILE_NOT_FOUND',
       });
     }
 
@@ -365,67 +418,90 @@ export const viewInfographic = async (req, res) => {
       });
     }
 
-    // ✅ زيادة عدد المشاهدات
     infographic.views += 1;
     await infographic.save();
 
-    // ✅ عرض الملف
-    const fileBuffer = await storageService.getFile(infographic.fileId);
-    
-    res.setHeader('Content-Type', infographic.fileId.mimeType || 'image/png');
-    res.setHeader('Content-Length', infographic.fileId.size);
-    res.setHeader('Cache-Control', 'public, max-age=86400');
-    res.setHeader('Access-Control-Allow-Origin', '*');
-    res.setHeader('Content-Disposition', `inline; filename="${encodeURIComponent(infographic.fileId.originalName)}"`);
-    
+    const fileBuffer = await storageService.getFile(
+      infographic.fileId
+    );
+
+    res.setHeader(
+      'Content-Type',
+      infographic.fileId.mimeType || 'image/png'
+    );
+
+    res.setHeader(
+      'Content-Length',
+      infographic.fileId.size
+    );
+
+    res.setHeader(
+      'Cache-Control',
+      'private, no-store, no-cache, must-revalidate'
+    );
+
+    res.setHeader(
+      'Content-Disposition',
+      `inline; filename="${encodeURIComponent(
+        infographic.fileId.originalName
+      )}"`
+    );
+
     return res.send(fileBuffer);
   } catch (error) {
     console.error('❌ Error in viewInfographic:', error);
-    res.status(500).json({
+
+    return res.status(500).json({
       success: false,
-      message: error.message,
+      message: error.message || 'Failed to view infographic',
     });
   }
 };
-
-// ============================================================
-// ✅ تحميل إنفوجرافيك (للحفظ)
-// ============================================================
 export const downloadInfographic = async (req, res) => {
   try {
     const { id } = req.params;
-    const portalId = req.headers['x-portal-id'] || req.query.portalId;
-    
-    const tokenFromQuery = req.query.token;
-    let account = null;
-    
-    if (tokenFromQuery) {
-      try {
-        const decoded = jwt.verify(tokenFromQuery, process.env.JWT_SECRET);
-        if (decoded) {
-          account = await Account.findById(decoded.id || decoded._id);
-        }
-      } catch (err) {
-        console.log('⚠️ Token from query invalid:', err.message);
-      }
-    }
-    
-    if (!account) {
-      account = req.account;
-    }
+    const account = req.account;
+    const portalId = req.portalId;
+
+    console.log('📥 Downloading infographic:', id);
+    console.log(
+      '  - Account:',
+      account?._id,
+      '| Role:',
+      account?.role,
+      '| Portal:',
+      portalId
+    );
 
     if (!account) {
       return res.status(401).json({
         success: false,
         message: 'Unauthorized - Please login',
-        code: 'NO_TOKEN',
+        code: 'UNAUTHORIZED',
       });
     }
 
-    const infographic = await Infographic.findOne({ 
-      _id: id, 
-      isDeleted: { $ne: true } 
-    }).populate('fileId');
+    if (!portalId) {
+      return res.status(400).json({
+        success: false,
+        message: 'Portal context is required',
+        code: 'PORTAL_ID_REQUIRED',
+      });
+    }
+
+    const infographic = await Infographic.findOne({
+      _id: id,
+      portalId,
+      isDeleted: { $ne: true },
+    }).populate({
+      path: 'fileId',
+      select:
+        'originalName size mimeType storageKey portalId accountId isDeleted',
+      match: {
+        portalId,
+        isDeleted: { $ne: true },
+      },
+    });
 
     if (!infographic) {
       return res.status(404).json({
@@ -434,11 +510,11 @@ export const downloadInfographic = async (req, res) => {
       });
     }
 
-    const accountPortalId = account.portalId?.toString() || account.portalId;
-    if (infographic.portalId.toString() !== (portalId || accountPortalId)) {
-      return res.status(403).json({
+    if (!infographic.fileId) {
+      return res.status(404).json({
         success: false,
-        message: 'Access denied - Invalid portal',
+        message: 'Infographic file not found in this portal',
+        code: 'INFOGRAPHIC_FILE_NOT_FOUND',
       });
     }
 
@@ -449,24 +525,42 @@ export const downloadInfographic = async (req, res) => {
       });
     }
 
-    // ✅ زيادة عدد التحميلات
     infographic.downloads += 1;
     await infographic.save();
 
-    const fileBuffer = await storageService.getFile(infographic.fileId);
-    
-    res.setHeader('Content-Type', infographic.fileId.mimeType || 'image/png');
-    res.setHeader('Content-Length', infographic.fileId.size);
-    res.setHeader('Cache-Control', 'public, max-age=86400');
-    res.setHeader('Access-Control-Allow-Origin', '*');
-    res.setHeader('Content-Disposition', `attachment; filename="${encodeURIComponent(infographic.fileId.originalName)}"`);
-    
+    const fileBuffer = await storageService.getFile(
+      infographic.fileId
+    );
+
+    res.setHeader(
+      'Content-Type',
+      infographic.fileId.mimeType || 'image/png'
+    );
+
+    res.setHeader(
+      'Content-Length',
+      infographic.fileId.size
+    );
+
+    res.setHeader(
+      'Cache-Control',
+      'private, no-store, no-cache, must-revalidate'
+    );
+
+    res.setHeader(
+      'Content-Disposition',
+      `attachment; filename="${encodeURIComponent(
+        infographic.fileId.originalName
+      )}"`
+    );
+
     return res.send(fileBuffer);
   } catch (error) {
     console.error('❌ Error in downloadInfographic:', error);
-    res.status(500).json({
+
+    return res.status(500).json({
       success: false,
-      message: error.message,
+      message: error.message || 'Failed to download infographic',
     });
   }
 };
@@ -476,7 +570,7 @@ export const downloadInfographic = async (req, res) => {
 // ============================================================
 export const getInfographicStats = async (req, res) => {
   try {
-    const portalId = req.portalId || req.headers['x-portal-id'];
+    const portalId = req.portalId;
 
     const [total, published, featured, byCategory] = await Promise.all([
       Infographic.countDocuments({ portalId, isDeleted: { $ne: true } }),

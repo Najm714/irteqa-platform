@@ -1101,30 +1101,51 @@ export const getVideos = async (req, res) => {
 
     // ✅ إضافة رابط الفيديو الصحيح
 // ✅ استخدم x-forwarded-proto (بعد trust proxy يعمل تلقائياً)
-const protocol = req.get('x-forwarded-proto')?.split(',')[0]?.trim() 
-  || req.protocol 
-  || 'https';
+// ============================================================
+// إضافة رابط الفيديو مع Portal Context
+// ============================================================
+
+const protocol =
+  req.get('x-forwarded-proto')?.split(',')[0]?.trim() ||
+  req.protocol ||
+  'https';
+
 const host = req.get('host');
 const baseUrl = `${protocol}://${host}`;
-    const videosWithUrls = videos.map(video => {
-      const videoObj = video.toObject();
-      
-      if (video.videoUrl && video.videoUrl.match(/^[0-9a-fA-F]{24}$/)) {
-          videoObj.videoUrl = `${baseUrl}/api/files/${video.videoUrl}/stream-secure`;
-      } else if (video.videoUrl) {
-        videoObj.videoUrl = video.videoUrl;
-      } else {
-        videoObj.videoUrl = null;
-      }
-      
-      videoObj.hasValidUrl = !!videoObj.videoUrl;
-      
-      if (!videoObj.thumbnail && videoObj.videoUrl) {
-        videoObj.thumbnail = '/default-thumbnail.jpg';
-      }
-      
-      return videoObj;
-    });
+
+if (!portalId) {
+  return res.status(400).json({
+    success: false,
+    message: 'Portal context is required',
+    code: 'PORTAL_ID_REQUIRED',
+  });
+}
+
+const videosWithUrls = videos.map(video => {
+  const videoObj = video.toObject();
+
+  if (
+    video.videoUrl &&
+    video.videoUrl.match(/^[0-9a-fA-F]{24}$/)
+  ) {
+    videoObj.videoUrl =
+      `${baseUrl}/api/files/${video.videoUrl}/stream-secure?portalId=${encodeURIComponent(
+        portalId.toString()
+      )}`;
+  } else if (video.videoUrl) {
+    videoObj.videoUrl = video.videoUrl;
+  } else {
+    videoObj.videoUrl = null;
+  }
+
+  videoObj.hasValidUrl = !!videoObj.videoUrl;
+
+  if (!videoObj.thumbnail && videoObj.videoUrl) {
+    videoObj.thumbnail = '/default-thumbnail.jpg';
+  }
+
+  return videoObj;
+});
 
     res.status(200).json({
       success: true,
@@ -1519,32 +1540,27 @@ export const getActiveSubscription = async (req, res) => {
     });
   }
 };
-
 // ===== إنشاء اشتراك جديد =====
 export const createSubscription = async (req, res) => {
   try {
-    const portalId = req.portalId || req.headers['x-portal-id'] || req.body.portalId || req.portal?._id;
-    const userId = req.accountId || req.user?.id;
+    // portalId يأتي من middleware الموثوق فقط
+    const portalId = req.portalId;
+    const userId = req.accountId;
+
     const {
       materialId,
-      price,
-      currency,
       paymentMethod,
-      startDate,
-      endDate,
+      paymentId,
       description,
       descriptionAr,
       benefits,
       benefitsAr,
-      paymentId,
-      status = 'pending',
-      paymentStatus = 'pending',
     } = req.body;
 
     if (!portalId) {
       return res.status(400).json({
         success: false,
-        message: 'portalId is required',
+        message: 'Portal context is required',
       });
     }
 
@@ -1562,8 +1578,15 @@ export const createSubscription = async (req, res) => {
       });
     }
 
-    // ✅ التحقق من وجود المادة
-    const material = await Material.findOne({ _id: materialId, portalId });
+    // ============================================================
+    // 1. التحقق من المادة داخل نفس الـ Portal
+    // ============================================================
+    const material = await Material.findOne({
+      _id: materialId,
+      portalId,
+      isDeleted: { $ne: true },
+    });
+
     if (!material) {
       return res.status(404).json({
         success: false,
@@ -1571,74 +1594,237 @@ export const createSubscription = async (req, res) => {
       });
     }
 
-    // ✅ التحقق من عدم وجود اشتراك نشط
+    // ============================================================
+    // 2. منع وجود اشتراك pending أو active لنفس المستخدم والمادة
+    // ============================================================
     const existingSubscription = await Subscription.findOne({
       portalId,
       accountId: userId,
       materialId,
       status: { $in: ['pending', 'active'] },
+      isDeleted: { $ne: true },
     });
 
     if (existingSubscription) {
       return res.status(400).json({
         success: false,
-        message: 'You already have an active or pending subscription for this material',
+        message:
+          'You already have an active or pending subscription for this material',
         data: existingSubscription,
       });
     }
 
-    // ✅ إنشاء الاشتراك
+    // ============================================================
+    // 3. تحديد السعر من المادة فقط
+    //    لا نثق بالسعر القادم من Frontend
+    // ============================================================
+    const price = Number(material.price || 0);
+    const currency = 'SAR';
+
+    // ============================================================
+    // 4. تحديد طريقة الدفع
+    // ============================================================
+    const normalizedPaymentMethod = paymentMethod || (price === 0 ? 'free' : 'manual');
+
+    const allowedPaymentMethods = [
+      'credit_card',
+      'mada',
+      'paypal',
+      'bank_transfer',
+      'manual',
+      'free',
+    ];
+
+    if (!allowedPaymentMethods.includes(normalizedPaymentMethod)) {
+      return res.status(400).json({
+        success: false,
+        message: 'Invalid payment method',
+      });
+    }
+
+    // ============================================================
+    // 5. تحديد ما إذا كان الاشتراك مجانيًا
+    // ============================================================
+    const isFree = price === 0;
+
+    // ============================================================
+    // 6. التحقق من Payment إذا تم إرساله
+    // ============================================================
+    let payment = null;
+
+    if (paymentId) {
+      payment = await Payment.findOne({
+        _id: paymentId,
+        portalId,
+        accountId: userId,
+        isDeleted: { $ne: true },
+      });
+
+      if (!payment) {
+        return res.status(404).json({
+          success: false,
+          message: 'Payment not found or does not belong to this account',
+        });
+      }
+
+      // منع ربط Payment باشتراك آخر
+      if (
+        payment.subscriptionId &&
+        payment.subscriptionId.toString() !== ''
+      ) {
+        return res.status(400).json({
+          success: false,
+          message: 'This payment is already linked to a subscription',
+        });
+      }
+
+      // التحقق من تطابق المبلغ
+      if (Number(payment.amount) !== price) {
+        return res.status(400).json({
+          success: false,
+          message: 'Payment amount does not match the material price',
+        });
+      }
+
+      // التحقق من العملة
+      if (payment.currency !== currency) {
+        return res.status(400).json({
+          success: false,
+          message: 'Payment currency does not match the subscription currency',
+        });
+      }
+    }
+
+    // ============================================================
+    // 7. الاشتراك المجاني
+    //    فقط إذا كانت المادة مجانية
+    // ============================================================
+    if (isFree) {
+      if (normalizedPaymentMethod !== 'free') {
+        return res.status(400).json({
+          success: false,
+          message: 'Free materials must use the free payment method',
+        });
+      }
+
+      if (paymentId) {
+        return res.status(400).json({
+          success: false,
+          message: 'A free subscription cannot be linked to a payment',
+        });
+      }
+    }
+
+    // ============================================================
+    // 8. الاشتراك المدفوع
+    // ============================================================
+    if (!isFree) {
+      if (normalizedPaymentMethod === 'free') {
+        return res.status(400).json({
+          success: false,
+          message: 'Paid materials cannot use the free payment method',
+        });
+      }
+
+      if (!paymentId) {
+        return res.status(400).json({
+          success: false,
+          message: 'Payment is required for a paid subscription',
+        });
+      }
+    }
+
+    // ============================================================
+    // 9. تحديد الحالة من Backend
+    //
+    // مهم جدًا:
+    // لا نأخذ status أو paymentStatus من req.body
+    // ============================================================
+    const subscriptionStatus = isFree ? 'active' : 'pending';
+    const subscriptionPaymentStatus = isFree ? 'paid' : 'pending';
+
+    // ============================================================
+    // 10. تحديد مدة الاشتراك من Backend
+    // ============================================================
+    const startDate = new Date();
+    const endDate = new Date(startDate);
+
+    // النظام الحالي في Frontend يعرض الاشتراك لمدة 30 يوم
+    endDate.setDate(endDate.getDate() + 30);
+
+    // ============================================================
+    // 11. إنشاء الاشتراك
+    // ============================================================
     const subscription = new Subscription({
       portalId,
       accountId: userId,
       materialId,
-      price: price || material.price || 0,
-      currency: currency || 'SAR',
-      paymentMethod: paymentMethod || 'manual',
-      startDate: startDate || new Date(),
-      endDate: endDate || new Date(Date.now() + 30 * 24 * 60 * 60 * 1000),
+
+      // السعر والعملات من Backend
+      price,
+      currency,
+
+      paymentMethod: normalizedPaymentMethod,
+
+      startDate,
+      endDate,
+
       description: description || '',
       descriptionAr: descriptionAr || '',
-      benefits: benefits || [],
-      benefitsAr: benefitsAr || [],
-      status: status,
-      paymentStatus: paymentStatus,
-      paymentId: paymentId || null,
+
+      // لا نسمح للعميل بتحديد مزايا اشتراك مختلفة عن النظام
+      benefits: Array.isArray(benefits) ? benefits : [],
+      benefitsAr: Array.isArray(benefitsAr) ? benefitsAr : [],
+
+      // الحالات يحددها Backend
+      status: subscriptionStatus,
+      paymentStatus: subscriptionPaymentStatus,
+
+      paymentId: payment ? payment._id : null,
     });
 
     await subscription.save();
 
-    // ✅ ربط الاشتراك بالدفع إذا وجد
-    if (paymentId) {
-      const payment = await Payment.findById(paymentId);
-      if (payment) {
-        payment.subscriptionId = subscription._id;
-        await payment.save();
-        console.log('✅ Payment updated with subscription ID:', paymentId);
-      }
+    // ============================================================
+    // 12. ربط Payment بالاشتراك
+    // ============================================================
+    if (payment) {
+      payment.subscriptionId = subscription._id;
+      await payment.save();
     }
 
-    // ✅ جلب الاشتراك مع البيانات الكاملة
-    const populatedSubscription = await Subscription.findById(subscription._id)
+    // ============================================================
+    // 13. جلب الاشتراك مع البيانات المرتبطة
+    // ============================================================
+    const populatedSubscription = await Subscription.findOne({
+      _id: subscription._id,
+      portalId,
+    })
       .populate('accountId', 'profile.fullName email')
       .populate('materialId', 'name nameAr code price')
-      .populate('paymentId', 'reference amount status proof accountNumber accountName bankName')
+      .populate(
+        'paymentId',
+        'reference amount status proof accountNumber accountName bankName'
+      )
       .populate({
         path: 'paymentId',
         populate: {
           path: 'proof',
-          select: 'originalName size mimeType _id'
-        }
+          select: 'originalName size mimeType _id',
+        },
       });
 
-    res.status(201).json({
+    return res.status(201).json({
       success: true,
-      message: 'Subscription created successfully',
+      message: isFree
+        ? 'Free subscription created successfully'
+        : 'Subscription created successfully and is pending payment verification',
       data: populatedSubscription,
     });
   } catch (error) {
     console.error('❌ Create subscription error:', error);
-    res.status(500).json({
+
+    return res.status(500).json({
       success: false,
       message: error.message || 'Failed to create subscription',
     });

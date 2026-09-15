@@ -9,7 +9,7 @@ import {
   streamVideo,
   getVideoStats,
 } from '../controllers/videoLibrary.controller.js';
-import { authenticate } from '../middleware/auth.js';
+import { authenticate, optionalAuth } from '../middleware/auth.js';
 import { requirePortalContext } from '../middleware/portalContext.js';
 import { requirePermission } from '../middleware/authorization.js';
 
@@ -17,8 +17,12 @@ const router = express.Router();
 
 // ✅ مسار تشغيل الفيديو - عام (لا يتطلب مصادقة مسبقة)
 // يتم التحقق من التوكن داخل الدالة نفسها
-router.get('/:id/stream', streamVideo);
-
+router.get(
+  '/:id/stream',
+  optionalAuth,
+  requirePortalContext,
+  streamVideo
+);
 // ✅ جميع المسارات الأخرى تتطلب مصادقة
 router.use(authenticate);
 router.use(requirePortalContext);

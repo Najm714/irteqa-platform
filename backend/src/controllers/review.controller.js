@@ -92,7 +92,7 @@ export const createReview = async (req, res) => {
     await review.save();
 
     // ✅ تحديث متوسط تقييم المختص
-    await updateSpecialistRating(request.specialistId);
+    await updateSpecialistRating(request.specialistId, portalId);
 
     // ✅ إرسال إشعار للمختص
     try {
@@ -316,7 +316,7 @@ export const updateReview = async (req, res) => {
     await review.save();
 
     // ✅ تحديث متوسط تقييم المختص
-    await updateSpecialistRating(review.revieweeId);
+    await updateSpecialistRating(review.revieweeId, portalId);
 
     res.status(200).json({
       success: true,
@@ -358,7 +358,7 @@ export const deleteReview = async (req, res) => {
     await review.save();
 
     // ✅ تحديث متوسط تقييم المختص
-    await updateSpecialistRating(review.revieweeId);
+    await updateSpecialistRating(review.revieweeId, portalId);
 
     res.status(200).json({
       success: true,
@@ -459,11 +459,12 @@ export const reportReview = async (req, res) => {
 /**
  * تحديث متوسط تقييم المختص
  */
-async function updateSpecialistRating(specialistId) {
+async function updateSpecialistRating(specialistId, portalId) {
   try {
     const stats = await Review.aggregate([
       {
         $match: {
+          portalId,
           revieweeId: specialistId,
           status: 'published',
         },
@@ -477,10 +478,16 @@ async function updateSpecialistRating(specialistId) {
       },
     ]);
 
-    await Account.findByIdAndUpdate(specialistId, {
-      'specialistDetails.rating.average': stats[0]?.average || 0,
-      'specialistDetails.rating.count': stats[0]?.count || 0,
-    });
+    await Account.findOneAndUpdate(
+      {
+        _id: specialistId,
+        portalId,
+      },
+      {
+        'specialistDetails.rating.average': stats[0]?.average || 0,
+        'specialistDetails.rating.count': stats[0]?.count || 0,
+      }
+    );
   } catch (error) {
     console.error('❌ Update specialist rating error:', error);
   }

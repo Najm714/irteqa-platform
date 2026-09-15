@@ -56,25 +56,41 @@ const upload = multer({
 // ============================================================
 // ✅ مسار عام للصور الشخصية (قبل المصادقة)
 // ============================================================
-
 router.get('/public/:id', async (req, res) => {
   try {
     const { id } = req.params;
 
-    console.log('📸 Fetching public file:', id);
+    const requestedPortalId =
+      req.headers['x-portal-id'] ||
+      req.query?.portalId ||
+      null;
 
-    const file = await File.findOne({ _id: id, isDeleted: { $ne: true } });
+    if (!requestedPortalId) {
+      return res.status(400).json({
+        success: false,
+        message: 'Portal context is required',
+        code: 'PORTAL_ID_REQUIRED',
+      });
+    }
+
+    console.log(
+      '📸 Fetching public file:',
+      id,
+      '| Portal:',
+      requestedPortalId
+    );
+
+    const file = await File.findOne({
+      _id: id,
+      portalId: requestedPortalId,
+      category: 'profile',
+      isDeleted: { $ne: true },
+    });
+
     if (!file) {
       return res.status(404).json({
         success: false,
         message: 'File not found',
-      });
-    }
-
-    if (file.category !== 'profile') {
-      return res.status(403).json({
-        success: false,
-        message: 'Access denied - Only profile images are public',
       });
     }
 
@@ -83,16 +99,17 @@ router.get('/public/:id', async (req, res) => {
     res.setHeader('Content-Type', file.mimeType);
     res.setHeader('Cache-Control', 'public, max-age=86400');
     res.setHeader('Access-Control-Allow-Origin', '*');
+
     res.send(fileBuffer);
   } catch (error) {
     console.error('❌ Public file error:', error);
+
     res.status(500).json({
       success: false,
       message: error.message || 'Failed to get file',
     });
   }
 });
-
 
 // ============================================================
 // ✅ ✅ مسار جلب ملفات المختص (يجب أن يكون قبل /:id)
@@ -174,14 +191,7 @@ router.get('/specialist', authenticate, requirePortalContext, async (req, res) =
     });
   }
 });
-// ============================================================
-// ✅ ✅ مسارات عامة - تقرأ التوكن من Query String (قبل المصادقة)
-// ============================================================
 
-router.get('/:id/download-direct', downloadFileDirect);
-router.get('/:id/stream', streamVideo);
-router.get('/:id/stream-secure', streamVideoSecure);
-router.get('/:id/view', viewFile);  // ✅ مسار المعاينة
 
 // ============================================================
 // ✅ جميع المسارات التالية تتطلب مصادقة وسياق بوابة
@@ -190,6 +200,15 @@ router.get('/:id/view', viewFile);  // ✅ مسار المعاينة
 router.use(authenticate);
 router.use(requirePortalContext);
 
+// ============================================================
+// 🔐 مسارات قراءة وتحميل وبث الملفات
+// تتطلب المصادقة + سياق البوابة
+// ============================================================
+
+router.get('/:id/download-direct', downloadFileDirect);
+router.get('/:id/stream', streamVideo);
+router.get('/:id/stream-secure', streamVideoSecure);
+router.get('/:id/view', viewFile);
 // ============================================================
 // ✅ مسارات رفع الملفات
 // ============================================================

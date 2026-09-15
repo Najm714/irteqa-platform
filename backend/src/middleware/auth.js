@@ -1,6 +1,9 @@
 // backend/src/middleware/auth.js
 import jwt from 'jsonwebtoken';
+import mongoose from 'mongoose';
+
 import { Account } from '../models/Account.model.js';
+import { Portal } from '../models/Portal.model.js';
 import { config } from '../config/env.js';
 import { verifyToken } from '../utils/jwt.js';
 
@@ -172,15 +175,15 @@ export const authenticate = async (req, res, next) => {
     });
   }
 };
-
 // ============================================================
-// ✅ ✅ دالة مصادقة خاصة بـ Socket.IO
+// ✅ ✅ دالة مصادقة خاصة بـ Socket.IO مع عزل البوابات
 // ============================================================
 
 export const authenticateSocket = async (socket, next) => {
   try {
-    const token = socket.handshake.auth.token;
-    
+    const token = socket.handshake.auth?.token;
+    const requestedPortalId = socket.handshake.auth?.portalId || null;
+
     if (!token) {
       console.log('❌ Socket auth: No token provided');
       return next(new Error('Authentication required - No token provided'));
@@ -188,54 +191,201 @@ export const authenticateSocket = async (socket, next) => {
 
     console.log('🔍 Socket auth: Verifying token...');
 
-    // ✅ التحقق من التوكن
+    // ============================================================
+    // 1️⃣ التحقق من التوكن
+    // ============================================================
+
     let decoded;
+
     try {
       decoded = verifyToken(token);
+
       if (!decoded) {
         throw new Error('Invalid token');
       }
     } catch (err) {
-      console.log('❌ Socket auth: Token verification failed:', err.message);
+      console.log(
+        '❌ Socket auth: Token verification failed:',
+        err.message
+      );
+
       return next(new Error('Invalid or expired token'));
     }
 
-    console.log('✅ Socket auth: Token verified for user:', decoded.id || decoded._id);
+    const accountId = decoded.id || decoded._id;
 
-    // ✅ جلب حساب المستخدم
-    const account = await Account.findById(decoded.id || decoded._id)
+    console.log(
+      '✅ Socket auth: Token verified for user:',
+      accountId
+    );
+
+    // ============================================================
+    // 2️⃣ جلب حساب المستخدم
+    // ============================================================
+
+    const account = await Account.findById(accountId)
       .select('-passwordHash')
-      .populate('portalId', 'name slug');
+      .populate('portalId', 'name slug isActive');
 
     if (!account) {
-      console.log('❌ Socket auth: Account not found:', decoded.id || decoded._id);
+      console.log(
+        '❌ Socket auth: Account not found:',
+        accountId
+      );
+
       return next(new Error('Account not found'));
     }
 
     if (!account.isActive) {
-      console.log('❌ Socket auth: Account deactivated:', decoded.id || decoded._id);
+      console.log(
+        '❌ Socket auth: Account deactivated:',
+        accountId
+      );
+
       return next(new Error('Account is deactivated'));
     }
 
-    // ✅ إضافة بيانات المستخدم إلى socket
+    // ============================================================
+    // 3️⃣ تحديد البوابة
+    // ============================================================
+
+    let effectivePortalId = null;
+    let effectivePortal = null;
+
+    // ============================================================
+    // SUPER ADMIN
+    // ============================================================
+
+    if (account.role === 'super_admin') {
+
+      // Super Admin يجب أن يحدد البوابة صراحة
+      if (!requestedPortalId) {
+        console.log(
+          '❌ Socket auth: Super admin must provide portalId'
+        );
+
+        return next(
+          new Error('Portal selection required for super admin')
+        );
+      }
+
+      // البحث عن البوابة باستخدام ObjectId أو slug
+      let portal = null;
+
+      if (mongoose.Types.ObjectId.isValid(String(requestedPortalId))) {
+        portal = await Portal.findById(requestedPortalId);
+      }
+
+      if (!portal) {
+        portal = await Portal.findOne({
+          slug: String(requestedPortalId).trim(),
+        });
+      }
+
+      if (!portal) {
+        console.log(
+          '❌ Socket auth: Requested portal not found:',
+          requestedPortalId
+        );
+
+        return next(new Error('Portal not found'));
+      }
+
+      if (!portal.isActive) {
+        console.log(
+          '❌ Socket auth: Requested portal is inactive:',
+          portal._id
+        );
+
+        return next(new Error('Portal is inactive'));
+      }
+
+      effectivePortal = portal;
+      effectivePortalId = portal._id;
+
+      console.log(
+        `✅ Socket auth: Super admin selected portal ${portal._id} (${portal.slug})`
+      );
+    }
+
+    // ============================================================
+    // المستخدمون العاديون
+    // ============================================================
+
+    else {
+
+      // يجب أن يكون للحساب Portal
+      if (!account.portalId) {
+        console.log(
+          `❌ Socket auth: Account ${account._id} has no portal`
+        );
+
+        return next(new Error('Account portal is not configured'));
+      }
+
+      effectivePortal = account.portalId;
+      effectivePortalId = account.portalId._id;
+
+      // إذا أرسل المستخدم Portal يدويًا،
+      // يجب أن يطابق Portal الحساب
+      if (
+        requestedPortalId &&
+        String(requestedPortalId) !== String(effectivePortalId) &&
+        String(requestedPortalId) !== String(account.portalId.slug)
+      ) {
+        console.log(
+          `❌ Socket auth: Portal mismatch. Account portal=${effectivePortalId}, requested=${requestedPortalId}`
+        );
+
+        return next(new Error('Portal access denied'));
+      }
+
+      // يجب أن تكون البوابة فعالة
+      if (account.portalId.isActive === false) {
+        console.log(
+          `❌ Socket auth: Account portal is inactive: ${effectivePortalId}`
+        );
+
+        return next(new Error('Portal is inactive'));
+      }
+    }
+
+    // ============================================================
+    // 4️⃣ تخزين بيانات المصادقة داخل Socket
+    // ============================================================
+
     socket.account = account;
     socket.accountId = account._id;
-    socket.portalId = account.portalId?._id || account.portalId;
+
+    // البوابة الفعلية التي تم التحقق منها
+    socket.portalId = effectivePortalId;
+
+    socket.portal = effectivePortal;
+
     socket.user = {
       id: account._id,
       _id: account._id,
-      portalId: account.portalId?._id || account.portalId,
+      portalId: effectivePortalId,
       role: account.role,
       email: account.email,
       username: account.username,
       fullName: account.profile?.fullName,
     };
 
-    console.log(`✅ Socket authenticated: ${socket.accountId} (${socket.account.role})`);
+    console.log(
+      `✅ Socket authenticated: ${socket.accountId} (${account.role}) | Portal: ${effectivePortalId}`
+    );
+
     next();
+
   } catch (error) {
     console.error('❌ Socket auth error:', error);
-    next(new Error(error.message || 'Authentication failed'));
+
+    next(
+      new Error(
+        error.message || 'Authentication failed'
+      )
+    );
   }
 };
 
@@ -280,59 +430,136 @@ export const requireRole = (...roles) => {
 // ============================================================
 // ✅ Middleware للتحقق من صلاحية محددة
 // ============================================================
+// ============================================================
+// Middleware للتحقق من صلاحية محددة
+// ============================================================
 
 export const requirePermission = (permission) => {
   return async (req, res, next) => {
     try {
-      // ✅ في حالة Socket.IO
+      // ========================================================
+      // Socket.IO
+      // ========================================================
       if (!res || typeof res.status !== 'function') {
-        const account = req.account || req.user;
+        const account = req.account;
+
         if (!account) {
           return next(new Error('Unauthorized'));
         }
 
-        // المشرف العام لديه جميع الصلاحيات
+        // SUPER ADMIN
+        // يستطيع العمل على أي Portal
         if (account.role === 'super_admin') {
           return next();
         }
 
-        // مدير البوابة لديه جميع الصلاحيات
+        // يجب أن تكون هناك Portal Context
+        const portalId =
+          req.portalId ||
+          req.portal?._id ||
+          account.portalId;
+
+        if (!portalId) {
+          return next(new Error('Portal context is required'));
+        }
+
+        // المستخدم العادي لا يستطيع الوصول إلى Portal أخرى
+        if (
+          account.portalId &&
+          account.portalId.toString() !== portalId.toString()
+        ) {
+          return next(new Error('Portal access denied'));
+        }
+
+        // PORTAL ADMIN
+        // لديه جميع الصلاحيات داخل بوابته فقط
         if (account.role === 'portal_admin') {
           return next();
         }
 
-        return next(new Error('Insufficient permissions'));
+        // التحقق من الصلاحية المحددة
+        const hasPermission =
+          typeof account.hasPortalPermission === 'function'
+            ? account.hasPortalPermission(portalId, permission)
+            : false;
+
+        if (!hasPermission) {
+          return next(new Error('Insufficient permissions'));
+        }
+
+        return next();
       }
 
-      // ✅ في حالة HTTP
+      // ========================================================
+      // HTTP
+      // ========================================================
       if (!req.account) {
         return res.status(401).json({
           success: false,
           message: 'Unauthorized',
+          code: 'UNAUTHORIZED',
         });
       }
 
-      // المشرف العام لديه جميع الصلاحيات
-      if (req.account.role === 'super_admin') {
+      const account = req.account;
+
+      // ========================================================
+      // SUPER ADMIN
+      // ========================================================
+      if (account.role === 'super_admin') {
         return next();
       }
 
-      // ✅ التحقق من صلاحية البوابة
-      const portalId = req.portalId || req.headers['x-portal-id'];
-      
-      if (req.account.role === 'portal_admin' && portalId) {
-        // مدير البوابة لديه جميع الصلاحيات في بوابته
-        if (req.account.portalId?.toString() === portalId.toString() ||
-            req.account.portalId?._id?.toString() === portalId.toString()) {
-          return next();
-        }
+      // ========================================================
+      // Portal Context
+      // ========================================================
+      const portalId =
+        req.portalId ||
+        req.portal?._id ||
+        account.portalId;
+
+      if (!portalId) {
+        return res.status(400).json({
+          success: false,
+          message: 'Portal context is required',
+          code: 'PORTAL_ID_REQUIRED',
+        });
       }
 
-      // التحقق من صلاحية محددة
-      const hasPermission = await req.account.hasPortalPermission?.(
-        portalId,
-        permission
-      );
+      // ========================================================
+      // منع الوصول إلى Portal أخرى
+      // ========================================================
+      if (
+        account.portalId &&
+        account.portalId.toString() !== portalId.toString()
+      ) {
+        console.warn(
+          `🚫 Permission blocked: account=${account._id}, ` +
+          `accountPortal=${account.portalId}, requestedPortal=${portalId}`
+        );
+
+        return res.status(403).json({
+          success: false,
+          message: 'You are not authorized to access this portal.',
+          code: 'PORTAL_ACCESS_DENIED',
+        });
+      }
+
+      // ========================================================
+      // PORTAL ADMIN
+      // ========================================================
+      // لديه جميع الصلاحيات داخل بوابته فقط
+      if (account.role === 'portal_admin') {
+        return next();
+      }
+
+      // ========================================================
+      // المستخدمون الآخرون
+      // ========================================================
+      const hasPermission =
+        typeof account.hasPortalPermission === 'function'
+          ? account.hasPortalPermission(portalId, permission)
+          : false;
 
       if (!hasPermission) {
         return res.status(403).json({
@@ -345,15 +572,17 @@ export const requirePermission = (permission) => {
       next();
     } catch (error) {
       console.error('❌ Permission middleware error:', error);
-      
-      // ✅ في حالة Socket.IO
+
+      // Socket.IO
       if (!res || typeof res.status !== 'function') {
         return next(new Error('Authorization error'));
       }
-      
-      res.status(500).json({
+
+      // HTTP
+      return res.status(500).json({
         success: false,
         message: 'Authorization error',
+        code: 'AUTHORIZATION_ERROR',
       });
     }
   };

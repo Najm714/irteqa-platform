@@ -2,15 +2,13 @@
 import { About } from '../models/about.model.js';
 import { File } from '../models/File.model.js';
 import storageService from '../services/storage.service.js';
-import jwt from 'jsonwebtoken';
-import { Account } from '../models/Account.model.js';
 
 // ============================================================
 // ✅ إنشاء أو تحديث صفحة نبذة عنا
 // ============================================================
 export const upsertAbout = async (req, res) => {
   try {
-    const portalId = req.portalId || req.headers['x-portal-id'];
+    const portalId = req.portalId;
     const accountId = req.accountId || req.user?.id;
     const data = req.body;
 
@@ -89,7 +87,7 @@ export const upsertAbout = async (req, res) => {
 // ============================================================
 export const getAbout = async (req, res) => {
   try {
-    const portalId = req.portalId || req.headers['x-portal-id'] || req.query.portalId;
+    const portalId = req.portalId;
 
     console.log('📤 Fetching about page for portal:', portalId);
 
@@ -165,75 +163,112 @@ export const getAbout = async (req, res) => {
     });
   }
 };
-
 // ============================================================
 // ✅ جلب ملفات الصور
+// Portal-isolated + authentication-aware
 // ============================================================
 export const getAboutFile = async (req, res) => {
   try {
     const { id } = req.params;
-    const portalId = req.headers['x-portal-id'] || req.query.portalId;
-    
-    console.log('🖼️ Getting about file:', id);
-    
-    const tokenFromQuery = req.query.token;
-    let account = null;
-    
-    if (tokenFromQuery) {
-      try {
-        const decoded = jwt.verify(tokenFromQuery, process.env.JWT_SECRET);
-        if (decoded) {
-          account = await Account.findById(decoded.id || decoded._id);
-          console.log('✅ Account found via query token:', account?._id);
-        }
-      } catch (err) {
-        console.log('⚠️ Token from query invalid:', err.message);
-      }
-    }
-    
-    if (!account) {
-      account = req.account;
-    }
+    const portalId = req.portalId;
 
-    if (!account) {
-      return res.status(401).json({
+    console.log('🖼️ Getting about file:', id);
+    console.log('  - Portal:', portalId);
+    console.log('  - Account:', req.account?._id);
+
+    if (!portalId) {
+      return res.status(400).json({
         success: false,
-        message: 'Unauthorized - Please login',
-        code: 'NO_TOKEN',
+        message: 'Portal context is required',
+        code: 'PORTAL_ID_REQUIRED',
       });
     }
 
-    const file = await File.findOne({ _id: id, isDeleted: { $ne: true } });
+    // ========================================================
+    // البحث عن الملف داخل الـ Portal المحدد فقط
+    // ========================================================
+    const file = await File.findOne({
+      _id: id,
+      portalId,
+      isDeleted: { $ne: true },
+    });
+
     if (!file) {
       return res.status(404).json({
         success: false,
-        message: 'File not found',
+        message: 'File not found in this portal',
+        code: 'FILE_NOT_FOUND',
+      });
+    }
+
+    // ========================================================
+    // حماية إضافية للتأكد من تطابق Portal
+    // ========================================================
+    if (
+      !file.portalId ||
+      file.portalId.toString() !== portalId.toString()
+    ) {
+      console.warn(
+        `🚫 About file portal mismatch: ` +
+        `file=${file._id}, ` +
+        `filePortal=${file.portalId}, ` +
+        `requestedPortal=${portalId}`
+      );
+
+      return res.status(403).json({
+        success: false,
+        message: 'File does not belong to this portal',
+        code: 'FILE_PORTAL_ACCESS_DENIED',
       });
     }
 
     const fileBuffer = await storageService.getFile(file);
-    
-    res.setHeader('Content-Type', file.mimeType);
-    res.setHeader('Content-Length', file.size);
-    res.setHeader('Cache-Control', 'public, max-age=86400');
-    res.setHeader('Access-Control-Allow-Origin', '*');
-    res.setHeader('Content-Disposition', `inline; filename="${encodeURIComponent(file.originalName)}"`);
-    
+
+    res.setHeader(
+      'Content-Type',
+      file.mimeType || 'application/octet-stream'
+    );
+
+    res.setHeader(
+      'Content-Length',
+      fileBuffer.length
+    );
+
+    res.setHeader(
+      'Cache-Control',
+      'public, max-age=86400'
+    );
+
+    res.setHeader(
+      'Access-Control-Allow-Origin',
+      '*'
+    );
+
+    res.setHeader(
+      'Content-Disposition',
+      `inline; filename="${encodeURIComponent(
+        file.originalName
+      )}"`
+    );
+
+    console.log(
+      '✅ About file served successfully:',
+      file._id,
+      '| Portal:',
+      portalId
+    );
+
     return res.send(fileBuffer);
   } catch (error) {
     console.error('❌ Error in getAboutFile:', error);
-    res.status(500).json({
-      success: false,
-      message: error.message,
-    });
-  }
-};
 
-// ============================================================
-// ✅ تصدير جميع الدوال
-// ============================================================
-export default {
-  upsertAbout,
-  getAbout,
-  getAboutFile,
+    if (!res.headersSent) {
+      return res.status(500).json({
+        success: false,
+        message: error.message || 'Failed to get about file',
+      });
+    }
+
+    res.end();
+  }
 };

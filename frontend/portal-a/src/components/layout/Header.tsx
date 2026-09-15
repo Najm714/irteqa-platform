@@ -61,7 +61,7 @@ const Header: React.FC = () => {
   const buttonRef = useRef<HTMLButtonElement>(null);
 
   const API_URL = import.meta.env.VITE_API_URL || 'http://localhost:5001/api';
-  const PORTAL_ID = '6aa45ad70a89ed89eeb18e41';
+  const PORTAL_ID = import.meta.env.VITE_PORTAL_ID || '';
 
   // ============================================================
   // ✅ جلب عدد الإشعارات غير المقروءة
@@ -104,7 +104,7 @@ if (data.success) {
     } finally {
       setLoadingCount(false);
     }
-  }, [token, API_URL]);
+  }, [token, API_URL, PORTAL_ID]);
 
   // ============================================================
   // ✅ جلب قائمة الإشعارات (للـ dropdown)
@@ -130,13 +130,16 @@ if (data.success) {
         throw new Error(`HTTP ${response.status}`);
       }
 
-      const data = await response.json();
+const data = await response.json();
 
-      if (data.success) {
-        setNotifications(data.data || []);
-        // ⚠️ لا نُحدّث unreadCount من هنا
-        // العداد الحقيقي يأتي من /unread/count
-      }
+console.log('🔔 HEADER NOTIFICATIONS RESPONSE:', data);
+
+if (data.success) {
+  console.log('🔔 HEADER NOTIFICATIONS ARRAY:', data.data);
+  console.log('🔔 HEADER NOTIFICATIONS COUNT:', data.data?.length ?? 0);
+
+  setNotifications(data.data || []);
+}
     } catch (error: any) {
       if (error.message?.includes('Failed to fetch') ||
           error.message?.includes('Network')) {
@@ -147,7 +150,7 @@ if (data.success) {
     } finally {
       setLoadingList(false);
     }
-  }, [token, API_URL]);
+  }, [token, API_URL, PORTAL_ID]);
 
   // ============================================================
   // ✅ تعليم إشعار كمقروء
@@ -173,7 +176,7 @@ if (data.success) {
     } catch (error) {
       console.error('❌ Error marking as read:', error);
     }
-  }, [token, API_URL]);
+  }, [token, API_URL, PORTAL_ID]);
 
   // ============================================================
   // ✅ تحديد نوع السايدبار
@@ -488,7 +491,7 @@ if (data.success) {
                 <div className="w-8 h-8 rounded-full bg-gradient-to-r from-purple-100 to-pink-100 dark:from-purple-900/30 dark:to-pink-900/30 flex items-center justify-center overflow-hidden flex-shrink-0">
                   {user?.profile?.avatar ? (
                     <img
-                      src={`${API_URL}/files/public/${user.profile.avatar}`}
+                      src={`${API_URL}/files/public/${user.profile.avatar}?portalId=${PORTAL_ID}`}
                       alt={user?.fullName || 'مستخدم'}
                       className="w-full h-full object-cover"
                       onError={(e) => {

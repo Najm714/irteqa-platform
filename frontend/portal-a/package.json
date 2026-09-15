@@ -6,7 +6,7 @@
   "scripts": {
     "dev": "vite",
     "build": "tsc -b && vite build && npm run copy-public",
-    "copy-public": "xcopy public dist /E /I /H /Y || true",
+    "copy-public": "node scripts/copy-public.js",
     "lint": "eslint .",
     "preview": "vite preview"
   },

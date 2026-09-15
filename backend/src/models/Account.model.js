@@ -3,11 +3,11 @@ import mongoose from 'mongoose';
 import bcrypt from 'bcrypt';
 
 const AccountSchema = new mongoose.Schema({
-  portalId: {
-    type: mongoose.Schema.Types.ObjectId,
-    ref: 'Portal',
-    required: [true, 'Portal ID is required'],
-  },
+portalId: {
+  type: mongoose.Schema.Types.ObjectId,
+  ref: 'Portal',
+  default: null,
+},
   identityId: {
     type: mongoose.Schema.Types.ObjectId,
     ref: 'CustomerIdentity',
@@ -127,6 +127,7 @@ const AccountSchema = new mongoose.Schema({
       endTime: String,
     }],
   },
+  
   preferences: {
     language: { type: String, default: 'ar' },
     notifications: {
@@ -143,38 +144,6 @@ const AccountSchema = new mongoose.Schema({
     type: Date,
     default: Date.now,
   },
-  preferences: {
-  emailNotifications: {
-    type: Boolean,
-    default: true,
-  },
-  pushNotifications: {
-    type: Boolean,
-    default: true,
-  },
-  orderUpdates: {
-    type: Boolean,
-    default: true,
-  },
-  promotionalEmails: {
-    type: Boolean,
-    default: false,
-  },
-  twoFactorAuth: {
-    type: Boolean,
-    default: false,
-  },
-  language: {
-    type: String,
-    enum: ['ar', 'en'],
-    default: 'ar',
-  },
-  theme: {
-    type: String,
-    enum: ['auto', 'light', 'dark'],
-    default: 'auto',
-  },
-},
 });
 
 // ✅ الفهارس الموحدة - هنا فقط
@@ -183,50 +152,121 @@ AccountSchema.index({ portalId: 1, username: 1 }, { unique: true });
 AccountSchema.index({ identityId: 1 });
 AccountSchema.index({ nationalId: 1 }, { unique: true, sparse: true });
 
-// ✅ دالة للتحقق من صلاحيات البوابة
-AccountSchema.methods.hasPortalPermission = function(portalId, permission) {
+AccountSchema.methods.hasPortalPermission = function (portalId, permission) {
+  if (!portalId) {
+    return false;
+  }
+
+  const requestedPortalId = portalId.toString();
+
+  // المدير العام لديه صلاحية كاملة على جميع البوابات
   if (this.role === 'super_admin') {
     return true;
   }
-  
+
+  // مدير البوابة محصور في البوابة المرتبطة بحسابه
+  if (this.role === 'portal_admin') {
+    if (!this.portalId) {
+      return false;
+    }
+
+    return this.portalId.toString() === requestedPortalId;
+  }
+
+  // العميل / المختص محصوران أيضًا في بوابتهما
+  if (this.portalId) {
+    if (this.portalId.toString() !== requestedPortalId) {
+      return false;
+    }
+  } else {
+    return false;
+  }
+
+  // الصلاحيات الخاصة بالبوابة
   const portalPerm = this.portalPermissions.find(
-    p => p.portalId.toString() === portalId.toString()
+    p => p.portalId?.toString() === requestedPortalId
   );
-  
+
   if (!portalPerm) {
     return false;
   }
-  
+
   if (portalPerm.permissions.includes('*')) {
     return true;
   }
-  
+
   return portalPerm.permissions.includes(permission);
 };
+AccountSchema.methods.getPortalPermissions = function (portalId) {
+  if (!portalId) {
+    return [];
+  }
 
-// ✅ دالة للحصول على صلاحيات البوابة
-AccountSchema.methods.getPortalPermissions = function(portalId) {
+  const requestedPortalId = portalId.toString();
+
+  // المدير العام
   if (this.role === 'super_admin') {
     return ['*'];
   }
-  
+
+  // مدير البوابة: صلاحيات كاملة في بوابته فقط
+  if (this.role === 'portal_admin') {
+    if (
+      this.portalId &&
+      this.portalId.toString() === requestedPortalId
+    ) {
+      return ['*'];
+    }
+
+    return [];
+  }
+
+  // بقية المستخدمين
+  if (
+    !this.portalId ||
+    this.portalId.toString() !== requestedPortalId
+  ) {
+    return [];
+  }
+
   const portalPerm = this.portalPermissions.find(
-    p => p.portalId.toString() === portalId.toString()
+    p => p.portalId?.toString() === requestedPortalId
   );
-  
+
   return portalPerm ? portalPerm.permissions : [];
 };
 
-// ✅ دالة لمنح صلاحيات لبوابة
-AccountSchema.methods.grantPortalPermissions = async function(portalId, permissions, grantedBy) {
+AccountSchema.methods.grantPortalPermissions = async function (
+  portalId,
+  permissions,
+  grantedBy
+) {
+  if (!portalId) {
+    throw new Error('Portal ID is required');
+  }
+
+  // مدير البوابة لا يمكنه منح صلاحيات خارج بوابته
+  if (
+    this.role === 'portal_admin' &&
+    (
+      !this.portalId ||
+      this.portalId.toString() !== portalId.toString()
+    )
+  ) {
+    throw new Error('Portal admin cannot manage another portal');
+  }
+
   const existing = this.portalPermissions.find(
-    p => p.portalId.toString() === portalId.toString()
+    p => p.portalId?.toString() === portalId.toString()
   );
-  
+
   if (existing) {
     existing.permissions = permissions;
     existing.grantedAt = new Date();
-    if (grantedBy) existing.grantedBy = grantedBy;
+
+    if (grantedBy) {
+      existing.grantedBy = grantedBy;
+    }
   } else {
     this.portalPermissions.push({
       portalId,
@@ -235,7 +275,7 @@ AccountSchema.methods.grantPortalPermissions = async function(portalId, permissi
       grantedBy,
     });
   }
-  
+
   await this.save();
 };
 
