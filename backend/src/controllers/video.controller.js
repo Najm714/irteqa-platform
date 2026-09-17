@@ -1,7 +1,9 @@
-// src/controllers/video.controller.js
+// backend/src/controllers/video.controller.js
 import { Video } from '../models/Video.model.js';
 import { Subscription } from '../models/Subscription.model.js';
 import { streamService } from '../services/stream.service.js';
+import thumbnailService from '../services/thumbnail.service.js';
+import storageService from '../services/storage.service.js';
 import multer from 'multer';
 
 // إعداد multer
@@ -12,24 +14,45 @@ const upload = multer({
   },
 });
 
-// ✅ رفع فيديو جديد
+// ============================================================
+// ✅ رفع فيديو جديد (مع استخراج الصورة المصغرة تلقائياً)
+// ============================================================
 export const uploadVideo = async (req, res) => {
   try {
-    const { portalId } = req.portal;
-    const { id: userId } = req.user;
+    const portalId = req.portal?._id || req.portalId;
+    const userId = req.accountId || req.user?.id;
+
     const {
       title,
       titleAr,
       description,
       descriptionAr,
-      category,
-      categoryAr,
-      subject,
-      subjectAr,
+      instructor,
+      universityId,
+      collegeId,
+      specialtyId,
       materialId,
-      accessType = 'free',
-      isPublished = true,
+      isEncrypted,
+      isPublished,
+      order,
     } = req.body;
+
+    // ============================================================
+    // التحقق من المدخلات
+    // ============================================================
+    if (!portalId) {
+      return res.status(400).json({
+        success: false,
+        message: 'Portal context is required',
+      });
+    }
+
+    if (!userId) {
+      return res.status(401).json({
+        success: false,
+        message: 'Authentication required',
+      });
+    }
 
     if (!req.file) {
       return res.status(400).json({
@@ -38,51 +61,102 @@ export const uploadVideo = async (req, res) => {
       });
     }
 
-    // رفع الفيديو إلى Cloudflare Stream
-    const uploadResult = await streamService.uploadVideo(
-      req.file.buffer,
-      req.file.originalname,
+    console.log('🎬 Upload video:');
+    console.log('  - Original name:', req.file.originalname);
+    console.log('  - Size:', (req.file.size / 1024 / 1024).toFixed(2), 'MB');
+    console.log('  - MIME:', req.file.mimetype);
+    console.log('  - Portal:', portalId);
+    console.log('  - Account:', userId);
+
+    // ============================================================
+    // 1. رفع الفيديو إلى R2
+    // ============================================================
+    const videoFile = await storageService.uploadFile(
+      req.file,
+      portalId,
+      userId,
+      'video',
+      null,
       {
-        contentType: req.file.mimetype,
-        metadata: {
-          title: title,
-          portalId: portalId.toString(),
-          uploadedBy: userId,
-        },
-        requireSignedURLs: accessType !== 'free',
+        title: title || '',
+        instructor: instructor || '',
+        originalName: req.file.originalname,
       }
     );
 
-    // حفظ في قاعدة البيانات
+    console.log('✅ Video uploaded to R2:', videoFile.file._id);
+
+    // ============================================================
+    // 2. استخراج الصورة المصغرة
+    // ============================================================
+    let thumbnailFileId = null;
+    let thumbnailError = null;
+
+    try {
+      console.log('🎬 Extracting thumbnail...');
+      const startTime = Date.now();
+
+      const thumbnailFile = await thumbnailService.extractAndUpload(
+        req.file.buffer,
+        portalId,
+        userId,
+        {
+          width: 640,
+          height: 360,
+        }
+      );
+
+      thumbnailFileId = thumbnailFile._id;
+      const duration = Date.now() - startTime;
+      console.log(
+        `✅ Thumbnail extracted and uploaded in ${duration}ms:`,
+        thumbnailFileId
+      );
+    } catch (thumbError) {
+      thumbnailError = thumbError.message;
+      console.warn(
+        '⚠️ Thumbnail extraction failed (non-blocking):',
+        thumbError.message
+      );
+      // ✅ لا نوقف العملية — نكمل بدون صورة مصغرة
+    }
+
+    // ============================================================
+    // 3. حفظ الفيديو في قاعدة البيانات
+    // ============================================================
     const video = new Video({
       portalId,
-      title,
-      titleAr,
-      description,
-      descriptionAr,
-      streamUid: uploadResult.uid,
-      streamUrl: uploadResult.url,
-      thumbnail: uploadResult.thumbnail,
-      duration: uploadResult.duration,
-      processingStatus: uploadResult.ready ? 'ready' : 'processing',
-      category,
-      categoryAr,
-      subject,
-      subjectAr,
-      materialId: materialId || null,
-      accessType,
-      isPublished,
+      universityId,
+      collegeId,
+      specialtyId,
+      materialId,
+      title: title || '',
+      titleAr: titleAr || title || '',
+      description: description || '',
+      descriptionAr: descriptionAr || '',
+      instructor: instructor || '',
+      videoUrl: videoFile.file._id.toString(), // ← fileId للفيديو
+      thumbnail: thumbnailFileId ? thumbnailFileId.toString() : '', // ← fileId للصورة
+      duration: 0,
+      isEncrypted: isEncrypted === 'true' || isEncrypted === true,
+      isPublished: isPublished !== 'false' && isPublished !== false,
+      order: parseInt(order) || 0,
       createdBy: userId,
     });
 
     await video.save();
 
+    console.log('✅ Video saved to DB:', video._id);
+
     res.status(201).json({
       success: true,
-      message: 'Video uploaded successfully',
+      message: thumbnailFileId
+        ? 'Video uploaded successfully with thumbnail'
+        : 'Video uploaded successfully (thumbnail failed)',
       data: {
         video,
-        streamUid: uploadResult.uid,
+        thumbnailGenerated: !!thumbnailFileId,
+        thumbnailError: thumbnailError || null,
       },
     });
   } catch (error) {
@@ -94,12 +168,14 @@ export const uploadVideo = async (req, res) => {
   }
 };
 
+// ============================================================
 // ✅ الحصول على فيديو للتشغيل
+// ============================================================
 export const getVideoForPlayback = async (req, res) => {
   try {
     const { id } = req.params;
-    const { portalId } = req.portal;
-    const { id: userId } = req.user;
+    const portalId = req.portal?._id || req.portalId;
+    const userId = req.accountId || req.user?.id;
 
     // البحث عن الفيديو
     const video = await Video.findOne({
@@ -122,7 +198,9 @@ export const getVideoForPlayback = async (req, res) => {
       status: 'active',
     });
 
-    const canView = video.canView(req.user, subscription);
+    const canView = video.canView
+      ? video.canView(req.user, subscription)
+      : true;
 
     if (!canView) {
       return res.status(403).json({
@@ -133,18 +211,44 @@ export const getVideoForPlayback = async (req, res) => {
     }
 
     // زيادة عدد المشاهدات
-    video.views += 1;
+    video.views = (video.views || 0) + 1;
     await video.save();
 
     // الحصول على رابط التشغيل
-    let playbackUrl = video.streamUrl;
+    let playbackUrl = null;
 
-    // إذا كان الفيديو مدفوع، استخدم Signed URL
-    if (video.accessType === 'subscription' || video.accessType === 'private') {
-      const signedToken = await streamService.getSignedUrl(video.streamUid, 3600);
-      if (signedToken) {
-        playbackUrl = `${video.streamUrl}?token=${signedToken}`;
-      }
+    // إذا كان videoUrl هو fileId (24 hex)
+    if (video.videoUrl && /^[0-9a-fA-F]{24}$/.test(video.videoUrl)) {
+      const protocol =
+        req.get('x-forwarded-proto')?.split(',')[0]?.trim() ||
+        req.protocol ||
+        'https';
+      const host = req.get('host');
+      const baseUrl = `${protocol}://${host}`;
+
+      playbackUrl = `${baseUrl}/api/files/${video.videoUrl}/stream-secure?portalId=${encodeURIComponent(
+        portalId.toString()
+      )}`;
+    } else {
+      playbackUrl = video.videoUrl;
+    }
+
+    // ✅ رابط الصورة المصغرة
+    let thumbnailUrl = null;
+
+    if (video.thumbnail && /^[0-9a-fA-F]{24}$/.test(video.thumbnail)) {
+      const protocol =
+        req.get('x-forwarded-proto')?.split(',')[0]?.trim() ||
+        req.protocol ||
+        'https';
+      const host = req.get('host');
+      const baseUrl = `${protocol}://${host}`;
+
+      thumbnailUrl = `${baseUrl}/api/files/${video.thumbnail}/download-direct?portalId=${encodeURIComponent(
+        portalId.toString()
+      )}`;
+    } else if (video.thumbnail) {
+      thumbnailUrl = video.thumbnail;
     }
 
     res.status(200).json({
@@ -155,10 +259,12 @@ export const getVideoForPlayback = async (req, res) => {
           title: video.title,
           titleAr: video.titleAr,
           description: video.description,
-          thumbnail: video.thumbnail,
+          descriptionAr: video.descriptionAr,
+          thumbnail: thumbnailUrl, // ✅ رابط الصورة
           duration: video.duration,
           accessType: video.accessType,
           views: video.views,
+          instructor: video.instructor,
         },
         playbackUrl,
         streamUid: video.streamUid,
@@ -174,10 +280,12 @@ export const getVideoForPlayback = async (req, res) => {
   }
 };
 
+// ============================================================
 // ✅ جلب جميع الفيديوهات
+// ============================================================
 export const getVideos = async (req, res) => {
   try {
-    const { portalId } = req.portal;
+    const portalId = req.portal?._id || req.portalId;
     const {
       category,
       materialId,
@@ -189,6 +297,7 @@ export const getVideos = async (req, res) => {
     const query = {
       portalId,
       isPublished: true,
+      isDeleted: { $ne: true },
     };
 
     if (category) query.category = category;
@@ -209,14 +318,53 @@ export const getVideos = async (req, res) => {
     // تصفية حسب صلاحية المستخدم
     const subscription = await Subscription.findOne({
       portalId,
-      accountId: req.user.id,
+      accountId: req.user?.id || req.accountId,
       status: 'active',
     });
 
-    const filteredVideos = videos.map(video => ({
-      ...video.toObject(),
-      canView: video.canView(req.user, subscription),
-    }));
+    // ✅ بناء baseUrl
+    const protocol =
+      req.get('x-forwarded-proto')?.split(',')[0]?.trim() ||
+      req.protocol ||
+      'https';
+    const host = req.get('host');
+    const baseUrl = `${protocol}://${host}`;
+
+    const filteredVideos = videos.map((video) => {
+      const videoObj = video.toObject();
+
+      // ✅ رابط الفيديو
+      let playbackUrl = null;
+      if (videoObj.videoUrl && /^[0-9a-fA-F]{24}$/.test(videoObj.videoUrl)) {
+        playbackUrl = `${baseUrl}/api/files/${videoObj.videoUrl}/stream-secure?portalId=${encodeURIComponent(
+          portalId.toString()
+        )}`;
+      } else {
+        playbackUrl = videoObj.videoUrl || null;
+      }
+
+      // ✅ رابط الصورة المصغرة
+      let thumbnailUrl = null;
+      if (videoObj.thumbnail && /^[0-9a-fA-F]{24}$/.test(videoObj.thumbnail)) {
+        thumbnailUrl = `${baseUrl}/api/files/${videoObj.thumbnail}/download-direct?portalId=${encodeURIComponent(
+          portalId.toString()
+        )}`;
+      } else if (videoObj.thumbnail) {
+        thumbnailUrl = videoObj.thumbnail;
+      } else {
+        thumbnailUrl = '/default-thumbnail.svg';
+      }
+
+      return {
+        ...videoObj,
+        videoUrl: playbackUrl,
+        thumbnail: thumbnailUrl,
+        views: Number(videoObj.views) || 0,
+        canView: video.canView ? video.canView(req.user, subscription) : true,
+        hasValidUrl: Boolean(playbackUrl),
+        hasThumbnail: Boolean(thumbnailUrl),
+      };
+    });
 
     res.status(200).json({
       success: true,
@@ -237,11 +385,13 @@ export const getVideos = async (req, res) => {
   }
 };
 
+// ============================================================
 // ✅ حذف فيديو
+// ============================================================
 export const deleteVideo = async (req, res) => {
   try {
     const { id } = req.params;
-    const { portalId } = req.portal;
+    const portalId = req.portal?._id || req.portalId;
 
     const video = await Video.findOne({ _id: id, portalId });
     if (!video) {
@@ -251,11 +401,18 @@ export const deleteVideo = async (req, res) => {
       });
     }
 
-    // حذف من Cloudflare Stream
-    await streamService.deleteVideo(video.streamUid);
+    // حذف من Cloudflare Stream (إن وُجد)
+    if (video.streamUid) {
+      try {
+        await streamService.deleteVideo(video.streamUid);
+      } catch (err) {
+        console.warn('⚠️ Failed to delete from Stream:', err.message);
+      }
+    }
 
-    // حذف من قاعدة البيانات (منطقي)
+    // حذف منطقي
     video.isPublished = false;
+    video.isDeleted = true;
     await video.save();
 
     res.status(200).json({
@@ -271,11 +428,14 @@ export const deleteVideo = async (req, res) => {
   }
 };
 
+// ============================================================
 // ✅ إنشاء بث مباشر
+// ============================================================
 export const createLiveStream = async (req, res) => {
   try {
-    const { portalId } = req.portal;
-    const { id: userId } = req.user;
+    const portalId = req.portal?._id || req.portalId;
+    const userId = req.accountId || req.user?.id;
+
     const {
       title,
       titleAr,
@@ -288,7 +448,6 @@ export const createLiveStream = async (req, res) => {
       recording = true,
     } = req.body;
 
-    // إنشاء البث في Cloudflare Stream
     const liveResult = await streamService.createLiveStream({
       metadata: {
         title,
@@ -298,7 +457,6 @@ export const createLiveStream = async (req, res) => {
       recording,
     });
 
-    // حفظ في قاعدة البيانات
     const video = new Video({
       portalId,
       title,
@@ -342,11 +500,13 @@ export const createLiveStream = async (req, res) => {
   }
 };
 
+// ============================================================
 // ✅ الحصول على معلومات البث المباشر
+// ============================================================
 export const getLiveStreamInfo = async (req, res) => {
   try {
     const { id } = req.params;
-    const { portalId } = req.portal;
+    const portalId = req.portal?._id || req.portalId;
 
     const video = await Video.findOne({
       _id: id,
@@ -361,7 +521,9 @@ export const getLiveStreamInfo = async (req, res) => {
       });
     }
 
-    const liveInfo = await streamService.getLiveStreamInfo(video.liveStreamUid || video.streamUid);
+    const liveInfo = await streamService.getLiveStreamInfo(
+      video.liveStreamUid || video.streamUid
+    );
 
     res.status(200).json({
       success: true,
@@ -377,4 +539,67 @@ export const getLiveStreamInfo = async (req, res) => {
       message: error.message || 'Failed to get live stream info',
     });
   }
+};
+
+// ============================================================
+// ✅ زيادة عدد المشاهدات
+// ============================================================
+export const incrementVideoViews = async (req, res) => {
+  try {
+    const { id } = req.params;
+    const portalId = req.portal?._id || req.portalId;
+
+    if (!portalId) {
+      return res.status(400).json({
+        success: false,
+        message: 'Portal context is required',
+      });
+    }
+
+    const video = await Video.findOneAndUpdate(
+      {
+        _id: id,
+        portalId,
+        isDeleted: { $ne: true },
+      },
+      {
+        $inc: { views: 1 },
+      },
+      {
+        new: true,
+      }
+    ).select('views');
+
+    if (!video) {
+      return res.status(404).json({
+        success: false,
+        message: 'Video not found',
+      });
+    }
+
+    return res.status(200).json({
+      success: true,
+      views: video.views,
+    });
+  } catch (error) {
+    console.error('❌ Increment video views error:', error);
+    return res.status(500).json({
+      success: false,
+      message: 'Failed to update video views',
+      error: error.message,
+    });
+  }
+};
+
+// ============================================================
+// ✅ تصدير جميع الدوال
+// ============================================================
+export default {
+  uploadVideo,
+  getVideoForPlayback,
+  getVideos,
+  deleteVideo,
+  createLiveStream,
+  getLiveStreamInfo,
+  incrementVideoViews,
 };

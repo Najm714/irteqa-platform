@@ -304,24 +304,34 @@ const AdminExplanations: React.FC = () => {
   };
 
   // ===== رفع ملف =====
-  const uploadFile = async (file: File, category: string): Promise<string> => {
-    const formDataFile = new FormData();
-    formDataFile.append('file', file);
-    formDataFile.append('category', category);
-    formDataFile.append('portalId', PORTAL_ID);
+  // ===== رفع ملف =====
+const uploadFile = async (
+  file: File,
+  category: string
+): Promise<{ fileId: string; thumbnailId?: string }> => {
+  const formDataFile = new FormData();
+  formDataFile.append('file', file);
+  formDataFile.append('category', category);
+  formDataFile.append('portalId', PORTAL_ID);
 
-    const response = await fetch(`${API_URL}/files/upload`, {
-      method: 'POST',
-      headers: { 'Authorization': `Bearer ${token}` },
-      body: formDataFile,
-    });
+  const response = await fetch(`${API_URL}/files/upload`, {
+    method: 'POST',
+    headers: { 'Authorization': `Bearer ${token}` },
+    body: formDataFile,
+  });
 
-    const data = await response.json();
-    if (!data.success) {
-      throw new Error(data.message || 'فشل رفع الملف');
-    }
-    return data.data.file._id;
+  const data = await response.json();
+
+  if (!data.success) {
+    throw new Error(data.message || 'فشل رفع الملف');
+  }
+
+  // ✅ إرجاع كائن يحوي fileId + thumbnailId
+  return {
+    fileId: data.data.file._id,
+    thumbnailId: data.data.thumbnailId || null,
   };
+};
 
   // ===== حفظ البيانات =====
   const handleSubmit = async (e: React.FormEvent) => {
@@ -333,13 +343,25 @@ const AdminExplanations: React.FC = () => {
       let fileId = null;
 
       // ✅ رفع الفيديو إذا كان موجوداً
-      if (selectedFile && activeTab === 'videos') {
-        console.log('📤 Uploading video file:', selectedFile.name);
-        fileId = await uploadFile(selectedFile, 'video');
-        console.log('✅ Video uploaded, fileId:', fileId);
-        formData.videoUrl = fileId;
-        formData.videoFile = selectedFile.name;
-      }
+if (selectedFile && activeTab === 'videos') {
+  console.log('📤 Uploading video file:', selectedFile.name);
+
+  // ✅ استقبل كائن { fileId, thumbnailId }
+  const uploadResult = await uploadFile(selectedFile, 'video');
+
+  console.log('✅ Video uploaded:');
+  console.log('   - fileId:', uploadResult.fileId);
+  console.log('   - thumbnailId:', uploadResult.thumbnailId);
+
+  formData.videoUrl = uploadResult.fileId;
+  formData.videoFile = selectedFile.name;
+
+  // ✅ ✅ ✅ أضف thumbnail
+  if (uploadResult.thumbnailId) {
+    formData.thumbnail = uploadResult.thumbnailId;
+    console.log('✅ thumbnail saved to formData:', uploadResult.thumbnailId);
+  }
+}
 
       const submitData: any = JSON.parse(JSON.stringify(formData));
       submitData.portalId = PORTAL_ID;

@@ -1141,7 +1141,7 @@ const videosWithUrls = videos.map(video => {
   videoObj.hasValidUrl = !!videoObj.videoUrl;
 
   if (!videoObj.thumbnail && videoObj.videoUrl) {
-    videoObj.thumbnail = '/default-thumbnail.jpg';
+    videoObj.thumbnail = '/default-thumbnail.svg';
   }
 
   return videoObj;

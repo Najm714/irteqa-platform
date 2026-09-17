@@ -9,7 +9,7 @@ import path from 'path';
 import jwt from 'jsonwebtoken';
 import { PDFDocument, rgb, degrees } from 'pdf-lib';
 import { extractPortalId, isSamePortal } from '../utils/portalHelpers.js';
-
+import thumbnailService from '../services/thumbnail.service.js';
 // ============================================================
 // ✅ دالة مساعدة: هل المستخدم مدير؟
 // ============================================================
@@ -285,6 +285,9 @@ export const uploadFile = async (req, res) => {
       });
     }
 
+    // ============================================================
+    // رفع الملف
+    // ============================================================
     const file = await saveFile({
       file: req.file,
       portalId,
@@ -305,15 +308,54 @@ export const uploadFile = async (req, res) => {
       portalId
     );
 
-    res.status(201).json({
+    // ============================================================
+    // ✅ استخراج صورة مصغرة إذا كان فيديو
+    // ============================================================
+    let thumbnailFile = null;
+
+    if (
+      req.file.mimetype.startsWith('video/') &&
+      finalCategory === 'video'
+    ) {
+      try {
+        console.log('🎬 Extracting thumbnail for video...');
+
+        thumbnailFile = await thumbnailService.extractAndUpload(
+          req.file.buffer,
+          portalId,
+          accountId,
+          { width: 640, height: 360 }
+        );
+
+        console.log('✅ Thumbnail created:', thumbnailFile._id);
+      } catch (thumbError) {
+        console.warn('⚠️ Thumbnail failed:', thumbError.message);
+        // ✅ لا نوقف العملية
+      }
+    }
+
+    // ============================================================
+    // ✅ رد واحد فقط
+    // ============================================================
+    return res.status(201).json({
       success: true,
-      data: { file },
+      data: {
+        file,
+        thumbnail: thumbnailFile,
+        thumbnailId: thumbnailFile?._id,
+      },
       message: 'File uploaded successfully',
     });
   } catch (error) {
     console.error('❌ Upload file error:', error);
 
-    res.status(500).json({
+    // ✅ تأكد من عدم إرسال رد مزدوج
+    if (res.headersSent) {
+      console.warn('⚠️ Headers already sent, cannot send error response');
+      return;
+    }
+
+    return res.status(500).json({
       success: false,
       message: error.message || 'Failed to upload file',
     });

@@ -9,7 +9,7 @@ import { Video } from '../models/Video.model.js';
 import { Summary } from '../models/Summary.model.js';
 import { Section } from '../models/Section.model.js';
 import { Service } from '../models/Service.model.js';
-
+import { Material } from '../models/Material.model.js';
 // ============================================================
 // ✅ إحصائيات لوحة التحكم
 // ============================================================
@@ -62,13 +62,44 @@ export const getDashboardStats = async (req, res) => {
         count: { $sum: 1 }
       }}
     ]);
+// ============================================================
+// ✅ إحصائيات المحتوى (فيديوهات + ملخصات + وحدات)
+// ============================================================
 
-    // إحصائيات المحتوى
-    const contentStats = {
-      videos: await Video.countDocuments({ portalId, isPublished: true }),
-      summaries: await Summary.countDocuments({ portalId, isPublished: true }),
-      total: await Content.countDocuments({ portalId, isPublished: true }),
-    };
+// 1. الفيديوهات
+const totalVideos = await Video.countDocuments({
+  portalId,
+  isPublished: true,
+  isDeleted: { $ne: true },
+});
+
+// 2. الملخصات
+const totalSummaries = await Summary.countDocuments({
+  portalId,
+  isPublished: true,
+});
+
+// 3. الوحدات (من المواد)
+const materials = await Material.find({
+  portalId,
+  isPublished: true,
+  isDeleted: { $ne: true },
+}).select('units');
+
+let totalUnits = 0;
+materials.forEach(m => {
+  totalUnits += m.units?.length || 0;
+});
+
+// 4. المجموع
+const contentStats = {
+  videos: totalVideos,
+  summaries: totalSummaries,
+  units: totalUnits,
+  total: totalVideos + totalSummaries + totalUnits,
+};
+
+console.log('📊 Content Stats:', contentStats);
 
     // إجمالي الإيرادات
     const totalRevenue = await Payment.aggregate([
@@ -79,13 +110,56 @@ export const getDashboardStats = async (req, res) => {
       }}
     ]);
 
-    // إحصائيات الأقسام والخدمات
-    const sectionsCount = await Section.countDocuments({ portalId });
-    const sectionsPublished = await Section.countDocuments({ portalId, isPublished: true });
-    const servicesCount = await Service.countDocuments({ portalId });
-    const servicesPublished = await Service.countDocuments({ portalId, isPublished: true });
+// إحصائيات الأقسام والخدمات
+const sectionsCount = await Section.countDocuments({ portalId });
+const sectionsPublished = await Section.countDocuments({ portalId, isPublished: true });
+const servicesCount = await Service.countDocuments({ portalId });
+const servicesPublished = await Service.countDocuments({ portalId, isPublished: true });
 
-    res.status(200).json({
+// ============================================================
+// ✅ إحصائيات realtime
+// ============================================================
+
+// 1. المستخدمون النشطون (سجلوا دخول خلال 24 ساعة)
+const twentyFourHoursAgo = new Date(Date.now() - 24 * 60 * 60 * 1000);
+
+const activeUsersCount = await Account.countDocuments({
+  portalId,
+  isActive: true,
+  isDeleted: { $ne: true },
+  lastLogin: { $gte: twentyFourHoursAgo },
+});
+
+// 2. الطلبات النشطة (قيد المعالجة)
+const activeStatuses = [
+  'new',
+  'under_review',
+  'assigned',
+  'scope_definition',
+  'awaiting_approval',
+  'awaiting_payment',
+  'in_progress',
+  'under_review_2',
+  'modification',
+];
+
+const activeRequestsCount = await Request.countDocuments({
+  portalId,
+  status: { $in: activeStatuses },
+  isActive: true,
+  isDeleted: { $ne: true },
+});
+
+console.log('📊 Realtime Stats:', {
+  activeUsers: activeUsersCount,
+  activeRequests: activeRequestsCount,
+});
+
+// ============================================================
+// ✅ الرد النهائي
+// ============================================================
+
+res.status(200).json({
       success: true,
       data: {
         requests: {
@@ -115,10 +189,10 @@ export const getDashboardStats = async (req, res) => {
           published: servicesPublished,
         },
         realtime: {
-          activeUsers: 0,
-          activeRequests: 0,
-          pendingPayments: paymentsStats.find(p => p._id === 'pending')?.count || 0,
-        },
+  activeUsers: activeUsersCount,
+  activeRequests: activeRequestsCount,
+  pendingPayments: paymentsStats.find(p => p._id === 'pending')?.count || 0,
+},
       },
     });
   } catch (error) {

@@ -8,6 +8,7 @@ import {
   deleteVideo,
   createLiveStream,
   getLiveStreamInfo,
+  incrementVideoViews
 } from '../controllers/video.controller.js';
 import { authenticate } from '../middleware/auth.js';
 import { requirePortalContext } from '../middleware/portalContext.js';
@@ -53,6 +54,7 @@ router.post(
   requirePortalContext,
   requirePermission('manage_videos'),
   createLiveStream
+  
 );
 
 router.get(

@@ -48,7 +48,8 @@ import PrivacyPolicy from './pages/Policies/PrivacyPolicy';
 import TermsOfService from './pages/Policies/TermsOfService';
 import PaymentRefundPolicy from './pages/Policies/PaymentRefundPolicy';
 import CookiePolicy from './pages/Policies/CookiePolicy';
-
+import AdminLiveStreams from './pages/Admin/AdminLiveStreams';
+import LiveStreamViewer from './pages/LiveStreamViewer';
 // Specialist Pages
 import SpecialistDashboard from './pages/Specialist/SpecialistDashboard';
 
@@ -331,6 +332,10 @@ const AppRoutes = () => {
           <PrivacyPolicy />
         </ProtectedRoute>
       } />
+
+
+<Route path="/admin-live-streams" element={<AdminLiveStreams />} />
+<Route path="/live/:id" element={<LiveStreamViewer />} />
 
       <Route path="/policies/terms" element={
         <ProtectedRoute>

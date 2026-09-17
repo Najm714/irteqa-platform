@@ -142,6 +142,11 @@ io.on('connection', (socket) => {
   console.log(
     `🔌 Client connected: ${socket.id} (Account: ${socket.accountId}, Portal: ${socket.portalId})`
   );
+  if (socket.accountId) {
+  const notificationRoom = `user_${socket.accountId}`;
+  socket.join(notificationRoom);
+  console.log(`📢 User ${socket.accountId} joined notifications room: ${notificationRoom}`);
+}
 
   // ============================================================
   // Helper: التحقق من وجود Socket آخر داخل نفس الطلب والبوابة
@@ -661,7 +666,49 @@ targetSocket.emit('ice-candidate', {
       `🔌 Client disconnected: ${socket.id}` +
       ` (Account: ${socket.accountId}, Portal: ${socket.portalId})`
     );
+  // ============================================================
+  // ✅ Live Stream Events
+  // ============================================================
 
+  // الانضمام لغرفة البث
+  socket.on('join-live', (data) => {
+    const { videoId } = data;
+    if (!videoId) return;
+
+    socket.join(`live-${videoId}`);
+    console.log(`📺 User ${socket.accountId} joined live ${videoId}`);
+
+    socket.to(`live-${videoId}`).emit('viewer-joined', {
+      userId: socket.accountId,
+      userName: socket.account?.profile?.fullName || 'مستخدم',
+    });
+  });
+
+  // مغادرة غرفة البث
+  socket.on('leave-live', (data) => {
+    const { videoId } = data;
+    if (!videoId) return;
+
+    socket.leave(`live-${videoId}`);
+    console.log(`📺 User ${socket.accountId} left live ${videoId}`);
+
+    socket.to(`live-${videoId}`).emit('viewer-left', {
+      userId: socket.accountId,
+    });
+  });
+
+  // رسالة دردشة
+  socket.on('live-message', (data) => {
+    const { videoId, message } = data;
+    if (!videoId || !message) return;
+
+    io.to(`live-${videoId}`).emit('live-message', {
+      userId: socket.accountId,
+      userName: socket.account?.profile?.fullName || 'مستخدم',
+      message,
+      timestamp: new Date(),
+    });
+  });
     // لا نستخدم io.emit هنا حتى لا يصل الحدث إلى Portal أخرى.
     // نرسل إشعار الانقطاع فقط إلى غرف Requests التي كان Socket
     // عضوًا فيها، وبالتالي تبقى الأحداث معزولة حسب Request/Portal.

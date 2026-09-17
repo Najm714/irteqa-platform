@@ -54,7 +54,6 @@ const VideoSchema = new mongoose.Schema({
     required: [true, 'Instructor is required'],
     trim: true,
   },
-  // ✅ videoUrl يخزن معرف الملف (fileId) أو الرابط الكامل
   videoUrl: {
     type: String,
     trim: true,
@@ -107,6 +106,96 @@ const VideoSchema = new mongoose.Schema({
     default: false,
     index: true,
   },
+
+  // ============================================================
+  // ✅ ✅ ✅ Live Stream Fields
+  // ============================================================
+
+  isLive: {
+    type: Boolean,
+    default: false,
+    index: true,
+  },
+
+  liveStreamUid: {
+    type: String,
+    default: null,
+    index: true,
+    sparse: true,
+  },
+
+  liveRtmpUrl: {
+    type: String,
+    default: null,
+  },
+
+  liveRtmpKey: {
+    type: String,
+    default: null,
+    select: false, // لا يُرجع تلقائياً
+  },
+
+  livePlaybackUrl: {
+    type: String,
+    default: null,
+  },
+
+  liveStatus: {
+    type: String,
+    enum: ['idle', 'live', 'ended', 'error'],
+    default: 'idle',
+    index: true,
+  },
+
+  liveSchedule: {
+    scheduledAt: { type: Date, default: null },
+    startedAt: { type: Date, default: null },
+    endedAt: { type: Date, default: null },
+    duration: { type: Number, default: 0 },
+  },
+
+  liveRecording: {
+    enabled: { type: Boolean, default: true },
+    videoUid: { type: String, default: null },
+    videoUrl: { type: String, default: null },
+  },
+
+  liveViewers: {
+    type: Number,
+    default: 0,
+    min: 0,
+  },
+
+  liveMaxViewers: {
+    type: Number,
+    default: 0,
+  },
+
+  liveStats: {
+    peakViewers: { type: Number, default: 0 },
+    totalViews: { type: Number, default: 0 },
+    totalWatchTime: { type: Number, default: 0 },
+  },
+
+  liveCreatedBy: {
+    type: mongoose.Schema.Types.ObjectId,
+    ref: 'Account',
+    default: null,
+  },
+
+  liveAccessType: {
+    type: String,
+    enum: ['public', 'subscription', 'private'],
+    default: 'subscription',
+  },
+
+  liveChat: [{
+    userId: { type: mongoose.Schema.Types.ObjectId, ref: 'Account' },
+    userName: { type: String },
+    message: { type: String, maxlength: 500 },
+    timestamp: { type: Date, default: Date.now },
+  }],
+
 }, {
   timestamps: true,
 });
@@ -115,9 +204,11 @@ const VideoSchema = new mongoose.Schema({
 VideoSchema.index({ portalId: 1, materialId: 1, isPublished: 1 });
 VideoSchema.index({ portalId: 1, isPublished: 1, order: 1 });
 VideoSchema.index({ slug: 1, portalId: 1 }, { unique: true });
+VideoSchema.index({ portalId: 1, isLive: 1, liveStatus: 1 });
+VideoSchema.index({ portalId: 1, isLive: 1, 'liveSchedule.scheduledAt': -1 });
 
-// ✅ Pre-save middleware
-VideoSchema.pre('save', function(next) {
+// ✅ Pre-save
+VideoSchema.pre('save', function (next) {
   this.updatedAt = new Date();
   if (!this.slug && (this.titleAr || this.title)) {
     this.slug = (this.titleAr || this.title)
@@ -131,36 +222,51 @@ VideoSchema.pre('save', function(next) {
   next();
 });
 
-// ✅ طريقة للحصول على رابط الفيديو الكامل
-VideoSchema.methods.getVideoUrl = function(baseUrl = '') {
-  // ✅ إذا كان videoUrl فارغاً
-  if (!this.videoUrl || this.videoUrl.trim() === '') {
-    return null;
-  }
-  
-  // ✅ إذا كان videoUrl رابطاً كاملاً (http أو https)
+// ✅ روابط
+VideoSchema.methods.getVideoUrl = function (baseUrl = '') {
+  if (!this.videoUrl || this.videoUrl.trim() === '') return null;
+
   if (this.videoUrl.startsWith('http://') || this.videoUrl.startsWith('https://')) {
     return this.videoUrl;
   }
-  
-  // ✅ إذا كان videoUrl هو معرف ملف (ObjectId)
+
   if (this.videoUrl.match(/^[0-9a-fA-F]{24}$/)) {
     return `${baseUrl}/api/files/${this.videoUrl}/download-direct`;
   }
-  
-  // ✅ إذا كان videoUrl هو مسار في R2
-  if (this.videoUrl.includes('r2.cloudflarestorage.com')) {
-    return this.videoUrl;
-  }
-  
-  // ✅ افتراضياً، إرجاع المسار مع baseUrl
-  return `${baseUrl}/api/files/${this.videoUrl}/download-direct`;
+
+  return this.videoUrl;
 };
 
-// ✅ طريقة للتحقق من وجود رابط صالح
-VideoSchema.methods.hasValidUrl = function() {
+VideoSchema.methods.hasValidUrl = function () {
   return this.videoUrl && this.videoUrl.trim() !== '';
 };
 
-export const Video = mongoose.models.Video || 
+// ✅ دوال مساعدة للبث
+VideoSchema.methods.isCurrentlyLive = function () {
+  return this.isLive && this.liveStatus === 'live';
+};
+
+VideoSchema.methods.canView = function (user, subscription) {
+  if (!user) return false;
+  if (user.role === 'super_admin') return true;
+  if (user.role === 'portal_admin') return true;
+
+  // ✅ البث العام
+  if (this.isLive && this.liveAccessType === 'public') {
+    return true;
+  }
+
+  // ✅ البث للمشتركين
+  if (this.isLive && this.liveAccessType === 'subscription') {
+    return subscription && subscription.status === 'active';
+  }
+
+  // ✅ الفيديو العادي
+  if (!this.isEncrypted) return true;
+  if (subscription && subscription.status === 'active') return true;
+
+  return false;
+};
+
+export const Video = mongoose.models.Video ||
   mongoose.model('Video', VideoSchema);

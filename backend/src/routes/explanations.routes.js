@@ -39,6 +39,7 @@ import {
   getVideoForPlayback,
   createLiveStream,
   getLiveStreamInfo,
+  incrementVideoViews,
 } from '../controllers/video.controller.js';
 
 import { authenticate, optionalAuth } from '../middleware/auth.js';
@@ -92,6 +93,12 @@ router.get('/videos', optionalAuth, requirePortalContext, getVideos);
 router.get('/videos/:id/playback', optionalAuth, requirePortalContext, getVideoForPlayback);
 router.get('/videos/live/:id', optionalAuth, requirePortalContext, getLiveStreamInfo);
 
+router.post(
+  '/videos/:id/view',
+  authenticate,
+  requirePortalContext,
+  incrementVideoViews
+);
 // ============================================================
 // ✅ مسارات الاشتراكات (تتطلب مصادقة)
 // ============================================================

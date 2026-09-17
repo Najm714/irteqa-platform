@@ -503,6 +503,7 @@ const getPortalId = useCallback(() => {
 // frontend/portal-a/src/pages/Explanations.tsx
 
 // ===== تشغيل الفيديو =====
+// ===== تشغيل الفيديو =====
 const handlePlayVideo = (video: Video) => {
   // ✅ التحقق من وجود رابط
   if (!video.videoUrl) {
@@ -524,12 +525,42 @@ const handlePlayVideo = (video: Video) => {
 
   console.log('🎬 Playing video with token:', videoUrlWithToken);
 
+  // ✅ ✅ ✅ زيادة عدد المشاهدات (لا ننتظر الرد)
+  const portalId = getPortalId();
+  const authHeader = getAuthHeader();
+
+  fetch(`${API_URL}/explanations/videos/${video._id}/view`, {
+    method: 'POST',
+    headers: {
+      'Authorization': authHeader || '',
+      'X-Portal-Id': portalId,
+    },
+  })
+    .then(res => res.json())
+    .then(data => {
+      if (data.success) {
+        console.log('✅ Views incremented to:', data.views);
+        // ✅ تحديث views في القائمة المحلية
+        setVideos(prev =>
+          prev.map(v =>
+            v._id === video._id ? { ...v, views: data.views } : v
+          )
+        );
+      }
+    })
+    .catch(err => {
+      console.error('❌ Increment views error:', err);
+      // لا نوقف التشغيل بسبب خطأ هنا
+    });
+
+  // ✅ فتح الفيديو
   setSelectedVideo({
     ...video,
     videoUrl: videoUrlWithToken,
   });
   setShowVideoModal(true);
 };
+
   // ===== تحميل الملف =====
   const handleDownloadFile = async (fileId: string, filename: string, isEncrypted: boolean) => {
     if (!fileId) {

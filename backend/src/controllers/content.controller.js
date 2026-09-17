@@ -100,42 +100,133 @@ export const getContentById = async (req, res) => {
 };
 
 // ✅ جلب الفيديوهات
+// ============================================================
+// ✅ جلب الفيديوهات (مع روابط الصور والفيديو)
+// ============================================================
 export const getVideos = async (req, res) => {
   try {
-    const { portalId } = req.portal;
-    const { category, subject, materialId, limit = 20, page = 1 } = req.query;
+    const portalId = req.portalId || req.headers['x-portal-id'] || req.query.portalId || req.portal?._id;
+    const { materialId, isPublished } = req.query;
 
-    const query = {
-      portalId,
-      isPublished: true,
-    };
+    if (!portalId) {
+      return res.status(400).json({
+        success: false,
+        message: 'portalId is required',
+      });
+    }
 
-    if (category) query.category = category;
-    if (subject) query.subject = subject;
+    const query = { portalId, isDeleted: { $ne: true } };
     if (materialId) query.materialId = materialId;
-
-    const skip = (parseInt(page) - 1) * parseInt(limit);
+    if (isPublished !== undefined) query.isPublished = isPublished === 'true';
 
     const videos = await Video.find(query)
-      .sort({ order: 1, createdAt: -1 })
-      .skip(skip)
-      .limit(parseInt(limit))
-      .populate('createdBy', 'profile.fullName');
+      .populate('universityId', 'name nameAr')
+      .populate('collegeId', 'name nameAr')
+      .populate('specialtyId', 'name nameAr code')
+      .populate('materialId', 'name nameAr code')
+      .populate('createdBy', 'profile.fullName')
+      .sort({ order: 1, createdAt: -1 });
 
-    const total = await Video.countDocuments(query);
+    // ✅ بناء baseUrl
+    const protocol =
+      req.get('x-forwarded-proto')?.split(',')[0]?.trim() ||
+      req.protocol ||
+      'https';
 
-    // ✅ تصفية الفيديوهات حسب صلاحية المستخدم
-    const filteredVideos = await filterContentByAccess(videos, req.user);
+    const host = req.get('host');
+    const baseUrl = `${protocol}://${host}`;
+
+    // ✅ معالجة كل فيديو
+    const videosWithUrls = videos.map((video) => {
+      const videoObj = video.toObject();
+
+      // ============================================================
+      // VIDEO URL
+      // ============================================================
+      let finalVideoUrl = null;
+
+      if (
+        typeof videoObj.videoUrl === 'string' &&
+        videoObj.videoUrl.trim() !== ''
+      ) {
+        const raw = videoObj.videoUrl.trim();
+
+        // رابط كامل
+        if (raw.startsWith('http://') || raw.startsWith('https://')) {
+          finalVideoUrl = raw;
+        }
+        // fileId (24 hex)
+        else if (/^[0-9a-fA-F]{24}$/.test(raw)) {
+          finalVideoUrl =
+            `${baseUrl}/api/files/${raw}/stream-secure` +
+            `?portalId=${encodeURIComponent(portalId.toString())}`;
+        }
+        // مسار آخر
+        else {
+          finalVideoUrl = `${baseUrl}/api/files/${raw}/download-direct`;
+        }
+      }
+
+      // ============================================================
+      // ✅ THUMBNAIL
+      // ============================================================
+      let finalThumbnail = null;
+
+      if (
+        typeof videoObj.thumbnail === 'string' &&
+        videoObj.thumbnail.trim() !== ''
+      ) {
+        const raw = videoObj.thumbnail.trim();
+
+        // رابط كامل
+        if (raw.startsWith('http://') || raw.startsWith('https://')) {
+          finalThumbnail = raw;
+        }
+        // fileId (24 hex) — الحالة الشائعة
+        else if (/^[0-9a-fA-F]{24}$/.test(raw)) {
+          finalThumbnail =
+            `${baseUrl}/api/files/${raw}/download-direct` +
+            `?portalId=${encodeURIComponent(portalId.toString())}`;
+        }
+        // مسار محلي
+        else {
+          finalThumbnail = `${baseUrl}/${raw.replace(/^\/+/, '')}`;
+        }
+      }
+
+      // ✅ صورة افتراضية
+      if (!finalThumbnail) {
+        finalThumbnail = '/default-thumbnail.svg';
+      }
+
+      // ============================================================
+      // VIEWS
+      // ============================================================
+      const views = Number.isFinite(Number(videoObj.views))
+        ? Number(videoObj.views)
+        : 0;
+
+      // ============================================================
+      // DURATION
+      // ============================================================
+      const duration = Number.isFinite(Number(videoObj.duration))
+        ? Number(videoObj.duration)
+        : 0;
+
+      return {
+        ...videoObj,
+        videoUrl: finalVideoUrl,
+        thumbnail: finalThumbnail,
+        views,
+        duration,
+        hasValidUrl: Boolean(finalVideoUrl),
+        hasThumbnail: Boolean(finalThumbnail),
+      };
+    });
 
     res.status(200).json({
       success: true,
-      data: filteredVideos,
-      pagination: {
-        total,
-        page: parseInt(page),
-        limit: parseInt(limit),
-        pages: Math.ceil(total / parseInt(limit)),
-      },
+      data: videosWithUrls,
     });
   } catch (error) {
     console.error('❌ Get videos error:', error);

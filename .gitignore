@@ -103,3 +103,9 @@ coverage/
 imports.txt
 existing_pages.txt
 *.tmp
+
+# Test files
+check-*.mjs
+test-*.mjs
+*.backup.js
+*.backup.tsx

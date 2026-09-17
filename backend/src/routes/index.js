@@ -37,6 +37,8 @@ import videoLibraryRoutes from './videoLibrary.routes.js';
 import infographicRoutes from './infographic.routes.js';
 import offerRoutes from './offer.routes.js';
 import aboutRoutes from './about.routes.js';
+import liveStreamRoutes from './liveStream.routes.js';
+
 
 const router = express.Router();
 
@@ -93,6 +95,7 @@ router.use('/api/legal', legalRoutes);
 // ✅ مسارات الخدمات
 router.use('/api/service-details', serviceDetailRoutes);
 router.use('/api/service-forms', serviceFormRoutes);
+router.use('/api/live-streams', liveStreamRoutes);
 
 // ✅ لوحة التحكم والمهام
 router.use('/api/dashboard', dashboardRoutes);
@@ -161,5 +164,6 @@ console.log('  - /api/admin/services/*');
 console.log('  - /api/admin/sections/*');
 console.log('  - /api/admin/settings/*');
 console.log('  - /api/videos-library/*');
+console.log('  - /api/live-streams/*');
 
 export default router;

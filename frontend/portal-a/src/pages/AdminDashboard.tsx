@@ -5,7 +5,7 @@ import { Link, useNavigate } from 'react-router-dom';
 import { useAuth } from '../context/AuthContext';
 import { useSidebar } from '../context/SidebarContext';
 import Header from '../components/layout/Header';
-
+import { FaBroadcastTower } from 'react-icons/fa';
 import {
   FaUsers,
   FaFileAlt,
@@ -1107,7 +1107,12 @@ const AdminDashboard: React.FC = () => {
       icon: <FaVideo />,
       color: 'red',
     },
-
+{
+  to: '/admin-live-streams',
+  label: 'البث المباشر',
+  icon: <FaBroadcastTower />,
+  color: 'red',
+},
     {
       to: '/admin-users',
       label: 'المستخدمين',
