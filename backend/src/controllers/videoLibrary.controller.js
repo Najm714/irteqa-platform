@@ -5,6 +5,7 @@ import { Subscription } from '../models/Subscription.model.js';
 import { Account } from '../models/Account.model.js';
 import storageService from '../services/storage.service.js';
 import jwt from 'jsonwebtoken';
+import { extractPortalId } from '../utils/portalHelpers.js';
 
 // ============================================================
 // ✅ إضافة فيديو إلى مكتبة الفيديوهات
@@ -329,6 +330,7 @@ export const deleteVideo = async (req, res) => {
     });
   }
 };
+
 // ============================================================
 // تشغيل فيديو من مكتبة الفيديوهات
 // Portal-isolated + authentication-aware

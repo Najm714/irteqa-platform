@@ -3058,8 +3058,8 @@ const ContentTab: React.FC<{
         <SimpleStat
           title="الملخصات"
           value={
-            stats.content
-              ?.summaries || 0
+            stats.content?.summaries ||
+              0
           }
           icon={<FaFileAlt />}
           color="blue"

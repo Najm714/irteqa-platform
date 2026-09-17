@@ -1,5 +1,6 @@
 // backend/src/models/videoLibrary.model.js
 import mongoose from 'mongoose';
+import { extractPortalId } from '../utils/portalHelpers.js';
 
 const VideoLibrarySchema = new mongoose.Schema({
   portalId: {
@@ -210,38 +211,25 @@ VideoLibrarySchema.methods.hasValidUrl = function() {
 // ✅ طريقة للتحقق من الصلاحية
 // ✅ طريقة للتحقق من صلاحية مشاهدة الفيديو
 VideoLibrarySchema.methods.canView = function(user, subscription) {
-  if (!user) {
+  if (!user) return false;
+
+  if (user.role === 'super_admin') return true;
+
+  const videoPortalId = extractPortalId(this.portalId);
+  const userPortalId = extractPortalId(user.portalId);
+
+  if (!videoPortalId || !userPortalId || videoPortalId !== userPortalId) {
     return false;
   }
 
-  // Super Admin يتم التحقق من الـ Portal الخاص به
-  // بواسطة requirePortalContext قبل الوصول إلى الفيديو.
-  if (user.role === 'super_admin') {
-    return true;
-  }
+  if (user.role === 'portal_admin') return true;
+  if (!this.isEncrypted) return true;
 
-  // جميع المستخدمين العاديين يجب أن يكونوا تابعين
-  // لنفس الـ Portal الخاص بالفيديو.
   if (
-    !this.portalId ||
-    !user.portalId ||
-    this.portalId.toString() !== user.portalId.toString()
+    subscription &&
+    subscription.status === 'active' &&
+    subscription.paymentStatus === 'paid'
   ) {
-    return false;
-  }
-
-  // Portal Admin لديه صلاحية مشاهدة فيديوهات الـ Portal الخاص به.
-  if (user.role === 'portal_admin') {
-    return true;
-  }
-
-  // الفيديو غير المشفر متاح لمستخدمي الـ Portal نفسه.
-  if (!this.isEncrypted) {
-    return true;
-  }
-
-  // الفيديو المشفر يتطلب اشتراكًا فعالًا.
-  if (subscription && subscription.status === 'active') {
     return true;
   }
 

@@ -8,6 +8,7 @@ import fs from 'fs';
 import path from 'path';
 import jwt from 'jsonwebtoken';
 import { PDFDocument, rgb, degrees } from 'pdf-lib';
+import { extractPortalId, isSamePortal } from '../utils/portalHelpers.js';
 
 // ============================================================
 // ✅ دالة مساعدة: هل المستخدم مدير؟
@@ -16,76 +17,31 @@ const isAdmin = (account) => {
   return account?.role === 'portal_admin' || account?.role === 'super_admin';
 };
 const checkPortalAccess = (file, account, portalId) => {
-  if (!file || !account) {
-    console.log('❌ Missing file or account');
-    return false;
-  }
+  if (!file || !account) return false;
 
-  const filePortalId = file.portalId?.toString();
+  const filePortalId = extractPortalId(file.portalId);
+  if (!filePortalId) return false;
 
-  if (!filePortalId) {
-    console.log('❌ File has no portalId');
-    return false;
-  }
-
-  // 🔐 SUPER ADMIN:
-  // Can access an explicitly selected active portal.
+  // Super admin
   if (account.role === 'super_admin') {
-    if (!portalId) {
-      console.log('❌ Super admin portal context is required');
-      return false;
-    }
-
-    const selectedPortalId = portalId.toString();
-
-    if (filePortalId !== selectedPortalId) {
-      console.log('❌ Super admin portal mismatch:', {
-        filePortalId,
-        selectedPortalId,
-      });
-
-      return false;
-    }
-
-    return true;
+    if (!portalId) return false;
+    return filePortalId === extractPortalId(portalId);
   }
 
-  // 🔐 PORTAL ADMIN / SPECIALIST / CUSTOMER:
-  // Must access files only inside their own portal.
-  const accountPortalId = account.portalId?.toString();
+  // باقي الأدوار
+  const accountPortalId = extractPortalId(account.portalId);
+  if (!accountPortalId) return false;
 
-  if (!accountPortalId) {
-    console.log('❌ Account has no portalId:', {
-      accountId: account._id,
-      role: account.role,
-    });
-
-    return false;
-  }
-
-  // If a portal was explicitly requested, it must also
-  // match the account's assigned portal.
-  if (portalId && portalId.toString() !== accountPortalId) {
-    console.log('❌ Requested portal does not match account portal:', {
-      accountPortalId,
-      requestedPortalId: portalId.toString(),
-    });
-
+  if (portalId && extractPortalId(portalId) !== accountPortalId) {
     return false;
   }
 
   if (filePortalId !== accountPortalId) {
-    console.log('❌ File portal does not match account portal:', {
-      filePortalId,
-      accountPortalId,
-    });
-
     return false;
   }
 
   return true;
 };
-
 // ============================================================
 // ✅ دالة مساعدة لحفظ الملف
 // ============================================================
@@ -111,37 +67,23 @@ const saveFile = async ({ file, portalId, accountId, category = 'user', metadata
   return result.file;
 };
 
-// ============================================================
-// ✅ دالة مساعدة للتحقق من الصلاحية مع الاشتراك
-// ============================================================
 const canAccessFileWithSubscription = async (file, account) => {
-  // 1. المدير لديه صلاحية مطلقة
-  if (isAdmin(account)) {
-    return true;
-  }
+  if (isAdmin(account)) return true;
+  if (!file.isEncrypted) return true;
 
-  // 2. الملفات غير المشفرة متاحة للجميع
-  if (!file.isEncrypted) {
-    return true;
-  }
-
-  // 3. الملفات المشفرة - تحقق من الاشتراك
   try {
     const subscription = await Subscription.findOne({
-      portalId: file.portalId,
+      portalId: extractPortalId(file.portalId),
       accountId: account._id,
       status: 'active',
+      paymentStatus: 'paid',
+      isDeleted: { $ne: true },
+      endDate: { $gt: new Date() },
     });
 
-    if (subscription) {
-      console.log('✅ Active subscription found for user:', account._id);
-      return true;
-    }
-
-    console.log('❌ No active subscription for user:', account._id);
-    return false;
+    return !!subscription;
   } catch (err) {
-    console.error('❌ Error checking subscription:', err);
+    console.error('❌ Subscription check error:', err);
     return false;
   }
 };
@@ -525,10 +467,8 @@ export const viewFile = async (req, res) => {
 export const downloadFileDirect = async (req, res) => {
   try {
     const fileId = req.params.id;
-    const portalId = req.portal?._id || req.portalId;
+    const portalId = req.portalId;
     const account = req.account;
-
-    console.log('📥 Downloading file directly:', fileId);
 
     if (!account) {
       return res.status(401).json({
@@ -546,16 +486,6 @@ export const downloadFileDirect = async (req, res) => {
       });
     }
 
-    console.log(
-      '  - Account:',
-      account._id,
-      '| Role:',
-      account.role,
-      '| Portal:',
-      portalId
-    );
-
-    // 🔐 البحث عن الملف داخل البوابة الحالية فقط
     const file = await File.findOne({
       _id: fileId,
       portalId,
@@ -569,7 +499,6 @@ export const downloadFileDirect = async (req, res) => {
       });
     }
 
-    // 🔐 التحقق من البوابة
     if (!checkPortalAccess(file, account, portalId)) {
       return res.status(403).json({
         success: false,
@@ -578,12 +507,7 @@ export const downloadFileDirect = async (req, res) => {
       });
     }
 
-    // 🔐 التحقق من صلاحية التحميل
-    const hasAccess = await canAccessFileWithSubscription(
-      file,
-      account
-    );
-
+    const hasAccess = await canAccessFileWithSubscription(file, account);
     if (!hasAccess) {
       return res.status(403).json({
         success: false,
@@ -592,83 +516,47 @@ export const downloadFileDirect = async (req, res) => {
       });
     }
 
-    const fileBuffer = await storageService.getFile(file);
+    const { stream, contentLength } = await storageService.getFileStream(file);
 
-    const filename = encodeURIComponent(file.originalName);
-
-    res.setHeader('Content-Type', file.mimeType);
-    res.setHeader(
-      'Content-Disposition',
-      `attachment; filename="${filename}"`
-    );
-    res.setHeader('Content-Length', fileBuffer.length);
-
+    res.setHeader('Content-Type', file.mimeType || 'application/octet-stream');
+    res.setHeader('Content-Disposition', `attachment; filename="${encodeURIComponent(file.originalName)}"`);
+    res.setHeader('Content-Length', contentLength);
     res.setHeader('Access-Control-Allow-Origin', '*');
-    res.setHeader(
-      'Access-Control-Allow-Methods',
-      'GET, POST, OPTIONS'
-    );
-    res.setHeader(
-      'Access-Control-Allow-Headers',
-      'Authorization, Content-Type, X-Portal-Id'
-    );
 
-    console.log(
-      '✅ File sent successfully:',
-      fileId,
-      'Size:',
-      fileBuffer.length,
-      '| Portal:',
-      portalId
-    );
-
-    res.send(fileBuffer);
-  } catch (error) {
-    console.error('❌ Download file direct error:', error);
-
-    res.status(500).json({
-      success: false,
-      message: error.message || 'Failed to download file',
+    stream.on('error', (error) => {
+      console.error('❌ Download stream error:', error);
+      if (!res.headersSent) {
+        res.status(500).json({ success: false, message: 'Download failed' });
+      } else {
+        res.destroy(error);
+      }
     });
+
+    stream.pipe(res);
+
+  } catch (error) {
+    console.error('❌ Download error:', error);
+    if (!res.headersSent) {
+      return res.status(500).json({
+        success: false,
+        message: error.message || 'Failed to download',
+      });
+    }
   }
 };
-// ============================================================
-// ✅ تشغيل فيديو مباشرة (Streaming)
-// ============================================================
 export const streamVideo = async (req, res) => {
   try {
     const fileId = req.params.id;
     const portalId = req.portal?._id || req.portalId;
     const account = req.account;
 
-    console.log('🎬 Streaming video:', fileId);
-
     if (!account) {
-      return res.status(401).json({
-        success: false,
-        message: 'Unauthorized - Please login',
-        code: 'UNAUTHORIZED',
-      });
+      return res.status(401).json({ success: false, message: 'Unauthorized' });
     }
-
     if (!portalId) {
-      return res.status(400).json({
-        success: false,
-        message: 'Portal context is required',
-        code: 'PORTAL_ID_REQUIRED',
-      });
+      return res.status(400).json({ success: false, message: 'Portal required' });
     }
 
-    console.log(
-      '  - Account:',
-      account._id,
-      '| Role:',
-      account.role,
-      '| Portal:',
-      portalId
-    );
-
-    // 🔐 البحث عن الفيديو داخل البوابة الحالية فقط
     const file = await File.findOne({
       _id: fileId,
       portalId,
@@ -676,108 +564,47 @@ export const streamVideo = async (req, res) => {
     });
 
     if (!file) {
-      return res.status(404).json({
-        success: false,
-        message: 'Video not found',
-      });
+      return res.status(404).json({ success: false, message: 'Not found' });
     }
 
-    // 🔐 التحقق من البوابة
     if (!checkPortalAccess(file, account, portalId)) {
-      return res.status(403).json({
-        success: false,
-        message: 'Access denied - Invalid portal',
-        code: 'FILE_PORTAL_ACCESS_DENIED',
-      });
+      return res.status(403).json({ success: false, message: 'Portal denied' });
     }
 
-    // 🔐 التحقق من صلاحية مشاهدة الفيديو
-    const hasAccess = await canAccessFileWithSubscription(
-      file,
-      account
-    );
-
+    const hasAccess = await canAccessFileWithSubscription(file, account);
     if (!hasAccess) {
-      return res.status(403).json({
-        success: false,
-        message: 'You do not have permission to view this video',
-        code: 'FILE_ACCESS_DENIED',
-      });
+      return res.status(403).json({ success: false, message: 'No permission' });
     }
 
-    const fileBuffer = await storageService.getFile(file);
+    // ✅ استخدام stream
+    const fileStream = await storageService.getFileStream(file);
 
-    res.setHeader(
-      'Content-Type',
-      file.mimeType || 'video/mp4'
-    );
-
-    res.setHeader(
-      'Content-Length',
-      fileBuffer.length
-    );
-
+    res.setHeader('Content-Type', file.mimeType || 'video/mp4');
+    res.setHeader('Content-Length', file.size);
     res.setHeader('Accept-Ranges', 'bytes');
+    res.setHeader('Cache-Control', 'private, no-store');
+    res.setHeader('Access-Control-Allow-Origin', '*');
 
-    // 🔐 الفيديو محمي، لذلك لا نستخدم public cache
-    res.setHeader(
-      'Cache-Control',
-      'private, no-store, no-cache, must-revalidate'
-    );
+    fileStream.pipe(res);
 
-    res.setHeader('Pragma', 'no-cache');
-    res.setHeader('Expires', '0');
-
-    res.setHeader(
-      'Access-Control-Allow-Origin',
-      '*'
-    );
-
-    res.setHeader(
-      'Access-Control-Allow-Methods',
-      'GET, OPTIONS'
-    );
-
-    res.setHeader(
-      'Access-Control-Allow-Headers',
-      'Authorization, Content-Type, X-Portal-Id'
-    );
-
-    console.log(
-      '✅ Video stream started:',
-      fileId,
-      'Size:',
-      fileBuffer.length,
-      '| Portal:',
-      portalId
-    );
-
-    res.send(fileBuffer);
   } catch (error) {
-    console.error('❌ Stream video error:', error);
-
-    res.status(500).json({
-      success: false,
-      message: error.message || 'Failed to stream video',
-    });
+    console.error('❌ Stream error:', error);
+    if (!res.headersSent) {
+      res.status(500).json({ success: false, message: error.message });
+    }
   }
 };
 
-// ============================================================
-// ✅ تشغيل فيديو آمن (مع دعم التوكن و Range)
-// ============================================================
 export const streamVideoSecure = async (req, res) => {
   try {
     const fileId = req.params.id;
-    const portalId = req.portal?._id || req.portalId;
-    const account = req.account;
-
-    console.log('🎬 Streaming video (secure):', fileId);
+    const portalId = req.portalId;
+    const account = await getAccountFromRequest(req);
 
     if (!account) {
       return res.status(401).json({
         success: false,
-        message: 'Unauthorized - Please login',
+        message: 'Unauthorized',
         code: 'UNAUTHORIZED',
       });
     }
@@ -790,16 +617,6 @@ export const streamVideoSecure = async (req, res) => {
       });
     }
 
-    console.log(
-      '  - Account:',
-      account._id,
-      '| Role:',
-      account.role,
-      '| Portal:',
-      portalId
-    );
-
-    // 🔐 البحث عن الفيديو داخل البوابة الحالية فقط
     const file = await File.findOne({
       _id: fileId,
       portalId,
@@ -813,7 +630,6 @@ export const streamVideoSecure = async (req, res) => {
       });
     }
 
-    // 🔐 التحقق من البوابة
     if (!checkPortalAccess(file, account, portalId)) {
       return res.status(403).json({
         success: false,
@@ -822,12 +638,7 @@ export const streamVideoSecure = async (req, res) => {
       });
     }
 
-    // 🔐 التحقق من صلاحية مشاهدة الفيديو
-    const hasAccess = await canAccessFileWithSubscription(
-      file,
-      account
-    );
-
+    const hasAccess = await canAccessFileWithSubscription(file, account);
     if (!hasAccess) {
       return res.status(403).json({
         success: false,
@@ -836,114 +647,111 @@ export const streamVideoSecure = async (req, res) => {
       });
     }
 
-    const fileBuffer = await storageService.getFile(file);
-    const fileSize = fileBuffer.length;
-    const range = req.headers.range;
+    const fileSize = Number(file.size);
+    if (!Number.isFinite(fileSize) || fileSize <= 0) {
+      return res.status(500).json({
+        success: false,
+        message: 'Invalid file size',
+        code: 'INVALID_FILE_SIZE',
+      });
+    }
 
+    // ✅ Headers موحدة
     const headers = {
       'Content-Type': file.mimeType || 'video/mp4',
       'Accept-Ranges': 'bytes',
-      'Cache-Control':
-        'no-store, no-cache, must-revalidate, private',
-      'Pragma': 'no-cache',
-      'Expires': '0',
+      'Cache-Control': 'private, no-store, no-cache, must-revalidate',
       'Access-Control-Allow-Origin': '*',
       'Access-Control-Allow-Methods': 'GET, OPTIONS',
-      'Access-Control-Allow-Headers':
-        'Authorization, Content-Type, X-Portal-Id, Range',
+      'Access-Control-Allow-Headers': 'Authorization, Content-Type, X-Portal-Id, Range',
+      'Access-Control-Expose-Headers': 'Content-Length, Content-Range, Accept-Ranges, Content-Type',
       'Content-Disposition': 'inline',
-      'X-Content-Type-Options': 'nosniff',
-      'Referrer-Policy': 'strict-origin-when-cross-origin',
+      // ⚠️ لا نضع X-Content-Type-Options لأنها تكسر الفيديو
     };
 
-    // ========================================================
-    // Range Request
-    // ========================================================
-    if (range) {
-      const match = range.match(/^bytes=(\d*)-(\d*)$/);
+    if (req.method === 'OPTIONS') {
+      return res.writeHead(204, headers).end();
+    }
 
-      if (!match) {
-        return res.status(416).json({
-          success: false,
-          message: 'Invalid Range header',
-          code: 'INVALID_RANGE',
-        });
-      }
+    const range = req.headers.range;
 
-      let start = match[1] ? parseInt(match[1], 10) : 0;
-      let end = match[2]
-        ? parseInt(match[2], 10)
-        : fileSize - 1;
+    // ✅ بدون Range
+    if (!range) {
+      const { stream, contentLength } = await storageService.getFileStream(file);
 
-      // التعامل مع Range غير صالح
-      if (
-        Number.isNaN(start) ||
-        Number.isNaN(end) ||
-        start < 0 ||
-        end < 0 ||
-        start >= fileSize ||
-        start > end
-      ) {
-        res.writeHead(416, {
-          ...headers,
-          'Content-Range': `bytes */${fileSize}`,
-        });
-
-        return res.end();
-      }
-
-      // لا يتجاوز end حجم الملف
-      end = Math.min(end, fileSize - 1);
-
-      const chunksize = end - start + 1;
-      const chunk = fileBuffer.slice(start, end + 1);
-
-      res.writeHead(206, {
+      res.writeHead(200, {
         ...headers,
-        'Content-Range':
-          `bytes ${start}-${end}/${fileSize}`,
-        'Content-Length': chunksize,
+        'Content-Length': contentLength,
       });
 
-      res.end(chunk);
+      stream.on('error', (error) => {
+        console.error('❌ Stream error:', error);
+        if (!res.headersSent) {
+          res.status(500).json({ success: false, message: 'Stream failed' });
+        } else {
+          res.destroy(error);
+        }
+      });
 
-      console.log(
-        '✅ Video range streamed:',
-        fileId,
-        `${start}-${end}/${fileSize}`
-      );
-
+      stream.pipe(res);
       return;
     }
 
-    // ========================================================
-    // Full Video
-    // ========================================================
-    res.writeHead(200, {
+    // ✅ مع Range
+    const match = range.match(/^bytes=(\d*)-(\d*)$/);
+    if (!match) {
+      res.writeHead(416, {
+        ...headers,
+        'Content-Range': `bytes */${fileSize}`,
+      });
+      return res.end();
+    }
+
+    let start = match[1] ? parseInt(match[1], 10) : 0;
+    let end = match[2] ? parseInt(match[2], 10) : fileSize - 1;
+    end = Math.min(end, fileSize - 1);
+
+    if (start >= fileSize || start > end) {
+      res.writeHead(416, {
+        ...headers,
+        'Content-Range': `bytes */${fileSize}`,
+      });
+      return res.end();
+    }
+
+    const rangeHeader = `bytes=${start}-${end}`;
+
+    const { stream, contentLength, contentRange } = 
+      await storageService.getFileStream(file, rangeHeader);
+
+    res.writeHead(206, {
       ...headers,
-      'Content-Length': fileSize,
+      'Content-Range': contentRange || `bytes ${start}-${end}/${fileSize}`,
+      'Content-Length': contentLength,
     });
 
-    res.end(fileBuffer);
+    stream.on('error', (error) => {
+      console.error('❌ Stream error:', error);
+      if (!res.headersSent) {
+        res.status(500).json({ success: false, message: 'Stream failed' });
+      } else {
+        res.destroy(error);
+      }
+    });
 
-    console.log(
-      '✅ Video streamed securely:',
-      fileId,
-      'Size:',
-      fileSize
-    );
+    stream.pipe(res);
+
+    console.log(`✅ Video streamed: ${start}-${end}/${fileSize}`);
+
   } catch (error) {
-    console.error('❌ Stream video error:', error);
-
+    console.error('❌ Stream error:', error);
     if (!res.headersSent) {
       return res.status(500).json({
         success: false,
-        message:
-          error.message || 'Failed to stream video',
+        message: error.message || 'Failed to stream',
       });
     }
-
-    res.end();
+    if (!res.destroyed) res.destroy(error);
   }
 };
 

@@ -13,9 +13,10 @@ import path from 'path';
 import crypto from 'crypto';
 import { config } from '../config/env.js';
 import { File } from '../models/File.model.js';
+import { extractPortalId } from '../utils/portalHelpers.js';
 
 // ============================================================
-// ✅ مزود التخزين المحلي (Local Storage)
+// ✅ مزود التخزين المحلي (Local Storage) — مع دعم Range
 // ============================================================
 class LocalStorageProvider {
   constructor() {
@@ -87,17 +88,73 @@ class LocalStorageProvider {
     return fs.readFileSync(fullPath);
   }
 
-  async getFileStream(key) {
+  // ✅ ✅ getFileStream مع دعم Range كامل
+  async getFileStream(key, range = null) {
     const fullPath = this.getFullPath(key);
     if (!fs.existsSync(fullPath)) {
       throw new Error(`File not found on disk: ${key}`);
     }
-    return fs.createReadStream(fullPath);
+
+    const fileSize = fs.statSync(fullPath).size;
+
+    // بدون Range → الملف كاملاً
+    if (!range) {
+      return {
+        stream: fs.createReadStream(fullPath),
+        contentLength: fileSize,
+        contentRange: null,
+        acceptRanges: 'bytes',
+      };
+    }
+
+    // ✅ مع Range
+    const match = range.match(/^bytes=(\d*)-(\d*)$/);
+    if (!match) {
+      throw new Error('Invalid Range header');
+    }
+
+    const startString = match[1];
+    const endString = match[2];
+
+    let start;
+    let end;
+
+    // bytes=-N
+    if (!startString && endString) {
+      const suffixLength = parseInt(endString, 10);
+      start = Math.max(fileSize - suffixLength, 0);
+      end = fileSize - 1;
+    }
+    // bytes=N-
+    else if (startString && !endString) {
+      start = parseInt(startString, 10);
+      end = fileSize - 1;
+    }
+    // bytes=N-M
+    else if (startString && endString) {
+      start = parseInt(startString, 10);
+      end = parseInt(endString, 10);
+    } else {
+      throw new Error('Invalid Range header');
+    }
+
+    end = Math.min(end, fileSize - 1);
+
+    if (start < 0 || end < 0 || start >= fileSize || start > end) {
+      throw new Error('Range Not Satisfiable');
+    }
+
+    return {
+      stream: fs.createReadStream(fullPath, { start, end }),
+      contentLength: end - start + 1,
+      contentRange: `bytes ${start}-${end}/${fileSize}`,
+      acceptRanges: 'bytes',
+    };
   }
 }
 
 // ============================================================
-// ✅ مزود تخزين R2 (Cloudflare) - مُحسَّن بالكامل
+// ✅ مزود تخزين R2 (Cloudflare) — مع دعم Range كامل
 // ============================================================
 class R2StorageProvider {
   constructor() {
@@ -114,44 +171,22 @@ class R2StorageProvider {
     this.publicUrl = config.r2.publicUrl;
   }
 
-  // ✅ تنظيف المفتاح من الأحرف غير القابلة للقراءة
+  // ✅ تنظيف المفتاح
   sanitizeKey(key) {
     if (!key) return key;
-    
-    // إزالة الأحرف غير القابلة للطباعة
+
     let cleaned = key.replace(/[^\x20-\x7E\u0600-\u06FF]/g, '');
-    
-    // توحيد المسافات
     cleaned = cleaned.replace(/\s+/g, ' ');
-    
-    // إزالة المسافات من البداية والنهاية
     cleaned = cleaned.trim();
-    
+
     return cleaned;
   }
 
-  // ✅ إنشاء مفتاح آمن للتخزين
-  generateSafeKey(portalId, accountId, originalName, category, timestamp) {
-    const extension = path.extname(originalName);
-    const baseName = path.basename(originalName, extension);
-    
-    // ✅ استخدام encodeURIComponent لتشفير الأحرف العربية
-    const encodedName = encodeURIComponent(baseName).substring(0, 100);
-    const random = crypto.randomBytes(8).toString('hex');
-    const time = timestamp || Date.now();
-    
-    // ✅ بناء مفتاح آمن
-    return `portals/${portalId}/accounts/${accountId}/${category}/${time}-${random}-${encodedName}${extension}`;
-  }
-
   async upload(file, key, metadata = {}) {
-    // ✅ تنظيف المفتاح
     const cleanKey = this.sanitizeKey(key);
-    
+
     console.log('📤 Uploading to R2:');
-    console.log('  - Original key:', key);
-    console.log('  - Clean key:', cleanKey);
-    console.log('  - Original name:', file.originalname);
+    console.log('  - Key:', cleanKey);
     console.log('  - Size:', file.size);
 
     const uploadParams = {
@@ -249,533 +284,312 @@ class R2StorageProvider {
     return response.Contents || [];
   }
 
+  // ✅ getFile — يجمع في buffer (للملفات الصغيرة فقط)
   async getFile(key) {
-    // ✅ محاولة عدة طرق للعثور على الملف
-    const strategies = [
-      () => this.tryGetFile(key),                    // المفتاح الأصلي
-      () => this.tryGetFile(this.sanitizeKey(key)), // المفتاح المنظف
-      () => this.tryGetFile(this.decodeKey(key)),   // المفتاح المفكوك ترميزه
-      () => this.tryGetFile(this.encodeKey(key)),   // المفتاح المشفر
-    ];
-
-    let lastError = null;
-
-    for (const strategy of strategies) {
-      try {
-        const result = await strategy();
-        if (result) {
-          return result;
-        }
-      } catch (error) {
-        lastError = error;
-        console.log(`⚠️ Strategy failed:`, error.message);
-      }
-    }
-
-    throw lastError || new Error(`File not found: ${key}`);
-  }
-
-  async tryGetFile(key) {
-    if (!key) return null;
-    
-    const cleanKey = this.sanitizeKey(key);
-    console.log('📂 Trying key:', cleanKey);
-
-    try {
-      const command = new GetObjectCommand({
-        Bucket: this.bucket,
-        Key: cleanKey,
-      });
-      
-      const response = await this.client.send(command);
-      
-      const chunks = [];
-      for await (const chunk of response.Body) {
-        chunks.push(chunk);
-      }
-      return Buffer.concat(chunks);
-    } catch (error) {
-      if (error.name === 'NotFound' || error.Code === 'NotFound') {
-        return null;
-      }
-      throw error;
-    }
-  }
-
-  decodeKey(key) {
-    try {
-      return decodeURIComponent(key);
-    } catch {
-      return key;
-    }
-  }
-
-  encodeKey(key) {
-    try {
-      return encodeURIComponent(key);
-    } catch {
-      return key;
-    }
-  }
-
-  async getFileStream(key) {
     const cleanKey = this.sanitizeKey(key);
     const command = new GetObjectCommand({
       Bucket: this.bucket,
       Key: cleanKey,
     });
-    
+
     const response = await this.client.send(command);
-    return response.Body;
+
+    const chunks = [];
+    for await (const chunk of response.Body) {
+      chunks.push(chunk);
+    }
+    return Buffer.concat(chunks);
+  }
+
+  // ============================================================
+  // ✅ ✅ getFileStream — دعم Range كامل (الحل الجذري)
+  // ============================================================
+  async getFileStream(key, range = null) {
+    const cleanKey = this.sanitizeKey(key);
+
+    const commandParams = {
+      Bucket: this.bucket,
+      Key: cleanKey,
+    };
+
+    // ✅ إضافة Range إذا تم توفيره
+    if (range) {
+      commandParams.Range = range;
+    }
+
+    const command = new GetObjectCommand(commandParams);
+    const response = await this.client.send(command);
+
+    // ✅ R2/S3 يرجع ContentRange عند طلب Range
+    return {
+      stream: response.Body,
+      contentLength: response.ContentLength,
+      contentRange: response.ContentRange || null,
+      acceptRanges: response.AcceptRanges || 'bytes',
+    };
   }
 }
 
 // ============================================================
-// ✅ خدمة التخزين الرئيسية - مُحسَّنة بالكامل
+// ✅ خدمة التخزين الرئيسية — موحدة وآمنة
 // ============================================================
 class StorageService {
   constructor() {
     const useR2 = config.r2 && config.r2.endpoint && config.r2.accessKey && config.r2.secretKey;
-    
-    this.provider = useR2 
-      ? new R2StorageProvider() 
+
+    this.provider = useR2
+      ? new R2StorageProvider()
       : new LocalStorageProvider();
-    
+
     this.providerType = useR2 ? 'r2' : 'local';
     console.log(`📁 Storage provider: ${this.providerType.toUpperCase()}`);
   }
 
-  // ✅ إنشاء مفتاح آمن للتخزين
+  // ✅ إنشاء مفتاح آمن
   generateKey(portalId, accountId, originalName, category = 'general') {
     const timestamp = Date.now();
     const extension = path.extname(originalName);
     const baseName = path.basename(originalName, extension);
-    
-    // ✅ استخدام encodeURIComponent للأحرف العربية
+
     const encodedName = encodeURIComponent(baseName).substring(0, 100);
     const random = crypto.randomBytes(8).toString('hex');
-    
+
     return `portals/${portalId}/accounts/${accountId}/${category}/${timestamp}-${random}-${encodedName}${extension}`;
   }
-async uploadFile(
-  file,
-  portalId,
-  accountId,
-  category,
-  requestId = null,
-  metadata = {}
-) {
-  if (!file) {
-    throw new Error('File is required');
+
+  // ✅ رفع ملف
+  async uploadFile(file, portalId, accountId, category, requestId = null, metadata = {}) {
+    if (!file) throw new Error('File is required');
+    if (!portalId) throw new Error('Portal context is required');
+    if (!accountId) throw new Error('Account ID is required');
+
+    console.log('📤 Uploading file:');
+    console.log('  - Original name:', file.originalname);
+    console.log('  - Portal:', portalId);
+    console.log('  - Account:', accountId);
+    console.log('  - Category:', category);
+
+    const key = this.generateKey(portalId, accountId, file.originalname, category);
+
+    await this.provider.upload(file, key, metadata);
+
+    const fileRecord = new File({
+      portalId,
+      accountId,
+      requestId,
+      originalName: file.originalname,
+      storageKey: key,
+      mimeType: file.mimetype,
+      size: file.size,
+      category,
+      storageProvider: this.providerType,
+      visibility: 'private',
+      isEncrypted: false,
+      metadata: {
+        ...metadata,
+        uploadDate: new Date(),
+        originalKey: key,
+      },
+    });
+
+    await fileRecord.save();
+
+    return {
+      file: fileRecord,
+      key,
+      provider: this.providerType,
+    };
   }
 
-  if (!portalId) {
-    throw new Error('Portal context is required');
+  // ✅ الحصول على رابط الملف
+  async getFileUrl(fileId, account, expiresIn = 3600, portalId = null) {
+    if (!account) throw new Error('Authentication required');
+    if (!portalId) throw new Error('Portal context is required');
+
+    const fileRecord = await File.findOne({
+      _id: fileId,
+      portalId,
+      isDeleted: { $ne: true },
+    });
+
+    if (!fileRecord) throw new Error('File not found');
+
+    if (!this.canAccessFile(fileRecord, account, portalId)) {
+      throw new Error('Access denied to this file');
+    }
+
+    return await this.provider.getUrl(fileRecord.storageKey, expiresIn);
   }
 
-  if (!accountId) {
-    throw new Error('Account ID is required');
-  }
-
-  console.log('📤 Uploading file:');
-  console.log('  - Original name:', file.originalname);
-  console.log('  - Portal:', portalId);
-  console.log('  - Account:', accountId);
-  console.log('  - Category:', category);
-
-  // استخدام مفتاح آمن مرتبط بالـPortal والحساب
-  const key = this.generateKey(
-    portalId,
-    accountId,
-    file.originalname,
-    category
-  );
-
-  console.log('  - Generated key:', key);
-
-  await this.provider.upload(
-    file,
-    key,
-    metadata
-  );
-
-  const fileRecord = new File({
-    portalId,
-    accountId,
-    requestId,
-    originalName: file.originalname,
-    storageKey: key,
-    mimeType: file.mimetype,
-    size: file.size,
-    category,
-    storageProvider: this.providerType,
-    visibility: 'private',
-    isEncrypted: false,
-    metadata: {
-      ...metadata,
-      uploadDate: new Date(),
-      originalKey: key,
-    },
-  });
-
-  await fileRecord.save();
-
-  return {
-    file: fileRecord,
-    key,
-    provider: this.providerType,
-  };
-}
-
-  // ✅ الحصول على رابط الملف مع التحقق من البوابة
-async getFileUrl(fileId, account, expiresIn = 3600, portalId = null) {
-  if (!account) {
-    throw new Error('Authentication required');
-  }
-
-  if (!portalId) {
-    throw new Error('Portal context is required');
-  }
-
-  const fileRecord = await File.findOne({
-    _id: fileId,
-    portalId,
-    isDeleted: { $ne: true },
-  });
-
-  if (!fileRecord) {
-    throw new Error('File not found');
-  }
-
-  if (!this.canAccessFile(fileRecord, account, portalId)) {
-    throw new Error('Access denied to this file');
-  }
-
-  return await this.provider.getUrl(
-    fileRecord.storageKey,
-    expiresIn
-  );
-}
-
-// الحصول على محتوى الملف
-async getFile(fileRecord) {
-  try {
+  // ✅ الحصول على محتوى الملف (buffer)
+  async getFile(fileRecord) {
     console.log('📂 Getting file from storage:', fileRecord._id);
     console.log('  - Storage key:', fileRecord.storageKey);
     console.log('  - Provider:', this.providerType);
 
     return await this.provider.getFile(fileRecord.storageKey);
-  } catch (error) {
-    console.error('❌ Get file error:', error.message);
-
-    if (
-      error.message.includes('not found') ||
-      error.Code === 'NoSuchKey'
-    ) {
-      console.log('🔄 Attempting to fix storage key...');
-
-      const fixedKey = await this.tryFixKey(fileRecord);
-
-      if (fixedKey) {
-        console.log('✅ Found file with fixed key:', fixedKey);
-
-        fileRecord.storageKey = fixedKey;
-        await fileRecord.save();
-
-        return await this.provider.getFile(fixedKey);
-      }
-    }
-
-    throw error;
-  }
-}
-
-  // ✅ محاولة إصلاح المفتاح التالف
-  async tryFixKey(fileRecord) {
-    const strategies = [
-      // 1. تنظيف المفتاح
-      () => fileRecord.storageKey.replace(/[^\x20-\x7E\u0600-\u06FF]/g, '').trim(),
-      
-      // 2. محاولة فك الترميز
-      () => {
-        try {
-          return decodeURIComponent(fileRecord.storageKey);
-        } catch {
-          return null;
-        }
-      },
-      
-      // 3. محاولة تشفير المفتاح
-      () => {
-        try {
-          return encodeURIComponent(fileRecord.storageKey);
-        } catch {
-          return null;
-        }
-      },
-      
-      // 4. البحث عن الملف باستخدام الاسم الأصلي
-      async () => {
-        const keyParts = fileRecord.storageKey.split('/');
-        const fileName = keyParts[keyParts.length - 1];
-        const basePath = keyParts.slice(0, -1).join('/');
-        
-        if (!basePath || !fileName) return null;
-        
-        // البحث عن ملفات في نفس المجلد
-        const files = await this.provider.list(basePath);
-        for (const file of files) {
-          if (file.Key && file.Key.includes(fileName.split('-').slice(0, -1).join('-'))) {
-            return file.Key;
-          }
-        }
-        return null;
-      },
-    ];
-
-    for (const strategy of strategies) {
-      try {
-        let result;
-        if (typeof strategy === 'function') {
-          result = await strategy();
-        }
-        if (result && result !== fileRecord.storageKey) {
-          // التحقق من وجود الملف بالمفتاح الجديد
-          const exists = await this.provider.exists(result);
-          if (exists) {
-            return result;
-          }
-        }
-      } catch (error) {
-        console.log('⚠️ Strategy failed:', error.message);
-      }
-    }
-
-    return null;
   }
 
-  // ✅ الحصول على تدفق الملف
-  async getFileStream(fileRecord) {
+  // ============================================================
+  // ✅ ✅ getFileStream — موحدة مع دعم Range (الحل الجذري)
+  // ============================================================
+  async getFileStream(fileRecord, range = null) {
+    console.log('📂 Getting file stream:', {
+      fileId: fileRecord._id,
+      provider: this.providerType,
+      range: range || 'full',
+    });
+
     try {
-      console.log('📂 Getting file stream from storage:', fileRecord._id);
-      return await this.provider.getFileStream(fileRecord.storageKey);
+      const result = await this.provider.getFileStream(
+        fileRecord.storageKey,
+        range
+      );
+
+      console.log('✅ Stream ready:', {
+        contentLength: result.contentLength,
+        contentRange: result.contentRange,
+      });
+
+      return result;
     } catch (error) {
-      console.error('❌ Get file stream error:', error);
+      console.error('❌ Get file stream error:', error.message);
       throw error;
     }
   }
-async deleteFile(fileId, account, portalId = null) {
-  if (!account) {
-    throw new Error('Authentication required');
-  }
 
-  if (!fileId) {
-    throw new Error('File ID is required');
-  }
+  // ✅ حذف ملف
+  async deleteFile(fileId, account, portalId = null) {
+    if (!account) throw new Error('Authentication required');
+    if (!fileId) throw new Error('File ID is required');
+    if (!portalId) throw new Error('Portal context is required');
 
-  if (!portalId) {
-    throw new Error('Portal context is required');
-  }
+    const fileRecord = await File.findOne({
+      _id: fileId,
+      portalId,
+      isDeleted: { $ne: true },
+    });
 
-  const fileRecord = await File.findOne({
-    _id: fileId,
-    portalId,
-    isDeleted: { $ne: true },
-  });
+    if (!fileRecord) throw new Error('File not found');
 
-  if (!fileRecord) {
-    throw new Error('File not found');
-  }
+    const filePortalId = extractPortalId(fileRecord.portalId);
+    const accountPortalId = extractPortalId(account.portalId);
 
-  const filePortalId = fileRecord.portalId?.toString();
+    if (!filePortalId) throw new Error('File portal context is missing');
 
-  if (!filePortalId) {
-    throw new Error('File portal context is missing');
-  }
-
-  const accountPortalId =
-    account.portalId?._id?.toString?.() ||
-    account.portalId?.toString?.() ||
-    null;
-
-  // 🔐 SUPER ADMIN:
-  // Must operate within the explicitly selected portal.
-  if (account.role === 'super_admin') {
-    if (filePortalId !== portalId.toString()) {
-      throw new Error(
-        'You are not authorized to access this portal'
-      );
-    }
-  } else {
-    // 🔐 All other roles must remain inside their assigned portal.
-    if (!accountPortalId) {
-      throw new Error(
-        'Your account is not assigned to a portal'
-      );
+    // SUPER ADMIN
+    if (account.role === 'super_admin') {
+      if (filePortalId !== extractPortalId(portalId)) {
+        throw new Error('You are not authorized to access this portal');
+      }
+    } else {
+      if (!accountPortalId) {
+        throw new Error('Your account is not assigned to a portal');
+      }
+      if (filePortalId !== accountPortalId) {
+        throw new Error('You are not authorized to access this portal');
+      }
+      if (extractPortalId(portalId) !== accountPortalId) {
+        throw new Error('You are not authorized to access this portal');
+      }
     }
 
-    if (filePortalId !== accountPortalId) {
-      throw new Error(
-        'You are not authorized to access this portal'
-      );
+    const isOwner =
+      fileRecord.accountId?.toString() === account._id.toString();
+    const isPortalAdmin = account.role === 'portal_admin';
+
+    if (!isOwner && !isPortalAdmin && account.role !== 'super_admin') {
+      throw new Error('You do not have permission to delete this file');
     }
 
-    if (
-      portalId.toString() !== accountPortalId.toString()
-    ) {
-      throw new Error(
-        'You are not authorized to access this portal'
-      );
+    await this.provider.delete(fileRecord.storageKey);
+
+    fileRecord.isDeleted = true;
+    fileRecord.deletedAt = new Date();
+    fileRecord.deletedBy = account._id;
+
+    await fileRecord.save();
+
+    return true;
+  }
+
+  // ✅ ✅ canAccessFile — موحدة وآمنة (بدون مشاكل populated)
+  canAccessFile(file, account, portalId = null) {
+    if (!file || !account) return false;
+
+    const filePortalId = extractPortalId(file.portalId);
+    if (!filePortalId) return false;
+
+    // SUPER ADMIN
+    if (account.role === 'super_admin') {
+      if (!portalId) return false;
+      return filePortalId === extractPortalId(portalId);
     }
-  }
 
-  const isOwner =
-    fileRecord.accountId?.toString() ===
-    account._id.toString();
+    // باقي الأدوار
+    const accountPortalId = extractPortalId(account.portalId);
+    if (!accountPortalId) return false;
 
-  const isPortalAdmin =
-    account.role === 'portal_admin';
+    if (filePortalId !== accountPortalId) return false;
 
-  // Owner can delete their own file.
-  // Portal admin can delete files within their own portal.
-  // Super admin can delete files within the explicitly selected portal.
-  if (
-    !isOwner &&
-    !isPortalAdmin &&
-    account.role !== 'super_admin'
-  ) {
-    throw new Error(
-      'You do not have permission to delete this file'
-    );
-  }
+    if (portalId && extractPortalId(portalId) !== accountPortalId) {
+      return false;
+    }
 
-  await this.provider.delete(fileRecord.storageKey);
+    // Public files
+    if (file.visibility === 'public') return true;
 
-  fileRecord.isDeleted = true;
-  fileRecord.deletedAt = new Date();
-  fileRecord.deletedBy = account._id;
+    // Owner
+    if (file.accountId?.toString() === account._id.toString()) return true;
 
-  await fileRecord.save();
+    // Portal admin
+    if (account.role === 'portal_admin') return true;
 
-  return true;
-}
-canAccessFile(file, account, portalId = null) {
-  if (!file || !account) {
+    // Super admin (already checked above, لكن للاحتياط)
+    if (account.role === 'super_admin') return true;
+
+    // Non-encrypted
+    if (!file.isEncrypted) return true;
+
     return false;
   }
 
-  const filePortalId = file.portalId?.toString?.() || file.portalId;
+  // ✅ الحصول على معلومات الملف
+  async getFileInfo(fileId, portalId = null) {
+    if (!portalId) throw new Error('Portal context is required');
 
-  if (!filePortalId) {
-    return false;
+    const fileRecord = await File.findOne({
+      _id: fileId,
+      portalId,
+      isDeleted: { $ne: true },
+    });
+
+    if (!fileRecord) throw new Error('File not found');
+
+    return {
+      id: fileRecord._id,
+      name: fileRecord.originalName,
+      size: fileRecord.size,
+      mimeType: fileRecord.mimeType,
+      category: fileRecord.category,
+      visibility: fileRecord.visibility,
+      storageProvider: fileRecord.storageProvider,
+      createdAt: fileRecord.createdAt,
+      uploadedBy: fileRecord.accountId,
+      requestId: fileRecord.requestId,
+      isEncrypted: fileRecord.isEncrypted,
+      storageKey: fileRecord.storageKey,
+    };
   }
 
-  // 🔐 SUPER ADMIN:
-  // Access is allowed only for the explicitly selected portal.
-  if (account.role === 'super_admin') {
-    if (!portalId) {
-      return false;
-    }
-
-    if (filePortalId !== portalId.toString()) {
-      return false;
-    }
-  } else {
-    // 🔐 All other roles are restricted to their own portal.
-    const accountPortalId =
-      account.portalId?._id?.toString?.()
-      || account.portalId?.toString?.()
-      || account.portalId;
-
-    if (!accountPortalId) {
-      return false;
-    }
-
-    if (filePortalId !== accountPortalId) {
-      return false;
-    }
-
-    // If a portal was explicitly supplied, it must
-    // also match the account's assigned portal.
-    if (
-      portalId &&
-      portalId.toString() !== accountPortalId.toString()
-    ) {
-      return false;
-    }
-  }
-
-  // Public files are accessible within the authorized portal.
-  if (file.visibility === 'public') {
-    return true;
-  }
-
-  // Owner can access their own file.
-  if (
-    file.accountId?.toString() ===
-    account._id.toString()
-  ) {
-    return true;
-  }
-
-  // Portal admin can access files within their own portal.
-  if (account.role === 'portal_admin') {
-    return true;
-  }
-
-  // Super admin can access files within the selected portal.
-  if (account.role === 'super_admin') {
-    return true;
-  }
-
-  // Existing behavior for non-encrypted files.
-  if (!file.isEncrypted) {
-    return true;
-  }
-
-  return false;
-}
-// ✅ الحصول على معلومات الملف مع التحقق من البوابة
-async getFileInfo(fileId, portalId = null) {
-  if (!portalId) {
-    throw new Error('Portal context is required');
-  }
-
-  const fileRecord = await File.findOne({
-    _id: fileId,
-    portalId,
-    isDeleted: { $ne: true },
-  });
-
-  if (!fileRecord) {
-    throw new Error('File not found');
-  }
-
-  return {
-    id: fileRecord._id,
-    name: fileRecord.originalName,
-    size: fileRecord.size,
-    mimeType: fileRecord.mimeType,
-    category: fileRecord.category,
-    visibility: fileRecord.visibility,
-    storageProvider: fileRecord.storageProvider,
-    createdAt: fileRecord.createdAt,
-    uploadedBy: fileRecord.accountId,
-    requestId: fileRecord.requestId,
-    isEncrypted: fileRecord.isEncrypted,
-    storageKey: fileRecord.storageKey,
-  };
-}
   // ✅ التحقق من وجود الملف
   async fileExists(fileId) {
     const fileRecord = await File.findById(fileId);
-    if (!fileRecord) {
-      return false;
-    }
+    if (!fileRecord) return false;
     return await this.provider.exists(fileRecord.storageKey);
   }
 
-  // ✅ إصلاح المفاتيح التالفة في قاعدة البيانات
+  // ✅ إصلاح المفاتيح التالفة
   async fixCorruptedKeys() {
     const files = await File.find({
       storageKey: { $regex: /[^\x20-\x7E\u0600-\u06FF]/ },
@@ -795,7 +609,7 @@ async getFileInfo(fileId, portalId = null) {
           console.log(`🔄 Fixing key for file ${file._id}:`);
           console.log(`   Old: ${file.storageKey}`);
           console.log(`   New: ${cleanKey}`);
-          
+
           file.storageKey = cleanKey;
           await file.save();
           fixedCount++;
