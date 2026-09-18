@@ -321,12 +321,18 @@ export const uploadFile = async (req, res) => {
       try {
         console.log('🎬 Extracting thumbnail for video...');
 
-        thumbnailFile = await thumbnailService.extractAndUpload(
-          req.file.buffer,
-          portalId,
-          accountId,
-          { width: 640, height: 360 }
-        );
+        const thumbnailResult = await thumbnailService.extractAndUpload(
+  req.file.buffer,
+  portalId,
+  accountId,
+  { width: 640, height: 360 }
+);
+
+thumbnailFile = thumbnailResult;
+
+// ✅ احفظ المدة في Response
+const videoDuration = thumbnailResult.duration || 0;
+console.log('📊 Video duration:', videoDuration, 'seconds');
 
         console.log('✅ Thumbnail created:', thumbnailFile._id);
       } catch (thumbError) {
@@ -344,6 +350,8 @@ export const uploadFile = async (req, res) => {
         file,
         thumbnail: thumbnailFile,
         thumbnailId: thumbnailFile?._id,
+        duration: videoDuration,  // ← ✅ أضف
+
       },
       message: 'File uploaded successfully',
     });

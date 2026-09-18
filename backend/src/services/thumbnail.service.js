@@ -5,9 +5,12 @@ import path from 'path';
 import fs from 'fs';
 import os from 'os';
 import storageService from './storage.service.js';
+import ffprobeInstaller from '@ffprobe-installer/ffprobe';
 
 // ✅ إعداد مسار ffmpeg من الحزمة المثبتة
 ffmpeg.setFfmpegPath(ffmpegInstaller.path);
+
+ffmpeg.setFfprobePath(ffprobeInstaller.path);
 
 class ThumbnailService {
   /**
@@ -188,36 +191,87 @@ class ThumbnailService {
    * استخراج + رفع إلى R2
    */
   async extractAndUpload(videoBuffer, portalId, accountId, options = {}) {
+  try {
+    // 1. استخراج الصورة
+    const thumbnailBuffer = await this.extractThumbnail(videoBuffer, options);
+
+    // 2. استخراج المدة الحقيقية
+    let duration = 0;
     try {
-      // 1. استخراج الصورة
-      const thumbnailBuffer = await this.extractThumbnail(videoBuffer, options);
-
-      // 2. رفعها إلى R2
-      const thumbnailFile = await storageService.uploadFile(
-        {
-          buffer: thumbnailBuffer,
-          originalname: `thumb-${Date.now()}.jpg`,
-          mimetype: 'image/jpeg',
-          size: thumbnailBuffer.length,
-        },
-        portalId,
-        accountId,
-        'thumbnail',
-        null,
-        {
-          generatedAt: new Date().toISOString(),
-        }
-      );
-
-      console.log('✅ Thumbnail uploaded to R2:', thumbnailFile.file._id);
-
-      return thumbnailFile.file;
-    } catch (error) {
-      console.error('❌ extractAndUpload failed:', error);
-      throw error;
+      duration = await this.getVideoDuration(videoBuffer);
+      console.log('📊 Real duration:', duration, 'seconds');
+    } catch (err) {
+      console.warn('⚠️ Could not get duration:', err.message);
     }
+
+    // 3. رفع الصورة إلى R2
+    const thumbnailFile = await storageService.uploadFile(
+      {
+        buffer: thumbnailBuffer,
+        originalname: `thumb-${Date.now()}.jpg`,
+        mimetype: 'image/jpeg',
+        size: thumbnailBuffer.length,
+      },
+      portalId,
+      accountId,
+      'thumbnail',
+      null,
+      {
+        generatedAt: new Date().toISOString(),
+        duration: duration.toString(),
+      }
+    );
+
+    console.log('✅ Thumbnail uploaded to R2:', thumbnailFile.file._id);
+    console.log('✅ Duration extracted:', duration);
+
+    return {
+      ...thumbnailFile.file.toObject(),
+      duration,
+    };
+  } catch (error) {
+    console.error('❌ extractAndUpload failed:', error);
+    throw error;
   }
 }
 
+// ✅ دالة جديدة لاستخراج المدة
+async getVideoDuration(videoBuffer) {
+  const tempDir = os.tmpdir();
+  const tempVideoPath = path.join(
+    tempDir,
+    `video-duration-${Date.now()}-${Math.random().toString(36).substr(2, 9)}.mp4`
+  );
+
+  try {
+    fs.writeFileSync(tempVideoPath, videoBuffer);
+
+    return new Promise((resolve, reject) => {
+      ffmpeg.ffprobe(tempVideoPath, (err, metadata) => {
+        try {
+          if (fs.existsSync(tempVideoPath)) {
+            fs.unlinkSync(tempVideoPath);
+          }
+        } catch {}
+
+        if (err) {
+          reject(err);
+          return;
+        }
+
+        const duration = metadata.format?.duration || 0;
+        resolve(Math.round(parseFloat(duration)));
+      });
+    });
+  } catch (error) {
+    try {
+      if (fs.existsSync(tempVideoPath)) {
+        fs.unlinkSync(tempVideoPath);
+      }
+    } catch {}
+    throw error;
+  }
+}  
+}
 export const thumbnailService = new ThumbnailService();
 export default thumbnailService;

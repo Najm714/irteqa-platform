@@ -308,7 +308,7 @@ const AdminExplanations: React.FC = () => {
 const uploadFile = async (
   file: File,
   category: string
-): Promise<{ fileId: string; thumbnailId?: string }> => {
+): Promise<{ fileId: string; thumbnailId?: string; duration?: number }> => {
   const formDataFile = new FormData();
   formDataFile.append('file', file);
   formDataFile.append('category', category);
@@ -321,15 +321,14 @@ const uploadFile = async (
   });
 
   const data = await response.json();
-
   if (!data.success) {
     throw new Error(data.message || 'فشل رفع الملف');
   }
 
-  // ✅ إرجاع كائن يحوي fileId + thumbnailId
   return {
     fileId: data.data.file._id,
     thumbnailId: data.data.thumbnailId || null,
+    duration: data.data.duration || 0,  // ← ✅ أضف
   };
 };
 
@@ -360,6 +359,10 @@ if (selectedFile && activeTab === 'videos') {
   if (uploadResult.thumbnailId) {
     formData.thumbnail = uploadResult.thumbnailId;
     console.log('✅ thumbnail saved to formData:', uploadResult.thumbnailId);
+  }
+   if (uploadResult.duration) {
+    formData.duration = uploadResult.duration;
+    console.log('📊 Duration set:', uploadResult.duration);
   }
 }
 
