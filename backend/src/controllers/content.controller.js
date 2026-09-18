@@ -184,10 +184,10 @@ export const getVideos = async (req, res) => {
         }
         // fileId (24 hex) — الحالة الشائعة
         else if (/^[0-9a-fA-F]{24}$/.test(raw)) {
-          finalThumbnail =
-            `${baseUrl}/api/files/${raw}/download-direct` +
-            `?portalId=${encodeURIComponent(portalId.toString())}`;
-        }
+  finalThumbnail =
+    `${baseUrl}/api/files/thumbnail/${raw}` +
+    `?portalId=${encodeURIComponent(portalId.toString())}`;
+}
         // مسار محلي
         else {
           finalThumbnail = `${baseUrl}/${raw.replace(/^\/+/, '')}`;

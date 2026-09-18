@@ -9,7 +9,8 @@ import {
   deleteFile,
   getFileInfo,
   reuploadFile,
-  viewFile,        // ✅ مستورد
+  viewFile,
+  getThumbnailPublic,
 } from '../controllers/file.controller.js';
 import { authenticate } from '../middleware/auth.js';
 import { requirePortalContext } from '../middleware/portalContext.js';
@@ -192,7 +193,7 @@ router.get('/specialist', authenticate, requirePortalContext, async (req, res) =
   }
 });
 
-
+router.get('/thumbnail/:id', getThumbnailPublic);
 // ============================================================
 // ✅ جميع المسارات التالية تتطلب مصادقة وسياق بوابة
 // ============================================================

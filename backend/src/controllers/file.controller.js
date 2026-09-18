@@ -10,6 +10,7 @@ import jwt from 'jsonwebtoken';
 import { PDFDocument, rgb, degrees } from 'pdf-lib';
 import { extractPortalId, isSamePortal } from '../utils/portalHelpers.js';
 import thumbnailService from '../services/thumbnail.service.js';
+import mongoose from 'mongoose';
 // ============================================================
 // ✅ دالة مساعدة: هل المستخدم مدير؟
 // ============================================================
@@ -1159,7 +1160,52 @@ export const getSpecialistFiles = async (req, res) => {
     });
   }
 };
+export const getThumbnailPublic = async (req, res) => {
+  try {
+    const { id } = req.params;
+    const portalId = req.query.portalId || req.headers['x-portal-id'];
 
+    if (!portalId) {
+      return res.status(400).json({ success: false, message: 'portalId is required' });
+    }
+
+    if (!mongoose.Types.ObjectId.isValid(id)) {
+      return res.status(400).json({ success: false, message: 'Invalid file ID' });
+    }
+
+    const file = await File.findOne({
+      _id: id,
+      portalId,
+      isDeleted: { $ne: true },
+      category: 'thumbnail',
+    });
+
+    if (!file) {
+      return res.status(404).json({ success: false, message: 'Thumbnail not found' });
+    }
+
+    const { stream, contentLength } = await storageService.getFileStream(file);
+
+    res.setHeader('Content-Type', file.mimeType || 'image/jpeg');
+    res.setHeader('Content-Length', contentLength || file.size);
+    res.setHeader('Cache-Control', 'public, max-age=86400');
+    res.setHeader('Access-Control-Allow-Origin', '*');
+    res.setHeader('Access-Control-Allow-Methods', 'GET, OPTIONS');
+
+    if (req.method === 'OPTIONS') return res.writeHead(204).end();
+
+    stream.on('error', (error) => {
+      if (!res.headersSent) res.status(500).end();
+      else res.destroy(error);
+    });
+
+    stream.pipe(res);
+  } catch (error) {
+    if (!res.headersSent) {
+      res.status(500).json({ success: false, message: error.message });
+    }
+  }
+};
 // ============================================================
 // ✅ تصدير جميع الدوال
 // ============================================================
@@ -1174,4 +1220,5 @@ export default {
   deleteFile,
   reuploadFile,
   getSpecialistFiles,
+  getThumbnailPublic,
 };

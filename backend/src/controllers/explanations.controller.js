@@ -1070,7 +1070,6 @@ export const deleteMaterial = async (req, res) => {
     });
   }
 };
-
 // ============================================================
 // ✅ إدارة الفيديوهات
 // ============================================================
@@ -1099,53 +1098,54 @@ export const getVideos = async (req, res) => {
       .populate('createdBy', 'profile.fullName')
       .sort({ order: 1, createdAt: -1 });
 
-    // ✅ إضافة رابط الفيديو الصحيح
-// ✅ استخدم x-forwarded-proto (بعد trust proxy يعمل تلقائياً)
-// ============================================================
-// إضافة رابط الفيديو مع Portal Context
-// ============================================================
+    const protocol =
+      req.get('x-forwarded-proto')?.split(',')[0]?.trim() ||
+      req.protocol ||
+      'https';
 
-const protocol =
-  req.get('x-forwarded-proto')?.split(',')[0]?.trim() ||
-  req.protocol ||
-  'https';
+    const host = req.get('host');
+    const baseUrl = `${protocol}://${host}`;
 
-const host = req.get('host');
-const baseUrl = `${protocol}://${host}`;
+    const videosWithUrls = videos.map(video => {
+      const videoObj = video.toObject();
 
-if (!portalId) {
-  return res.status(400).json({
-    success: false,
-    message: 'Portal context is required',
-    code: 'PORTAL_ID_REQUIRED',
-  });
-}
+      // Video URL
+      if (video.videoUrl && video.videoUrl.match(/^[0-9a-fA-F]{24}$/)) {
+        videoObj.videoUrl = `${baseUrl}/api/files/${video.videoUrl}/stream-secure?portalId=${encodeURIComponent(portalId.toString())}`;
+      } else if (video.videoUrl) {
+        videoObj.videoUrl = video.videoUrl;
+      } else {
+        videoObj.videoUrl = null;
+      }
 
-const videosWithUrls = videos.map(video => {
-  const videoObj = video.toObject();
+      videoObj.hasValidUrl = !!videoObj.videoUrl;
 
-  if (
-    video.videoUrl &&
-    video.videoUrl.match(/^[0-9a-fA-F]{24}$/)
-  ) {
-    videoObj.videoUrl =
-      `${baseUrl}/api/files/${video.videoUrl}/stream-secure?portalId=${encodeURIComponent(
-        portalId.toString()
-      )}`;
-  } else if (video.videoUrl) {
-    videoObj.videoUrl = video.videoUrl;
-  } else {
-    videoObj.videoUrl = null;
-  }
+      // ✅ Thumbnail URL
+      let finalThumbnail = null;
 
-  videoObj.hasValidUrl = !!videoObj.videoUrl;
+      if (videoObj.thumbnail && videoObj.thumbnail.trim() !== '') {
+        const raw = videoObj.thumbnail.trim();
 
-  if (!videoObj.thumbnail && videoObj.videoUrl) {
-    videoObj.thumbnail = '/default-thumbnail.svg';
-  }
+        if (raw.startsWith('http://') || raw.startsWith('https://')) {
+          finalThumbnail = raw;
+        } else if (/^[0-9a-fA-F]{24}$/.test(raw)) {
+          finalThumbnail = `${baseUrl}/api/files/thumbnail/${raw}?portalId=${encodeURIComponent(portalId.toString())}`;
+        } else {
+          finalThumbnail = `${baseUrl}/${raw.replace(/^\/+/, '')}`;
+        }
+      }
 
-  return videoObj;
-});
+      if (!finalThumbnail) {
+        finalThumbnail = '/default-thumbnail.svg';
+      }
+
+      videoObj.thumbnail = finalThumbnail;
+      videoObj.hasThumbnail = !!finalThumbnail;
+      videoObj.views = Number(videoObj.views) || 0;
+      videoObj.duration = Number(videoObj.duration) || 0;
+
+      return videoObj;
+    });
 
     res.status(200).json({
       success: true,
@@ -1159,7 +1159,6 @@ const videosWithUrls = videos.map(video => {
     });
   }
 };
-
 export const createVideo = async (req, res) => {
   try {
     const portalId = req.portalId || req.headers['x-portal-id'] || req.body.portalId || req.portal?._id;
