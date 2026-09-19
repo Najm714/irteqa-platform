@@ -129,11 +129,10 @@ const VideoSchema = new mongoose.Schema({
     default: null,
   },
 
-  liveRtmpKey: {
-    type: String,
-    default: null,
-    select: false, // لا يُرجع تلقائياً
-  },
+liveRtmpKey: {
+  type: String,
+  default: null,
+},
 
   livePlaybackUrl: {
     type: String,

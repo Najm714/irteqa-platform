@@ -295,12 +295,12 @@ export const getLiveStreamDetails = async (req, res) => {
     const { id } = req.params;
     const accountId = req.accountId;
 
-    const video = await Video.findOne({
-      _id: id,
-      portalId,
-      isLive: true,
-      isDeleted: { $ne: true },
-    });
+const video = await Video.findOne({
+  _id: id,
+  portalId,
+  isLive: true,
+  isDeleted: { $ne: true },
+}).select('+liveRtmpKey');
 
     if (!video) {
       return res.status(404).json({
@@ -346,13 +346,12 @@ export const startLiveStream = async (req, res) => {
     const portalId = req.portalId;
     const accountId = req.accountId;
     const { id } = req.params;
-
-    const video = await Video.findOne({
-      _id: id,
-      portalId,
-      isLive: true,
-      isDeleted: { $ne: true },
-    });
+const video = await Video.findOne({
+  _id: id,
+  portalId,
+  isLive: true,
+  isDeleted: { $ne: true },
+}).select('+liveRtmpKey');
 
     if (!video) {
       return res.status(404).json({
@@ -449,12 +448,12 @@ export const endLiveStream = async (req, res) => {
     const accountId = req.accountId;
     const { id } = req.params;
 
-    const video = await Video.findOne({
-      _id: id,
-      portalId,
-      isLive: true,
-      isDeleted: { $ne: true },
-    });
+const video = await Video.findOne({
+  _id: id,
+  portalId,
+  isLive: true,
+  isDeleted: { $ne: true },
+}).select('+liveRtmpKey');
 
     if (!video) {
       return res.status(404).json({
@@ -531,12 +530,12 @@ export const deleteLiveStream = async (req, res) => {
     const portalId = req.portalId;
     const { id } = req.params;
 
-    const video = await Video.findOne({
-      _id: id,
-      portalId,
-      isLive: true,
-      isDeleted: { $ne: true },
-    });
+const video = await Video.findOne({
+  _id: id,
+  portalId,
+  isLive: true,
+  isDeleted: { $ne: true },
+}).select('+liveRtmpKey');
 
     if (!video) {
       return res.status(404).json({
@@ -732,12 +731,12 @@ export const getLiveStats = async (req, res) => {
   try {
     const portalId = req.portalId;
     const { id } = req.params;
-
-    const video = await Video.findOne({
-      _id: id,
-      portalId,
-      isLive: true,
-    });
+const video = await Video.findOne({
+  _id: id,
+  portalId,
+  isLive: true,
+  isDeleted: { $ne: true },
+}).select('+liveRtmpKey');
 
     if (!video) {
       return res.status(404).json({
