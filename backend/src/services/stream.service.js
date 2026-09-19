@@ -270,63 +270,102 @@ class StreamService {
    * يستخدم /stream/live_inputs (API الحديث)
    */
   async createLiveStream(options = {}) {
-    try {
-      this._isConfigured();
+  try {
+    this._isConfigured();
 
-      console.log('📡 Creating live stream (new API)...');
+    console.log('📡 Creating live stream (new API)...');
 
-      const body = {
-        meta: options.metadata || {},
-        recording: {
-          mode: options.recording !== false ? 'automatic' : 'off',
-          requireSignedURLs: options.requireSignedURLs || false,
-        },
-        preferredProtocol: options.preferredProtocol || 'rtmps',
-      };
+    const body = {
+      meta: options.metadata || {},
+      recording: {
+        mode: options.recording !== false ? 'automatic' : 'off',
+        requireSignedURLs: options.requireSignedURLs || false,
+      },
+      preferredProtocol: options.preferredProtocol || 'rtmps',
+    };
 
-      if (options.creator) {
-        body.creator = options.creator;
+    if (options.creator) {
+      body.creator = options.creator;
+    }
+
+    const response = await fetch(`${this.baseUrl}/live_inputs`, {
+      method: 'POST',
+      headers: this._getHeaders(),
+      body: JSON.stringify(body),
+    });
+
+    const data = await response.json();
+
+    if (!data.success) {
+      console.error('❌ Create live stream failed:', data.errors);
+      throw new Error(
+        data.errors?.[0]?.message || 'Create live stream failed'
+      );
+    }
+
+    const result = data.result;
+    console.log(`✅ Live stream created: ${result.uid}`);
+
+    // ✅ استخراج Stream Key الصحيح
+    const rawKey = result.rtmps?.streamKey || result.rtmp?.streamKey || '';
+    const rtmpKey = this._fixStreamKey(rawKey);
+
+    console.log('📊 Stream Key:');
+    console.log('   - Original length:', rawKey.length);
+    console.log('   - Fixed length:', rtmpKey.length);
+    console.log('   - Has "k":', rawKey.includes('k'));
+
+    return {
+      success: true,
+      uid: result.uid,
+      rtmpUrl: result.rtmps?.url || result.rtmp?.url,
+      rtmpKey: rtmpKey,  // ← ✅ Key صحيح
+      srtUrl: result.srt?.url,
+      srtKey: result.srt?.streamId,
+      playbackUrl:
+        result.playback?.hls ||
+        `https://${this.subdomain}/${result.uid}/manifest/video.m3u8`,
+      status: result.status,
+      recording: result.recording,
+      created: result.created,
+      modified: result.modified,
+      meta: result.meta,
+    };
+  } catch (error) {
+    console.error('❌ Create live stream error:', error);
+    throw new Error(`Create live stream failed: ${error.message}`);
+  }
+}
+
+// ✅ دالة مساعدة لإصلاح Stream Key
+_fixStreamKey(rawKey) {
+  if (!rawKey) return '';
+  
+  // ✅ إذا كان الطول 65 ويحتوي على "k" كفاصل
+  if (rawKey.length === 65 && rawKey.includes('k')) {
+    // احذف أول "k" فقط
+    return rawKey.replace('k', '');
+  }
+  
+  // ✅ إذا كان يحتوي على "k" في أي مكان (وليس فاصل)
+  // جرب استخراج الجزء قبل "k" وبعده
+  if (rawKey.includes('k')) {
+    const parts = rawKey.split('k');
+    if (parts.length === 2) {
+      const [part1, part2] = parts;
+      // ✅ إذا الجزء الأول 32 حرف والثاني 32 حرف → دمج
+      if (part1.length === 32 && part2.length === 32) {
+        return part1 + part2;
       }
-
-      const response = await fetch(`${this.baseUrl}/live_inputs`, {
-        method: 'POST',
-        headers: this._getHeaders(),
-        body: JSON.stringify(body),
-      });
-
-      const data = await response.json();
-
-      if (!data.success) {
-        console.error('❌ Create live stream failed:', data.errors);
-        throw new Error(
-          data.errors?.[0]?.message || 'Create live stream failed'
-        );
+      // ✅ إذا كان الجزء الأول 24 حرف والثاني 32 → استخدم الأول فقط
+      if (part1.length === 24 && part2.length === 32) {
+        return part2;
       }
-
-      const result = data.result;
-      console.log(`✅ Live stream created: ${result.uid}`);
-
-      return {
-        success: true,
-        uid: result.uid,
-        rtmpUrl: result.rtmps?.url || result.rtmp?.url,
-        rtmpKey: result.rtmps?.streamKey || result.rtmp?.streamKey,
-        srtUrl: result.srt?.url,
-        srtKey: result.srt?.streamId,
-        playbackUrl:
-          result.playback?.hls ||
-          `https://${this.subdomain}/${result.uid}/manifest/video.m3u8`,
-        status: result.status,
-        recording: result.recording,
-        created: result.created,
-        modified: result.modified,
-        meta: result.meta,
-      };
-    } catch (error) {
-      console.error('❌ Create live stream error:', error);
-      throw new Error(`Create live stream failed: ${error.message}`);
     }
   }
+  
+  return rawKey;
+}
 
   /**
    * ✅ جلب تفاصيل بث مباشر
