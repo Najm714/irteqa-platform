@@ -313,13 +313,12 @@ class StreamService {
     console.log('📊 Stream Key:');
     console.log('   - Original length:', rawKey.length);
     console.log('   - Fixed length:', rtmpKey.length);
-    console.log('   - Has "k":', rawKey.includes('k'));
 
     return {
       success: true,
       uid: result.uid,
       rtmpUrl: result.rtmps?.url || result.rtmp?.url,
-      rtmpKey: rtmpKey,  // ← ✅ Key صحيح
+      rtmpKey: rtmpKey,
       srtUrl: result.srt?.url,
       srtKey: result.srt?.streamId,
       playbackUrl:
@@ -337,29 +336,22 @@ class StreamService {
   }
 }
 
-// ✅ دالة مساعدة لإصلاح Stream Key
+// ✅ دالة إصلاح Stream Key
 _fixStreamKey(rawKey) {
   if (!rawKey) return '';
   
-  // ✅ إذا كان الطول 65 ويحتوي على "k" كفاصل
+  // ✅ احذف "k" الفاصل
   if (rawKey.length === 65 && rawKey.includes('k')) {
-    // احذف أول "k" فقط
     return rawKey.replace('k', '');
   }
   
-  // ✅ إذا كان يحتوي على "k" في أي مكان (وليس فاصل)
-  // جرب استخراج الجزء قبل "k" وبعده
+  // ✅ معالجة الحالات الأخرى
   if (rawKey.includes('k')) {
     const parts = rawKey.split('k');
     if (parts.length === 2) {
       const [part1, part2] = parts;
-      // ✅ إذا الجزء الأول 32 حرف والثاني 32 حرف → دمج
       if (part1.length === 32 && part2.length === 32) {
         return part1 + part2;
-      }
-      // ✅ إذا كان الجزء الأول 24 حرف والثاني 32 → استخدم الأول فقط
-      if (part1.length === 24 && part2.length === 32) {
-        return part2;
       }
     }
   }
