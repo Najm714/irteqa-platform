@@ -1182,7 +1182,12 @@ const AdminDashboard: React.FC = () => {
       icon: <FaFileUpload />,
       color: 'teal',
     },
-
+{
+  to: '/admin/appearance/hero',
+  label: 'إدارة الصفحة الرئيسية',
+  icon: <FaLayerGroup />,
+  color: 'purple',
+},
     {
       to: '/admin-reports',
       label: 'التقارير',

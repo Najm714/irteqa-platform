@@ -1168,52 +1168,108 @@ export const getSpecialistFiles = async (req, res) => {
     });
   }
 };
+// ============================================================
+// ✅ endpoint عام للملفات العامة (بدون auth)
+// يشمل: الصور المصغرة + صور Hero + فيديوهات Hero
+// ============================================================
 export const getThumbnailPublic = async (req, res) => {
   try {
     const { id } = req.params;
     const portalId = req.query.portalId || req.headers['x-portal-id'];
 
     if (!portalId) {
-      return res.status(400).json({ success: false, message: 'portalId is required' });
+      return res.status(400).json({
+        success: false,
+        message: 'portalId is required',
+      });
     }
 
     if (!mongoose.Types.ObjectId.isValid(id)) {
-      return res.status(400).json({ success: false, message: 'Invalid file ID' });
+      return res.status(400).json({
+        success: false,
+        message: 'Invalid file ID',
+      });
     }
+
+    // ✅ الفئات المسموحة للعرض العام
+    const publicCategories = [
+      'thumbnail',
+      'hero-image',
+      'hero-video',
+      'popup-image',
+      'side-banner-image',
+      'library',
+      'image',
+    ];
 
     const file = await File.findOne({
       _id: id,
       portalId,
       isDeleted: { $ne: true },
-      category: 'thumbnail',
+      category: { $in: publicCategories },
     });
 
     if (!file) {
-      return res.status(404).json({ success: false, message: 'Thumbnail not found' });
+      return res.status(404).json({
+        success: false,
+        message: 'File not found',
+      });
     }
 
+    // ✅ جلب الملف كـ stream
     const { stream, contentLength } = await storageService.getFileStream(file);
 
-    res.setHeader('Content-Type', file.mimeType || 'image/jpeg');
+    // ✅ Headers
+    res.setHeader('Content-Type', file.mimeType || 'application/octet-stream');
     res.setHeader('Content-Length', contentLength || file.size);
     res.setHeader('Cache-Control', 'public, max-age=86400');
     res.setHeader('Access-Control-Allow-Origin', '*');
     res.setHeader('Access-Control-Allow-Methods', 'GET, OPTIONS');
+    res.setHeader('Access-Control-Allow-Headers', 'Content-Type, Range');
+    res.setHeader('Access-Control-Expose-Headers', 'Content-Length, Content-Range, Accept-Ranges');
 
-    if (req.method === 'OPTIONS') return res.writeHead(204).end();
+    // ✅ دعم Range للفيديوهات
+    const range = req.headers.range;
+    if (range && file.mimeType?.startsWith('video/')) {
+      const match = range.match(/^bytes=(\d*)-(\d*)$/);
+      if (match) {
+        let start = match[1] ? parseInt(match[1], 10) : 0;
+        let end = match[2] ? parseInt(match[2], 10) : (contentLength || file.size) - 1;
+        end = Math.min(end, (contentLength || file.size) - 1);
+
+        const chunksize = end - start + 1;
+
+        res.status(206);
+        res.setHeader('Content-Range', `bytes ${start}-${end}/${contentLength || file.size}`);
+        res.setHeader('Content-Length', chunksize);
+
+        stream.pipe(res);
+        return;
+      }
+    }
+
+    if (req.method === 'OPTIONS') {
+      return res.writeHead(204).end();
+    }
 
     stream.on('error', (error) => {
+      console.error('❌ Thumbnail stream error:', error);
       if (!res.headersSent) res.status(500).end();
       else res.destroy(error);
     });
 
     stream.pipe(res);
   } catch (error) {
+    console.error('❌ Get thumbnail error:', error);
     if (!res.headersSent) {
-      res.status(500).json({ success: false, message: error.message });
+      res.status(500).json({
+        success: false,
+        message: error.message,
+      });
     }
   }
 };
+
 // ============================================================
 // ✅ تصدير جميع الدوال
 // ============================================================

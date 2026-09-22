@@ -38,7 +38,7 @@ import infographicRoutes from './infographic.routes.js';
 import offerRoutes from './offer.routes.js';
 import aboutRoutes from './about.routes.js';
 import liveStreamRoutes from './liveStream.routes.js';
-
+import heroConfigRoutes from './heroConfig.routes.js';
 
 const router = express.Router();
 
@@ -91,7 +91,8 @@ router.use('/api/reviews', reviewRoutes);
 router.use('/api/reports', reportRoutes);
 router.use('/api/support', supportRoutes);
 router.use('/api/legal', legalRoutes);
-
+// ✅ Hero Config
+router.use('/api/appearance/hero', heroConfigRoutes);
 // ✅ مسارات الخدمات
 router.use('/api/service-details', serviceDetailRoutes);
 router.use('/api/service-forms', serviceFormRoutes);
@@ -165,5 +166,6 @@ console.log('  - /api/admin/sections/*');
 console.log('  - /api/admin/settings/*');
 console.log('  - /api/videos-library/*');
 console.log('  - /api/live-streams/*');
+console.log('  - /api/appearance/hero/*');
 
 export default router;

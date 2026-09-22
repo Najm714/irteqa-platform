@@ -1,5 +1,5 @@
 // backend/src/services/stream.service.js
-import fetch from 'node-fetch';
+import axios from 'axios';
 import FormData from 'form-data';
 import fs from 'fs';
 import path from 'path';
@@ -287,14 +287,16 @@ class StreamService {
     if (options.creator) {
       body.creator = options.creator;
     }
+const response = await axios.post(
+  `${this.baseUrl}/live_inputs`,
+  body,
+  {
+    headers: this._getHeaders(),
+    timeout: 30000,
+  }
+);
 
-    const response = await fetch(`${this.baseUrl}/live_inputs`, {
-      method: 'POST',
-      headers: this._getHeaders(),
-      body: JSON.stringify(body),
-    });
-
-    const data = await response.json();
+const data = response.data;
 
     if (!data.success) {
       console.error('❌ Create live stream failed:', data.errors);
@@ -366,12 +368,15 @@ _fixStreamKey(rawKey) {
     try {
       this._isConfigured();
 
-      const response = await fetch(`${this.baseUrl}/live_inputs/${uid}`, {
-        method: 'GET',
-        headers: this._getHeaders(),
-      });
+const response = await axios.get(
+  `${this.baseUrl}/live_inputs/${uid}`,
+  {
+    headers: this._getHeaders(),
+    timeout: 30000,
+  }
+);
 
-      const data = await response.json();
+const data = response.data;
 
       if (!data.success) return null;
 
@@ -401,114 +406,109 @@ _fixStreamKey(rawKey) {
    * ✅ تحديث إعدادات البث
    */
   async updateLiveStream(uid, options = {}) {
-    try {
-      this._isConfigured();
+  try {
+    this._isConfigured();
 
-      const body = {};
+    const body = {};
 
-      if (options.recording !== undefined) {
-        body.recording = {
-          mode: options.recording ? 'automatic' : 'off',
-          requireSignedURLs: options.requireSignedURLs || false,
-        };
-      }
-
-      if (options.metadata) {
-        body.meta = options.metadata;
-      }
-
-      const response = await fetch(`${this.baseUrl}/live_inputs/${uid}`, {
-        method: 'PUT',
-        headers: this._getHeaders(),
-        body: JSON.stringify(body),
-      });
-
-      const data = await response.json();
-      return data.success;
-    } catch (error) {
-      console.error('❌ Update live stream error:', error);
-      return false;
+    if (options.recording !== undefined) {
+      body.recording = {
+        mode: options.recording ? 'automatic' : 'off',
+        requireSignedURLs: options.requireSignedURLs || false,
+      };
     }
+
+    if (options.metadata) {
+      body.meta = options.metadata;
+    }
+
+    const response = await axios.put(
+      `${this.baseUrl}/live_inputs/${uid}`,
+      body,
+      {
+        headers: this._getHeaders(),
+        timeout: 30000,
+      }
+    );
+
+    return response.data.success;
+  } catch (error) {
+    console.error('❌ Update live stream error:', error.message);
+    return false;
   }
+}
 
   /**
    * ✅ حذف بث مباشر
    */
-  async deleteLiveStream(uid) {
-    try {
-      this._isConfigured();
+async deleteLiveStream(uid) {
+  try {
+    this._isConfigured();
 
-      console.log(`🗑️ Deleting live stream: ${uid}`);
+    console.log(`🗑️ Deleting live stream: ${uid}`);
 
-      const response = await fetch(`${this.baseUrl}/live_inputs/${uid}`, {
-        method: 'DELETE',
+    const response = await axios.delete(
+      `${this.baseUrl}/live_inputs/${uid}`,
+      {
         headers: this._getHeaders(),
-      });
+        timeout: 30000,
+      }
+    );
 
-      const data = await response.json();
-      return data.success;
-    } catch (error) {
-      console.error('❌ Delete live stream error:', error);
-      return false;
-    }
+    return response.data.success;
+  } catch (error) {
+    console.error('❌ Delete live stream error:', error.message);
+    return false;
   }
-
+}
   /**
    * ✅ جلب جميع البثوث المباشرة
    */
   async listLiveStreams(options = {}) {
-    try {
-      this._isConfigured();
+  try {
+    this._isConfigured();
 
-      const params = new URLSearchParams();
-      if (options.limit) params.append('limit', options.limit);
-      if (options.status) params.append('status', options.status);
+    const params = new URLSearchParams();
+    if (options.limit) params.append('limit', options.limit);
+    if (options.status) params.append('status', options.status);
 
-      const response = await fetch(
-        `${this.baseUrl}/live_inputs?${params.toString()}`,
-        {
-          method: 'GET',
-          headers: this._getHeaders(),
-        }
-      );
+    const response = await axios.get(
+      `${this.baseUrl}/live_inputs?${params.toString()}`,
+      {
+        headers: this._getHeaders(),
+        timeout: 30000,
+      }
+    );
 
-      const data = await response.json();
-
-      if (!data.success) throw new Error('List failed');
-
-      return data.result || [];
-    } catch (error) {
-      console.error('❌ List live streams error:', error);
-      return [];
-    }
+    return response.data.result || [];
+  } catch (error) {
+    console.error('❌ List live streams error:', error.message);
+    return [];
   }
+}
 
   /**
    * ✅ جلب فيديوهات البث المسجلة
    * بعد انتهاء البث، Cloudflare ينشئ فيديو تلقائياً
    */
   async getLiveStreamVideos(uid) {
-    try {
-      this._isConfigured();
+  try {
+    this._isConfigured();
 
-      const response = await fetch(
-        `${this.baseUrl}/live_inputs/${uid}/videos`,
-        {
-          method: 'GET',
-          headers: this._getHeaders(),
-        }
-      );
+    const response = await axios.get(
+      `${this.baseUrl}/live_inputs/${uid}/videos`,
+      {
+        headers: this._getHeaders(),
+        timeout: 30000,
+      }
+    );
 
-      const data = await response.json();
-
-      if (!data.success) return [];
-
-      return data.result || [];
-    } catch (error) {
-      console.error('❌ Get live videos error:', error);
-      return [];
-    }
+    return response.data.result || [];
+  } catch (error) {
+    console.error('❌ Get live videos error:', error.message);
+    return [];
   }
+}
 
   // ============================================================
   // ✅ الروابط الموقعة

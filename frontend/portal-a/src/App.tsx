@@ -50,6 +50,10 @@ import PaymentRefundPolicy from './pages/Policies/PaymentRefundPolicy';
 import CookiePolicy from './pages/Policies/CookiePolicy';
 import AdminLiveStreams from './pages/Admin/AdminLiveStreams';
 import LiveStreamViewer from './pages/LiveStreamViewer';
+
+// ✅ إضافة صفحة إدارة Hero
+import AdminHeroConfig from './pages/Admin/AdminHeroConfig';
+
 // Specialist Pages
 import SpecialistDashboard from './pages/Specialist/SpecialistDashboard';
 
@@ -60,13 +64,15 @@ import MainLayout from './components/layout/MainLayout';
 import { ThemeProvider } from './context/ThemeContext';
 import { AuthProvider } from './context/AuthContext';
 import { SidebarProvider } from './context/SidebarContext';
+import { PortalConfigProvider } from './context/PortalConfigContext';  // ✅ إضافة
+
 import ProtectedRoute from './components/common/ProtectedRoute';
 
 // Styles
 import './index.css';
 
 // ============================================================
-// ✅ AppRoutes - يستخدم useLocation + key لإعادة إنشاء Routes
+// ✅ AppRoutes
 // ============================================================
 const AppRoutes = () => {
   const location = useLocation();
@@ -98,7 +104,6 @@ const AppRoutes = () => {
         </ProtectedRoute>
       } />
 
-      {/* ✅ لوحة العميل - مسار واحد فقط مع :tab */}
       <Route path="/dashboard" element={
         <ProtectedRoute allowedRoles={['customer']}>
           <CustomerDashboard />
@@ -181,10 +186,20 @@ const AppRoutes = () => {
         </ProtectedRoute>
       } />
 
-      {/* Routes الإدارية */}
+      {/* ============================================================ */}
+      {/* ✅ Routes الإدارية */}
+      {/* ============================================================ */}
+
       <Route path="/admin-dashboard" element={
         <ProtectedRoute allowedRoles={['portal_admin', 'super_admin']}>
           <AdminDashboard />
+        </ProtectedRoute>
+      } />
+
+      {/* ✅ ✅ ✅ إدارة Hero - جديد */}
+      <Route path="/admin/appearance/hero" element={
+        <ProtectedRoute allowedRoles={['portal_admin', 'super_admin']}>
+          <AdminHeroConfig />
         </ProtectedRoute>
       } />
 
@@ -211,7 +226,6 @@ const AppRoutes = () => {
           <AdminVideos />
         </ProtectedRoute>
       } />
-
 
       <Route path="/admin-profile" element={
         <ProtectedRoute allowedRoles={['portal_admin', 'super_admin']}>
@@ -315,6 +329,20 @@ const AppRoutes = () => {
         </ProtectedRoute>
       } />
 
+      {/* ✅ Routes البث المباشر */}
+      <Route path="/admin-live-streams" element={
+        <ProtectedRoute allowedRoles={['portal_admin', 'super_admin']}>
+          <AdminLiveStreams />
+        </ProtectedRoute>
+      } />
+
+      <Route path="/live/:id" element={
+        <ProtectedRoute allowedRoles={['customer', 'specialist', 'portal_admin', 'super_admin']}>
+          <LiveStreamViewer />
+        </ProtectedRoute>
+      } />
+
+      {/* Policies */}
       <Route path="/policies/academic-charter" element={
         <ProtectedRoute>
           <AcademicCharter />
@@ -332,10 +360,6 @@ const AppRoutes = () => {
           <PrivacyPolicy />
         </ProtectedRoute>
       } />
-
-
-<Route path="/admin-live-streams" element={<AdminLiveStreams />} />
-<Route path="/live/:id" element={<LiveStreamViewer />} />
 
       <Route path="/policies/terms" element={
         <ProtectedRoute>
@@ -372,16 +396,17 @@ const AppRoutes = () => {
 };
 
 function App() {
-
-
   return (
     <ThemeProvider>
       <AuthProvider>
-        <SidebarProvider>
-          <BrowserRouter>
-            <AppRoutes />
-          </BrowserRouter>
-        </SidebarProvider>
+        {/* ✅ PortalConfigProvider - يجب أن يكون داخل AuthProvider */}
+        <PortalConfigProvider>
+          <SidebarProvider>
+            <BrowserRouter>
+              <AppRoutes />
+            </BrowserRouter>
+          </SidebarProvider>
+        </PortalConfigProvider>
       </AuthProvider>
     </ThemeProvider>
   );
