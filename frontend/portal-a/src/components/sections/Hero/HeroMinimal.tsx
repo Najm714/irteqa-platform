@@ -19,7 +19,12 @@ const HeroMinimal: React.FC<HeroMinimalProps> = ({ config }) => {
         <h1 className="hero-title">{mainContent.titleHighlight}.</h1>
         <p className="hero-description">{mainContent.description}</p>
         {ctas[0] && (
-          <a href={ctas[0].link} className="btn-primary">
+          <a
+            href={ctas[0].link}
+            target={ctas[0].target || '_self'}
+            rel={ctas[0].target === '_blank' ? 'noopener noreferrer' : undefined}
+            className="btn-primary"
+          >
             {ctas[0].text}
           </a>
         )}

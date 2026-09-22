@@ -3,16 +3,15 @@ import { HeroConfig } from '../models/HeroConfig.model.js';
 import { Request } from '../models/Request.model.js';
 import { Account } from '../models/Account.model.js';
 import { Service } from '../models/Service.model.js';
-import { File } from '../models/File.model.js';
 import storageService from '../services/storage.service.js';
 import multer from 'multer';
 
 // ============================================================
-// ✅ إعداد multer لرفع ملفات Hero
+// ✅ إعداد multer
 // ============================================================
 const upload = multer({
   storage: multer.memoryStorage(),
-  limits: { fileSize: 500 * 1024 * 1024 }, // 500MB
+  limits: { fileSize: 500 * 1024 * 1024 },
   fileFilter: (req, file, cb) => {
     const allowedImages = [
       'image/jpeg', 'image/jpg', 'image/png',
@@ -21,7 +20,6 @@ const upload = multer({
     const allowedVideos = [
       'video/mp4', 'video/webm', 'video/quicktime', 'video/x-msvideo',
     ];
-
     if ([...allowedImages, ...allowedVideos].includes(file.mimetype)) {
       cb(null, true);
     } else {
@@ -31,12 +29,43 @@ const upload = multer({
 });
 
 // ============================================================
-// ✅ جلب إعدادات Hero
+// ✅ Helper: بناء URL للملف
+// ============================================================
+const buildFileUrl = (req, fileId, portalId, isVideo) => {
+  const protocol =
+    req.get('x-forwarded-proto')?.split(',')[0]?.trim() ||
+    req.protocol ||
+    'https';
+  const host = req.get('host');
+  const baseUrl = `${protocol}://${host}`;
+  const endpoint = isVideo ? 'stream' : 'thumbnail';
+  return `${baseUrl}/api/files/${endpoint}/${fileId}?portalId=${portalId}`;
+};
+
+// ============================================================
+// ✅ Helper: تحديد category
+// ============================================================
+const resolveCategory = (isVideo, requestedCategory) => {
+  if (isVideo) return 'hero-video';
+
+  const categoryMap = {
+    main: 'hero-image',
+    popup: 'popup-image',
+    sideBanner: 'side-banner-image',
+    midBanner: 'mid-banner-image',
+    slide: 'slide-image',
+    splash: 'splash-logo',
+  };
+
+  return categoryMap[requestedCategory] || 'hero-image';
+};
+
+// ============================================================
+// ✅ جلب الإعدادات
 // ============================================================
 export const getHeroConfig = async (req, res) => {
   try {
     const portalId = req.portalId;
-
     if (!portalId) {
       return res.status(400).json({
         success: false,
@@ -46,23 +75,49 @@ export const getHeroConfig = async (req, res) => {
 
     let config = await HeroConfig.findOne({ portalId });
 
-    // ✅ إنشاء إعدادات افتراضية
     if (!config) {
       config = new HeroConfig({
         portalId,
         mainContent: {
           title: 'منصة ارتقاء الأكاديمية',
           titleHighlight: 'ارتقاء',
-          description: 'نقدم خدمات أكاديمية متخصصة تجمع بين الخبرة والجودة في بيئة رقمية متكاملة، صُممت لتواكب احتياجاتك.',
+          description:
+            'نقدم خدمات أكاديمية متخصصة تجمع بين الخبرة والجودة في بيئة رقمية متكاملة، صُممت لتواكب احتياجاتك.',
         },
         ctas: [
-          { text: 'استعراض الأقسام', link: '/services', variant: 'primary', order: 0, isActive: true },
-          { text: 'انضم الآن', link: '/register', variant: 'secondary', order: 1, isActive: true },
+          {
+            text: 'استعراض الأقسام',
+            link: '/services',
+            variant: 'primary',
+            order: 0,
+            isActive: true,
+            target: '_self',
+          },
+          {
+            text: 'انضم الآن',
+            link: '/register',
+            variant: 'secondary',
+            order: 1,
+            isActive: true,
+            target: '_self',
+          },
         ],
         badges: [
-          { text: 'موثوق من قبل 10K+ باحث', icon: 'fa-check-circle', color: '#10b981', order: 0, isActive: true },
+          {
+            text: 'موثوق من قبل 10K+ باحث',
+            icon: 'fa-check-circle',
+            color: '#10b981',
+            order: 0,
+            isActive: true,
+          },
           { text: '⭐ 4.9/5 تقييم', color: '#f59e0b', order: 1, isActive: true },
-          { text: 'خدمات عالمية', icon: 'fa-globe', color: '#3b82f6', order: 2, isActive: true },
+          {
+            text: 'خدمات عالمية',
+            icon: 'fa-globe',
+            color: '#3b82f6',
+            order: 2,
+            isActive: true,
+          },
         ],
         liveStats: {
           enabled: true,
@@ -74,19 +129,12 @@ export const getHeroConfig = async (req, res) => {
           ],
         },
         layout: 'cinematic',
-        background: {
-          type: 'animated',
-          starsEnabled: true,
-          overlayOpacity: 0.3,
-        },
+        background: { type: 'animated', starsEnabled: true, overlayOpacity: 0.3 },
       });
       await config.save();
     }
 
-    res.status(200).json({
-      success: true,
-      data: config,
-    });
+    res.status(200).json({ success: true, data: config });
   } catch (error) {
     console.error('❌ Get hero config error:', error);
     res.status(500).json({
@@ -97,12 +145,11 @@ export const getHeroConfig = async (req, res) => {
 };
 
 // ============================================================
-// ✅ تحديث إعدادات Hero
+// ✅ تحديث الإعدادات
 // ============================================================
 export const updateHeroConfig = async (req, res) => {
   try {
     const portalId = req.portalId;
-
     if (!portalId) {
       return res.status(400).json({
         success: false,
@@ -110,7 +157,36 @@ export const updateHeroConfig = async (req, res) => {
       });
     }
 
-    const updates = req.body;
+    const updates = req.body || {};
+
+    // ✅ Validation: CTAs
+    if (updates.ctas !== undefined) {
+      if (!Array.isArray(updates.ctas)) {
+        return res.status(400).json({
+          success: false,
+          message: 'ctas يجب أن تكون مصفوفة',
+        });
+      }
+      const activeCtas = updates.ctas.filter((c) => c.isActive !== false);
+      if (activeCtas.length < 2 || activeCtas.length > 4) {
+        return res.status(400).json({
+          success: false,
+          message: 'عدد الأزرار النشطة يجب أن يكون بين 2 و 4',
+        });
+      }
+    }
+
+    // ✅ Validation: layout
+    const allowedLayouts = ['cinematic', 'split', 'carousel', 'magazine', 'interactive', 'minimal'];
+    if (updates.layout && !allowedLayouts.includes(updates.layout)) {
+      return res.status(400).json({ success: false, message: 'نمط غير مدعوم' });
+    }
+
+    // ✅ Validation: background.type
+    const allowedBgTypes = ['solid', 'gradient', 'image', 'video', 'animated'];
+    if (updates.background?.type && !allowedBgTypes.includes(updates.background.type)) {
+      return res.status(400).json({ success: false, message: 'نوع خلفية غير مدعوم' });
+    }
 
     const config = await HeroConfig.findOneAndUpdate(
       { portalId },
@@ -133,7 +209,7 @@ export const updateHeroConfig = async (req, res) => {
 };
 
 // ============================================================
-// ✅ ✅ ✅ رفع ملف Hero (صورة/فيديو)
+// ✅ رفع ملف Hero
 // ============================================================
 export const uploadHeroFile = [
   upload.single('file'),
@@ -143,45 +219,29 @@ export const uploadHeroFile = [
       const accountId = req.accountId;
 
       if (!portalId) {
-        return res.status(400).json({
-          success: false,
-          message: 'Portal context is required',
-        });
+        return res.status(400).json({ success: false, message: 'Portal context is required' });
       }
-
       if (!accountId) {
-        return res.status(401).json({
-          success: false,
-          message: 'Authentication required',
-        });
+        return res.status(401).json({ success: false, message: 'Authentication required' });
       }
-
       if (!req.file) {
-        return res.status(400).json({
-          success: false,
-          message: 'No file uploaded',
-        });
+        return res.status(400).json({ success: false, message: 'No file uploaded' });
       }
 
-      console.log('📤 Uploading hero file:');
-      console.log('  - Name:', req.file.originalname);
-      console.log('  - Size:', (req.file.size / 1024 / 1024).toFixed(2), 'MB');
-      console.log('  - Type:', req.file.mimetype);
-
-      // ✅ تحديد الفئة بناءً على النوع والـ category من الطلب
       const isVideo = req.file.mimetype.startsWith('video/');
       const requestedCategory = req.body.category || 'main';
 
-      let category = 'hero-image';
-      if (isVideo) {
-        category = 'hero-video';
-      } else if (requestedCategory === 'popup') {
-        category = 'popup-image';
-      } else if (requestedCategory === 'sideBanner') {
-        category = 'side-banner-image';
-      }
+      // ✅ تحديد الفئة
+      const category = resolveCategory(isVideo, requestedCategory);
 
-      // ✅ رفع الملف
+      console.log('📤 Uploading hero file:', {
+        name: req.file.originalname,
+        size: (req.file.size / 1024 / 1024).toFixed(2) + 'MB',
+        type: req.file.mimetype,
+        requestedCategory,
+        resolvedCategory: category,
+      });
+
       const result = await storageService.uploadFile(
         req.file,
         portalId,
@@ -195,15 +255,8 @@ export const uploadHeroFile = [
         }
       );
 
-      // ✅ بناء URL عام
-      const protocol =
-        req.get('x-forwarded-proto')?.split(',')[0]?.trim() ||
-        req.protocol ||
-        'https';
-      const host = req.get('host');
-      const baseUrl = `${protocol}://${host}`;
-
-      const fileUrl = `${baseUrl}/api/files/thumbnail/${result.file._id}?portalId=${portalId}`;
+      // ✅ بناء URL صحيح
+      const fileUrl = buildFileUrl(req, result.file._id, portalId, isVideo);
 
       console.log('✅ Hero file uploaded:', result.file._id);
 
@@ -236,12 +289,8 @@ export const uploadHeroFile = [
 export const getLiveStats = async (req, res) => {
   try {
     const portalId = req.portalId;
-
     if (!portalId) {
-      return res.status(400).json({
-        success: false,
-        message: 'Portal context is required',
-      });
+      return res.status(400).json({ success: false, message: 'Portal context is required' });
     }
 
     const [users, requests, services] = await Promise.all([
@@ -252,12 +301,7 @@ export const getLiveStats = async (req, res) => {
 
     res.status(200).json({
       success: true,
-      data: {
-        users,
-        requests,
-        services,
-        rating: 4.9,
-      },
+      data: { users, requests, services, rating: 4.9 },
     });
   } catch (error) {
     console.error('❌ Get live stats error:', error);
@@ -269,25 +313,16 @@ export const getLiveStats = async (req, res) => {
 };
 
 // ============================================================
-// ✅ إعادة تعيين الإعدادات
+// ✅ إعادة تعيين
 // ============================================================
 export const resetHeroConfig = async (req, res) => {
   try {
     const portalId = req.portalId;
-
     if (!portalId) {
-      return res.status(400).json({
-        success: false,
-        message: 'Portal context is required',
-      });
+      return res.status(400).json({ success: false, message: 'Portal context is required' });
     }
-
     await HeroConfig.deleteOne({ portalId });
-
-    res.status(200).json({
-      success: true,
-      message: 'Hero config reset successfully',
-    });
+    res.status(200).json({ success: true, message: 'Hero config reset successfully' });
   } catch (error) {
     console.error('❌ Reset hero config error:', error);
     res.status(500).json({

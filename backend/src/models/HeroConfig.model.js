@@ -10,29 +10,20 @@ const HeroConfigSchema = new mongoose.Schema({
     index: true,
   },
 
-  // ============================================================
-  // 1. Splash Screen
-  // ============================================================
   splashScreen: {
     enabled: { type: Boolean, default: true },
-    duration: { type: Number, default: 3500 },
+    duration: { type: Number, default: 3500, min: 500, max: 10000 },
     logo: { type: String, default: '' },
     text: { type: String, default: 'منصة ارتقاء' },
     bgColor: { type: String, default: '#0f0f23' },
   },
 
-  // ============================================================
-  // 2. Hero Layout
-  // ============================================================
   layout: {
     type: String,
     enum: ['cinematic', 'split', 'carousel', 'magazine', 'interactive', 'minimal'],
     default: 'cinematic',
   },
 
-  // ============================================================
-  // 3. Main Content
-  // ============================================================
   mainContent: {
     title: { type: String, default: 'منصة ارتقاء' },
     titleHighlight: { type: String, default: 'ارتقاء' },
@@ -48,9 +39,7 @@ const HeroConfigSchema = new mongoose.Schema({
     },
   },
 
-  // ============================================================
-  // 4. CTAs (2-4 أزرار)
-  // ============================================================
+  // ✅ CTAs (2-4) — التحقق من العدد في Controller
   ctas: [{
     text: { type: String, required: true },
     link: { type: String, required: true },
@@ -65,9 +54,6 @@ const HeroConfigSchema = new mongoose.Schema({
     target: { type: String, enum: ['_self', '_blank'], default: '_self' },
   }],
 
-  // ============================================================
-  // 5. Badges
-  // ============================================================
   badges: [{
     text: { type: String, required: true },
     icon: { type: String, default: '' },
@@ -76,9 +62,6 @@ const HeroConfigSchema = new mongoose.Schema({
     isActive: { type: Boolean, default: true },
   }],
 
-  // ============================================================
-  // 6. Background
-  // ============================================================
   background: {
     type: {
       type: String,
@@ -94,9 +77,6 @@ const HeroConfigSchema = new mongoose.Schema({
     parallaxEnabled: { type: Boolean, default: true },
   },
 
-  // ============================================================
-  // 7. Announcements
-  // ============================================================
   announcements: {
     topBar: {
       enabled: { type: Boolean, default: false },
@@ -139,7 +119,7 @@ const HeroConfigSchema = new mongoose.Schema({
       image: { type: String, default: '' },
       ctaText: { type: String, default: '' },
       ctaLink: { type: String, default: '' },
-      showAfter: { type: Number, default: 5000 },
+      showAfter: { type: Number, default: 5000, min: 0 },
       showOnce: { type: Boolean, default: true },
       bgColor: { type: String, default: '#ffffff' },
       textColor: { type: String, default: '#1f2937' },
@@ -149,9 +129,6 @@ const HeroConfigSchema = new mongoose.Schema({
     },
   },
 
-  // ============================================================
-  // 8. Carousel Slides
-  // ============================================================
   slides: [{
     title: { type: String, default: '' },
     description: { type: String, default: '' },
@@ -161,14 +138,11 @@ const HeroConfigSchema = new mongoose.Schema({
       text: { type: String, default: '' },
       link: { type: String, default: '' },
     },
-    duration: { type: Number, default: 5000 },
+    duration: { type: Number, default: 5000, min: 1000, max: 30000 },
     order: { type: Number, default: 0 },
     isActive: { type: Boolean, default: true },
   }],
 
-  // ============================================================
-  // 9. Live Stats
-  // ============================================================
   liveStats: {
     enabled: { type: Boolean, default: true },
     items: [{
@@ -187,9 +161,6 @@ const HeroConfigSchema = new mongoose.Schema({
     }],
   },
 
-  // ============================================================
-  // 10. Sections Visibility
-  // ============================================================
   sections: {
     promotions: { type: Boolean, default: true },
     testimonials: { type: Boolean, default: true },
@@ -200,9 +171,6 @@ const HeroConfigSchema = new mongoose.Schema({
     faq: { type: Boolean, default: false },
   },
 
-  // ============================================================
-  // 11. Animations
-  // ============================================================
   animations: {
     type: {
       type: String,
@@ -221,5 +189,5 @@ const HeroConfigSchema = new mongoose.Schema({
   timestamps: true,
 });
 
-export const HeroConfig = mongoose.models.HeroConfig ||
-  mongoose.model('HeroConfig', HeroConfigSchema);
+export const HeroConfig =
+  mongoose.models.HeroConfig || mongoose.model('HeroConfig', HeroConfigSchema);

@@ -13,6 +13,9 @@ import { requirePermission } from '../middleware/authorization.js';
 
 const router = express.Router();
 
+// ✅ صلاحيات موحدة
+const APPEARANCE_PERMS = ['manage_appearance', 'manage_settings'];
+
 // ============================================================
 // ✅ مسارات عامة
 // ============================================================
@@ -22,31 +25,27 @@ router.get('/stats', optionalAuth, requirePortalContext, getLiveStats);
 // ============================================================
 // ✅ مسارات إدارية
 // ============================================================
-
-// ✅ رفع صورة/فيديو الهيرو
 router.post(
   '/upload',
   authenticate,
   requirePortalContext,
-  requirePermission(['manage_appearance', 'manage_settings', 'manage_explanations']),
+  requirePermission(APPEARANCE_PERMS),
   uploadHeroFile
 );
 
-// ✅ تحديث الإعدادات
 router.put(
   '/',
   authenticate,
   requirePortalContext,
-  requirePermission(['manage_appearance', 'manage_settings', 'manage_explanations']),
+  requirePermission(APPEARANCE_PERMS),
   updateHeroConfig
 );
 
-// ✅ إعادة تعيين
 router.post(
   '/reset',
   authenticate,
   requirePortalContext,
-  requirePermission(['manage_appearance', 'manage_settings', 'manage_explanations']),
+  requirePermission(APPEARANCE_PERMS),
   resetHeroConfig
 );
 

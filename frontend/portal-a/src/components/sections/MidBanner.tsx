@@ -1,14 +1,16 @@
 // src/components/sections/MidBanner.tsx
 import React, { useState, useEffect } from 'react';
-import { FaBullhorn, FaTimes } from 'react-icons/fa';
+import { FaBullhorn } from 'react-icons/fa';
 
 const MidBanner: React.FC<{ config: any }> = ({ config }) => {
   const [visible, setVisible] = useState(true);
 
   useEffect(() => {
+    if (!config?.enabled) return setVisible(false);
     const now = new Date();
     if (config.startDate && new Date(config.startDate) > now) return setVisible(false);
     if (config.endDate && new Date(config.endDate) < now) return setVisible(false);
+    setVisible(true);
   }, [config]);
 
   if (!visible) return null;

@@ -16,26 +16,48 @@ const HeroSplit: React.FC<HeroSplitProps> = ({ config }) => {
   const ctas = (config?.ctas || []).filter((c: any) => c.isActive !== false);
   const badges = (config?.badges || []).filter((b: any) => b.isActive !== false);
 
+  const highlight = mainContent.titleHighlight || '';
+  const titleBefore = highlight
+    ? (mainContent.title || '').replace(highlight, '')
+    : mainContent.title || '';
+
+  const isImageLeft = mainContent.imagePosition === 'left';
+
   return (
     <section className="hero-split">
       <div className="container-custom">
-        <div className="hero-split-grid">
-          <div className="hero-split-content">
+        <div
+          className="hero-split-grid"
+          style={{ direction: isImageLeft ? 'ltr' : 'rtl' }}
+        >
+          <div className="hero-split-content" style={{ direction: 'rtl' }}>
             <h1 className="hero-title">
-              {mainContent.title?.replace(mainContent.titleHighlight, '')}
-              <span className="hero-title-highlight">{mainContent.titleHighlight}</span>
+              {titleBefore}
+              {highlight && <span className="hero-title-highlight">{highlight}</span>}
             </h1>
             <p className="hero-description">{mainContent.description}</p>
             <div className="hero-actions">
               {ctas.map((cta: any, i: number) => (
-                <a key={i} href={cta.link} className={`btn-${cta.variant || 'primary'}`}>
+                <a
+                  key={i}
+                  href={cta.link}
+                  target={cta.target || '_self'}
+                  rel={cta.target === '_blank' ? 'noopener noreferrer' : undefined}
+                  className={`btn-${cta.variant || 'primary'}`}
+                >
                   {cta.text}
                 </a>
               ))}
             </div>
             <div className="hero-badges">
               {badges.map((badge: any, i: number) => (
-                <span key={i} className="hero-badge">{badge.text}</span>
+                <span
+                  key={i}
+                  className="hero-badge"
+                  style={badge.color ? { color: badge.color } : undefined}
+                >
+                  {badge.text}
+                </span>
               ))}
             </div>
           </div>

@@ -127,6 +127,16 @@
   color: #0f0f23;
 }
 
+.btn-ghost {
+  background: transparent;
+  color: white;
+  border: 2px solid transparent;
+}
+
+.btn-ghost:hover {
+  background: rgba(255, 255, 255, 0.1);
+}
+
 /* ============================================================
    Hero Badges
    ============================================================ */
@@ -187,6 +197,7 @@
   position: absolute;
   inset: 0;
   z-index: 2;
+  pointer-events: none;
 }
 
 .hero-cinematic-content {
@@ -380,13 +391,10 @@
 .hero-carousel-arrow-left { left: 2rem; }
 
 .hero-carousel-dots {
-  position: absolute;
-  bottom: 3rem;
-  left: 50%;
-  transform: translateX(-50%);
-  z-index: 20;
   display: flex;
   gap: 0.75rem;
+  justify-content: center;
+  margin-top: 2.5rem;
 }
 
 .hero-carousel-dot {
@@ -397,10 +405,11 @@
   border: none;
   cursor: pointer;
   transition: all 0.3s;
+  padding: 0;
 }
 
 .hero-carousel-dot.active {
-  background: #7c3aed;
+  background: #a78bfa;
   width: 32px;
   border-radius: 6px;
 }
@@ -494,6 +503,63 @@
 .hero-interactive-inner {
   transition: transform 0.1s ease-out;
   will-change: transform;
+}
+
+/* ============================================================
+   Hero Magazine
+   ============================================================ */
+.hero-magazine {
+  position: relative;
+  min-height: 100vh;
+  display: flex;
+  flex-direction: column;
+  justify-content: center;
+  padding: 4rem 0 6rem;
+  color: white;
+  overflow: hidden;
+  background: linear-gradient(135deg, #0f0f23 0%, #1a1a3e 100%);
+}
+
+.hero-magazine-grid {
+  display: grid;
+  grid-template-columns: 1fr 320px;
+  gap: 3rem;
+  align-items: start;
+}
+
+.hero-magazine-main {
+  text-align: right;
+}
+
+.hero-magazine-main .hero-actions {
+  justify-content: flex-start;
+}
+
+.hero-magazine-side {
+  display: flex;
+  flex-direction: column;
+  gap: 1rem;
+  padding: 1.5rem;
+  background: rgba(255, 255, 255, 0.05);
+  border-radius: 1rem;
+  backdrop-filter: blur(10px);
+  border: 1px solid rgba(255, 255, 255, 0.1);
+}
+
+.hero-magazine-badge {
+  display: flex;
+  align-items: center;
+  gap: 0.75rem;
+  padding: 0.75rem 1rem;
+  border-right: 3px solid #7c3aed;
+  border-radius: 0.5rem;
+  background: rgba(255, 255, 255, 0.03);
+  transition: all 0.3s;
+}
+
+.hero-magazine-badge:hover {
+  background: rgba(255, 255, 255, 0.08);
+  transform: translateX(-4px);
 }
 
 /* ============================================================
@@ -660,6 +726,31 @@
 }
 
 /* ============================================================
+   Side Banner
+   ============================================================ */
+.side-banner {
+  position: fixed;
+  top: 50%;
+  transform: translateY(-50%);
+  z-index: 50;
+  max-width: 200px;
+}
+
+.side-banner-right {
+  right: 1rem;
+}
+
+.side-banner-left {
+  left: 1rem;
+}
+
+.side-banner img {
+  width: 100%;
+  border-radius: 1rem;
+  box-shadow: 0 10px 30px rgba(0, 0, 0, 0.2);
+}
+
+/* ============================================================
    Responsive
    ============================================================ */
 @media (max-width: 968px) {
@@ -667,11 +758,25 @@
     grid-template-columns: 1fr;
     gap: 2rem;
   }
+
   .hero-split-content {
     text-align: center;
   }
+
   .hero-split-content .hero-actions,
   .hero-split-content .hero-badges {
+    justify-content: center;
+  }
+
+  .hero-magazine-grid {
+    grid-template-columns: 1fr;
+  }
+
+  .hero-magazine-main {
+    text-align: center;
+  }
+
+  .hero-magazine-main .hero-actions {
     justify-content: center;
   }
 }
@@ -709,5 +814,32 @@
 
   .mid-banner-text {
     flex-direction: column;
+  }
+
+  .side-banner {
+    display: none;
+  }
+
+  .hero-carousel-arrow {
+    width: 40px;
+    height: 40px;
+  }
+
+  .hero-carousel-arrow-right { right: 1rem; }
+  .hero-carousel-arrow-left { left: 1rem; }
+}
+
+@media (max-width: 480px) {
+  .hero-carousel-dots {
+    gap: 0.5rem;
+  }
+
+  .hero-carousel-dot {
+    width: 10px;
+    height: 10px;
+  }
+
+  .hero-carousel-dot.active {
+    width: 24px;
   }
 }

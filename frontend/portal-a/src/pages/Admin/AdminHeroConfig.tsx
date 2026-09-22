@@ -1,47 +1,174 @@
+// src/components/admin/AdminHeroConfig.tsx
 import React, { useState, useEffect, useRef } from 'react';
 import { usePortalConfig } from '../../context/PortalConfigContext';
 import {
-  FaSave, FaEye, FaPlus, FaTrash, FaPalette, FaBullhorn, FaImage,
-  FaChartBar, FaLayerGroup, FaSpinner, FaCheckCircle, FaUpload,
-  FaVideo, FaTimes,
+  FaSave, FaEye, FaPlus, FaTrash, FaBullhorn, FaImage,
+  FaChartBar, FaSpinner, FaCheckCircle, FaUpload,
+  FaVideo,
 } from 'react-icons/fa';
 
+// ============================================================
+// ✅ Helper: مكوّن رفع صورة قابل لإعادة الاستخدام
+// ============================================================
+interface ImageUploaderProps {
+  value: string;
+  onChange: (url: string) => void;
+  onUpload: (file: File) => Promise<void>;
+  uploading: boolean;
+  label?: string;
+  hint?: string;
+  maxHeight?: string;
+}
+
+const ImageUploader: React.FC<ImageUploaderProps> = ({
+  value,
+  onChange,
+  onUpload,
+  uploading,
+  label = 'صورة',
+  hint = 'PNG, JPG, WebP',
+  maxHeight = 'max-h-48',
+}) => {
+  const inputRef = useRef<HTMLInputElement>(null);
+
+  const handleChange = async (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+    await onUpload(file);
+    if (inputRef.current) inputRef.current.value = '';
+  };
+
+  return (
+    <div>
+      {label && (
+        <label className="block text-sm font-medium mb-2">
+          <FaImage className="inline ml-2" />
+          {label}
+        </label>
+      )}
+
+      <div className="border-2 border-dashed border-gray-300 dark:border-gray-600 rounded-xl p-4 text-center hover:border-purple-400 transition">
+        <input
+          ref={inputRef}
+          type="file"
+          accept="image/*"
+          onChange={handleChange}
+          className="hidden"
+        />
+
+        {value ? (
+          <div className="space-y-3">
+            <img
+              src={value}
+              alt={label}
+              className={`${maxHeight} mx-auto rounded-lg shadow-lg object-cover`}
+            />
+            <div className="flex gap-3 justify-center">
+              <button
+                type="button"
+                onClick={() => inputRef.current?.click()}
+                className="px-4 py-2 bg-purple-600 text-white rounded-lg flex items-center gap-2 hover:bg-purple-700 disabled:opacity-50"
+                disabled={uploading}
+              >
+                {uploading ? (
+                  <>
+                    <FaSpinner className="animate-spin" /> جاري الرفع...
+                  </>
+                ) : (
+                  <>
+                    <FaUpload /> تغيير
+                  </>
+                )}
+              </button>
+              <button
+                type="button"
+                onClick={() => onChange('')}
+                className="px-4 py-2 bg-red-100 text-red-600 rounded-lg flex items-center gap-2 hover:bg-red-200"
+              >
+                <FaTrash /> حذف
+              </button>
+            </div>
+          </div>
+        ) : (
+          <button
+            type="button"
+            onClick={() => inputRef.current?.click()}
+            className="py-4 w-full"
+            disabled={uploading}
+          >
+            {uploading ? (
+              <>
+                <FaSpinner className="w-8 h-8 text-purple-600 animate-spin mx-auto mb-2" />
+                <p className="text-sm text-gray-500">جاري الرفع...</p>
+              </>
+            ) : (
+              <>
+                <FaUpload className="w-8 h-8 text-gray-400 mx-auto mb-2" />
+                <p className="text-sm text-gray-500">اضغط لرفع صورة من جهازك</p>
+                <p className="text-xs text-gray-400 mt-1">{hint}</p>
+              </>
+            )}
+          </button>
+        )}
+      </div>
+    </div>
+  );
+};
+
+// ============================================================
+// ✅ المكوّن الرئيسي
+// ============================================================
 const AdminHeroConfig: React.FC = () => {
-const { config, loading, updateConfig, uploadHeroFile } = usePortalConfig();
-const [localConfig, setLocalConfig] = useState<any>(null);
-const [activeTab, setActiveTab] = useState('layout');
-const [saving, setSaving] = useState(false);
-const [saveSuccess, setSaveSuccess] = useState(false);
+  const { config, loading, updateConfig, uploadHeroFile } = usePortalConfig();
+  const [localConfig, setLocalConfig] = useState<any>(null);
+  const [activeTab, setActiveTab] = useState('layout');
+  const [saving, setSaving] = useState(false);
+  const [saveSuccess, setSaveSuccess] = useState(false);
 
-// ✅ حالات رفع الملفات
-const [uploadingImage, setUploadingImage] = useState(false);
-const [uploadingVideo, setUploadingVideo] = useState(false);
-const [uploadingPopup, setUploadingPopup] = useState(false);
-const [uploadingSideBanner, setUploadingSideBanner] = useState(false);
+  // ✅ حالات الرفع
+  const [uploadingHeroImage, setUploadingHeroImage] = useState(false);
+  const [uploadingBgImage, setUploadingBgImage] = useState(false);
+  const [uploadingVideo, setUploadingVideo] = useState(false);
+  const [uploadingPopup, setUploadingPopup] = useState(false);
+  const [uploadingSideBanner, setUploadingSideBanner] = useState(false);
+  const [uploadingMidBanner, setUploadingMidBanner] = useState(false);
+  const [uploadingSplashLogo, setUploadingSplashLogo] = useState(false);
+  const [uploadingSlideIndex, setUploadingSlideIndex] = useState<number | null>(null);
 
-// ✅ Refs للملفات
-const imageInputRef = useRef<HTMLInputElement>(null);
-const videoInputRef = useRef<HTMLInputElement>(null);
-const popupInputRef = useRef<HTMLInputElement>(null);
-const sideBannerInputRef = useRef<HTMLInputElement>(null);
+  // ✅ refs للفيديو
+  const videoInputRef = useRef<HTMLInputElement>(null);
 
   useEffect(() => {
     if (config) setLocalConfig(JSON.parse(JSON.stringify(config)));
   }, [config]);
 
+  // ============================================================
+  // ✅ حفظ
+  // ============================================================
   const handleSave = async () => {
     setSaving(true);
     try {
+      if (
+        localConfig.ctas &&
+        (localConfig.ctas.length < 2 || localConfig.ctas.length > 4)
+      ) {
+        alert('⚠️ عدد الأزرار يجب أن يكون بين 2 و 4');
+        setSaving(false);
+        return;
+      }
       await updateConfig(localConfig);
       setSaveSuccess(true);
       setTimeout(() => setSaveSuccess(false), 3000);
-    } catch (err) {
-      alert('فشل الحفظ');
+    } catch (err: any) {
+      alert('❌ فشل الحفظ: ' + (err.message || 'خطأ غير معروف'));
     } finally {
       setSaving(false);
     }
   };
 
+  // ============================================================
+  // ✅ تحديث حقل متداخل
+  // ============================================================
   const updateField = (path: string, value: any) => {
     const keys = path.split('.');
     const newConfig = { ...localConfig };
@@ -53,133 +180,123 @@ const sideBannerInputRef = useRef<HTMLInputElement>(null);
     current[keys[keys.length - 1]] = value;
     setLocalConfig(newConfig);
   };
-// ✅ رفع صورة Hero
-const handleImageUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
-  const file = e.target.files?.[0];
-  if (!file) return;
 
-  setUploadingImage(true);
-  try {
-    const result = await uploadHeroFile(file);
-    setLocalConfig({
-      ...localConfig,
-      mainContent: {
-        ...localConfig.mainContent,
-        image: result.url,
+  // ============================================================
+  // ✅ دالة رفع عامة
+  // ============================================================
+  const doUpload = async (
+    file: File,
+    category: string,
+    onSuccess: (url: string) => void,
+    setUploading: (v: boolean) => void
+  ) => {
+    setUploading(true);
+    try {
+      const result = await uploadHeroFile(file, category);
+      onSuccess(result.url);
+      console.log(`✅ Upload success [${category}]:`, result.url);
+    } catch (err: any) {
+      alert('❌ فشل الرفع: ' + (err.message || 'خطأ غير معروف'));
+      console.error('❌ Upload error:', err);
+    } finally {
+      setUploading(false);
+    }
+  };
+
+  // ============================================================
+  // ✅ دوال الرفع المتخصصة
+  // ============================================================
+  const handleHeroImageUpload = async (file: File) => {
+    await doUpload(
+      file,
+      'main',
+      (url) => updateField('mainContent.image', url),
+      setUploadingHeroImage
+    );
+  };
+
+  const handleBackgroundImageUpload = async (file: File) => {
+    await doUpload(
+      file,
+      'main',
+      (url) => {
+        updateField('background.type', 'image');
+        updateField('background.value', url);
       },
-    });
-    alert('✅ تم رفع الصورة');
-  } catch (err: any) {
-    alert('❌ فشل رفع الصورة: ' + err.message);
-  } finally {
-    setUploadingImage(false);
-    if (imageInputRef.current) imageInputRef.current.value = '';
-  }
-};
+      setUploadingBgImage
+    );
+  };
 
-// ✅ رفع فيديو الخلفية
-const handleVideoUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
-  const file = e.target.files?.[0];
-  if (!file) return;
-
-  setUploadingVideo(true);
-  try {
-    const result = await uploadHeroFile(file);
-    setLocalConfig({
-      ...localConfig,
-      background: {
-        ...localConfig.background,
-        type: 'video',
-        value: result.url,
+  const handleVideoUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+    await doUpload(
+      file,
+      'main',
+      (url) => {
+        updateField('background.type', 'video');
+        updateField('background.value', url);
       },
-    });
-    alert('✅ تم رفع الفيديو');
-  } catch (err: any) {
-    alert('❌ فشل رفع الفيديو: ' + err.message);
-  } finally {
-    setUploadingVideo(false);
+      setUploadingVideo
+    );
     if (videoInputRef.current) videoInputRef.current.value = '';
-  }
-};
+  };
 
-// ✅ رفع صورة خلفية (نوع image)
-const handleBackgroundImageUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
-  const file = e.target.files?.[0];
-  if (!file) return;
+  const handlePopupImageUpload = async (file: File) => {
+    await doUpload(
+      file,
+      'popup',
+      (url) => updateField('announcements.popup.image', url),
+      setUploadingPopup
+    );
+  };
 
-  setUploadingImage(true);
-  try {
-    const result = await uploadHeroFile(file);
-    setLocalConfig({
-      ...localConfig,
-      background: {
-        ...localConfig.background,
-        type: 'image',
-        value: result.url,
-      },
-    });
-    alert('✅ تم رفع صورة الخلفية');
-  } catch (err: any) {
-    alert('❌ فشل رفع الصورة: ' + err.message);
-  } finally {
-    setUploadingImage(false);
-    if (imageInputRef.current) imageInputRef.current.value = '';
-  }
-};
+  const handleSideBannerUpload = async (file: File) => {
+    await doUpload(
+      file,
+      'sideBanner',
+      (url) => updateField('announcements.sideBanner.image', url),
+      setUploadingSideBanner
+    );
+  };
 
-// ✅ رفع صورة Popup
-const handlePopupImageUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
-  const file = e.target.files?.[0];
-  if (!file) return;
+  const handleMidBannerUpload = async (file: File) => {
+    await doUpload(
+      file,
+      'midBanner',
+      (url) => updateField('announcements.midBanner.image', url),
+      setUploadingMidBanner
+    );
+  };
 
-  setUploadingPopup(true);
-  try {
-    const result = await uploadHeroFile(file);
-    setLocalConfig({
-      ...localConfig,
-      announcements: {
-        ...localConfig.announcements,
-        popup: {
-          ...localConfig.announcements?.popup,
-          image: result.url,
-        },
-      },
-    });
-    alert('✅ تم رفع صورة Popup');
-  } catch (err: any) {
-    alert('❌ فشل رفع الصورة: ' + err.message);
-  } finally {
-    setUploadingPopup(false);
-    if (popupInputRef.current) popupInputRef.current.value = '';
-  }
-};
+  const handleSplashLogoUpload = async (file: File) => {
+    await doUpload(
+      file,
+      'splash',
+      (url) => updateField('splashScreen.logo', url),
+      setUploadingSplashLogo
+    );
+  };
 
-// ✅ رفع صورة Side Banner
-const handleSideBannerUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
-  const file = e.target.files?.[0];
-  if (!file) return;
+  const handleSlideImageUpload = async (file: File, slideIndex: number) => {
+    setUploadingSlideIndex(slideIndex);
+    try {
+      const result = await uploadHeroFile(file, 'slide');
+      setLocalConfig((prev: any) => {
+        const slides = [...(prev.slides || [])];
+        slides[slideIndex] = { ...slides[slideIndex], image: result.url };
+        return { ...prev, slides };
+      });
+    } catch (err: any) {
+      alert('❌ فشل الرفع: ' + (err.message || 'خطأ غير معروف'));
+    } finally {
+      setUploadingSlideIndex(null);
+    }
+  };
 
-  setUploadingSideBanner(true);
-  try {
-    const result = await uploadHeroFile(file);
-    setLocalConfig({
-      ...localConfig,
-      announcements: {
-        ...localConfig.announcements,
-        sideBanner: {
-          ...localConfig.announcements?.sideBanner,
-          image: result.url,
-        },
-      },
-    });
-    alert('✅ تم رفع صورة Side Banner');
-  } catch (err: any) {
-    alert('❌ فشل رفع الصورة: ' + err.message);
-  } finally {
-    setUploadingSideBanner(false);
-    if (sideBannerInputRef.current) sideBannerInputRef.current.value = '';
-  }
-};
+  // ============================================================
+  // ✅ شاشة التحميل
+  // ============================================================
   if (loading || !localConfig) {
     return (
       <div className="min-h-screen flex items-center justify-center">
@@ -189,13 +306,15 @@ const handleSideBannerUpload = async (e: React.ChangeEvent<HTMLInputElement>) =>
   }
 
   const tabs = [
-    { id: 'layout', label: '🎨 التصميم', icon: <FaPalette /> },
-    { id: 'content', label: '📝 المحتوى', icon: <FaLayerGroup /> },
-    { id: 'ctas', label: '🔘 الأزرار', icon: <FaPlus /> },
+    { id: 'layout', label: '🎨 التصميم' },
+    { id: 'content', label: '📝 المحتوى' },
+    { id: 'ctas', label: '🔘 الأزرار' },
     { id: 'badges', label: '⭐ الشارات' },
-    { id: 'background', label: '🖼️ الخلفية', icon: <FaImage /> },
-    { id: 'announcements', label: '📢 الإعلانات', icon: <FaBullhorn /> },
-    { id: 'stats', label: '📊 الإحصائيات', icon: <FaChartBar /> },
+    { id: 'background', label: '🖼️ الخلفية' },
+    { id: 'slides', label: '🎠 الشرائح' },
+    { id: 'announcements', label: '📢 الإعلانات' },
+    { id: 'stats', label: '📊 الإحصائيات' },
+    { id: 'splash', label: '💫 شاشة البداية' },
     { id: 'sections', label: '📑 الأقسام' },
   ];
 
@@ -207,7 +326,9 @@ const handleSideBannerUpload = async (e: React.ChangeEvent<HTMLInputElement>) =>
           <h1 className="text-3xl font-bold text-gray-900 dark:text-white">
             🎨 إدارة الصفحة الرئيسية
           </h1>
-          <p className="text-gray-500 mt-1">تخصيص Hero + الإعلانات + الإحصائيات</p>
+          <p className="text-gray-500 mt-1">
+            تخصيص Hero + الإعلانات + الإحصائيات + الشرائح
+          </p>
         </div>
         <div className="flex gap-3">
           <button
@@ -227,7 +348,6 @@ const handleSideBannerUpload = async (e: React.ChangeEvent<HTMLInputElement>) =>
         </div>
       </div>
 
-      {/* Success Message */}
       {saveSuccess && (
         <div className="bg-green-100 text-green-700 p-4 rounded-xl mb-6 flex items-center gap-2">
           <FaCheckCircle /> تم الحفظ بنجاح!
@@ -251,7 +371,6 @@ const handleSideBannerUpload = async (e: React.ChangeEvent<HTMLInputElement>) =>
         ))}
       </div>
 
-      {/* Content */}
       <div className="bg-white dark:bg-gray-800 rounded-2xl p-6 shadow-sm">
         {/* ===== Layout ===== */}
         {activeTab === 'layout' && (
@@ -271,7 +390,7 @@ const handleSideBannerUpload = async (e: React.ChangeEvent<HTMLInputElement>) =>
                   onClick={() => updateField('layout', layout.id)}
                   className={`p-4 rounded-xl border-2 text-right transition ${
                     localConfig.layout === layout.id
-                      ? 'border-purple-600 bg-purple-50'
+                      ? 'border-purple-600 bg-purple-50 dark:bg-purple-900/20'
                       : 'border-gray-200 hover:border-purple-300'
                   }`}
                 >
@@ -299,11 +418,15 @@ const handleSideBannerUpload = async (e: React.ChangeEvent<HTMLInputElement>) =>
             </div>
 
             <div>
-              <label className="block text-sm font-medium mb-2">الكلمة المميزة (Highlight)</label>
+              <label className="block text-sm font-medium mb-2">
+                الكلمة المميزة (Highlight)
+              </label>
               <input
                 type="text"
                 value={localConfig.mainContent?.titleHighlight || ''}
-                onChange={(e) => updateField('mainContent.titleHighlight', e.target.value)}
+                onChange={(e) =>
+                  updateField('mainContent.titleHighlight', e.target.value)
+                }
                 className="w-full px-4 py-3 rounded-lg border border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-700"
               />
             </div>
@@ -313,81 +436,49 @@ const handleSideBannerUpload = async (e: React.ChangeEvent<HTMLInputElement>) =>
               <textarea
                 rows={3}
                 value={localConfig.mainContent?.description || ''}
-                onChange={(e) => updateField('mainContent.description', e.target.value)}
+                onChange={(e) =>
+                  updateField('mainContent.description', e.target.value)
+                }
                 className="w-full px-4 py-3 rounded-lg border border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-700"
               />
             </div>
 
-            {/* ✅ ✅ ✅ رفع صورة Hero من الجهاز */}
-<div>
-  <label className="block text-sm font-medium mb-2">
-    <FaImage className="inline ml-2" />
-    صورة Hero
-  </label>
+            <ImageUploader
+              label="صورة Hero"
+              value={localConfig.mainContent?.image || ''}
+              onChange={(url) => updateField('mainContent.image', url)}
+              onUpload={handleHeroImageUpload}
+              uploading={uploadingHeroImage}
+            />
 
-  <div className="border-2 border-dashed border-gray-300 dark:border-gray-600 rounded-xl p-6 text-center hover:border-purple-400 transition">
-    <input
-      ref={imageInputRef}
-      type="file"
-      accept="image/*"
-      onChange={handleImageUpload}
-      className="hidden"
-    />
-
-    {localConfig.mainContent?.image ? (
-      <div className="space-y-3">
-        <img
-          src={localConfig.mainContent.image}
-          alt="Hero"
-          className="max-h-48 mx-auto rounded-lg shadow-lg"
-        />
-        <div className="flex gap-3 justify-center">
-          <button
-            type="button"
-            onClick={() => imageInputRef.current?.click()}
-            className="px-4 py-2 bg-purple-600 text-white rounded-lg hover:bg-purple-700 flex items-center gap-2"
-            disabled={uploadingImage}
-          >
-            {uploadingImage ? (
-              <FaSpinner className="animate-spin" />
-            ) : (
-              <FaUpload />
+            {/* imagePosition — للنمط split */}
+            {localConfig.layout === 'split' && (
+              <div>
+                <label className="block text-sm font-medium mb-2">
+                  موضع الصورة
+                </label>
+                <div className="flex gap-3">
+                  {[
+                    { value: 'right', label: 'يمين' },
+                    { value: 'left', label: 'يسار' },
+                  ].map((pos) => (
+                    <button
+                      key={pos.value}
+                      onClick={() =>
+                        updateField('mainContent.imagePosition', pos.value)
+                      }
+                      className={`px-4 py-2 rounded-lg border-2 ${
+                        localConfig.mainContent?.imagePosition === pos.value
+                          ? 'border-purple-600 bg-purple-50'
+                          : 'border-gray-200'
+                      }`}
+                    >
+                      {pos.label}
+                    </button>
+                  ))}
+                </div>
+              </div>
             )}
-            تغيير الصورة
-          </button>
-          <button
-            type="button"
-            onClick={() => updateField('mainContent.image', '')}
-            className="px-4 py-2 bg-red-100 text-red-600 rounded-lg hover:bg-red-200 flex items-center gap-2"
-          >
-            <FaTrash />
-            حذف
-          </button>
-        </div>
-      </div>
-    ) : (
-      <button
-        type="button"
-        onClick={() => imageInputRef.current?.click()}
-        className="py-4 w-full"
-        disabled={uploadingImage}
-      >
-        {uploadingImage ? (
-          <>
-            <FaSpinner className="w-8 h-8 text-purple-600 animate-spin mx-auto mb-2" />
-            <p className="text-sm text-gray-500">جاري الرفع...</p>
-          </>
-        ) : (
-          <>
-            <FaUpload className="w-8 h-8 text-gray-400 mx-auto mb-2" />
-            <p className="text-sm text-gray-500">اضغط لرفع صورة من جهازك</p>
-            <p className="text-xs text-gray-400 mt-1">PNG, JPG, WebP</p>
-          </>
-        )}
-      </button>
-    )}
-  </div>
-</div>
           </div>
         )}
 
@@ -395,32 +486,50 @@ const handleSideBannerUpload = async (e: React.ChangeEvent<HTMLInputElement>) =>
         {activeTab === 'ctas' && (
           <div className="space-y-6">
             <div className="flex justify-between items-center">
-              <h2 className="text-xl font-bold">الأزرار (2-4)</h2>
+              <h2 className="text-xl font-bold">
+                الأزرار ({localConfig.ctas?.length || 0}/4)
+              </h2>
               <button
                 onClick={() => {
                   const ctas = [...(localConfig.ctas || [])];
+                  if (ctas.length >= 4) {
+                    alert('⚠️ الحد الأقصى 4 أزرار');
+                    return;
+                  }
                   ctas.push({
                     text: 'زر جديد',
                     link: '/',
                     variant: 'primary',
                     order: ctas.length,
                     isActive: true,
+                    target: '_self',
                   });
                   updateField('ctas', ctas);
                 }}
-                className="px-4 py-2 bg-purple-600 text-white rounded-lg flex items-center gap-2"
+                disabled={(localConfig.ctas?.length || 0) >= 4}
+                className="px-4 py-2 bg-purple-600 text-white rounded-lg flex items-center gap-2 disabled:opacity-50"
               >
                 <FaPlus /> إضافة زر
               </button>
             </div>
 
             {(localConfig.ctas || []).map((cta: any, i: number) => (
-              <div key={i} className="bg-gray-50 dark:bg-gray-700 p-4 rounded-xl space-y-3">
+              <div
+                key={i}
+                className="bg-gray-50 dark:bg-gray-700 p-4 rounded-xl space-y-3"
+              >
                 <div className="flex justify-between items-center">
                   <span className="font-bold">زر {i + 1}</span>
                   <button
                     onClick={() => {
-                      const ctas = localConfig.ctas.filter((_: any, idx: number) => idx !== i);
+                      if ((localConfig.ctas?.length || 0) <= 2) {
+                        alert('⚠️ الحد الأدنى زرّان');
+                        return;
+                      }
+                      if (!confirm('هل تريد حذف هذا الزر؟')) return;
+                      const ctas = localConfig.ctas.filter(
+                        (_: any, idx: number) => idx !== i
+                      );
                       updateField('ctas', ctas);
                     }}
                     className="text-red-500 hover:text-red-700"
@@ -466,6 +575,18 @@ const handleSideBannerUpload = async (e: React.ChangeEvent<HTMLInputElement>) =>
                     <option value="outline">إطار</option>
                     <option value="ghost">شفاف</option>
                   </select>
+                  <select
+                    value={cta.target || '_self'}
+                    onChange={(e) => {
+                      const ctas = [...localConfig.ctas];
+                      ctas[i].target = e.target.value;
+                      updateField('ctas', ctas);
+                    }}
+                    className="px-3 py-2 rounded-lg border"
+                  >
+                    <option value="_self">نفس النافذة</option>
+                    <option value="_blank">نافذة جديدة</option>
+                  </select>
                   <input
                     type="text"
                     placeholder="أيقونة (fa-...)"
@@ -475,8 +596,21 @@ const handleSideBannerUpload = async (e: React.ChangeEvent<HTMLInputElement>) =>
                       ctas[i].icon = e.target.value;
                       updateField('ctas', ctas);
                     }}
-                    className="px-3 py-2 rounded-lg border"
+                    className="px-3 py-2 rounded-lg border col-span-2"
                   />
+                  <label className="flex items-center gap-2 col-span-2">
+                    <input
+                      type="checkbox"
+                      checked={cta.isActive !== false}
+                      onChange={(e) => {
+                        const ctas = [...localConfig.ctas];
+                        ctas[i].isActive = e.target.checked;
+                        updateField('ctas', ctas);
+                      }}
+                      className="w-4 h-4"
+                    />
+                    <span className="text-sm">نشط</span>
+                  </label>
                 </div>
               </div>
             ))}
@@ -507,7 +641,10 @@ const handleSideBannerUpload = async (e: React.ChangeEvent<HTMLInputElement>) =>
             </div>
 
             {(localConfig.badges || []).map((badge: any, i: number) => (
-              <div key={i} className="bg-gray-50 dark:bg-gray-700 p-4 rounded-xl">
+              <div
+                key={i}
+                className="bg-gray-50 dark:bg-gray-700 p-4 rounded-xl"
+              >
                 <div className="grid grid-cols-3 gap-3">
                   <input
                     type="text"
@@ -540,11 +677,26 @@ const handleSideBannerUpload = async (e: React.ChangeEvent<HTMLInputElement>) =>
                         badges[i].color = e.target.value;
                         updateField('badges', badges);
                       }}
-                      className="w-12 h-10 rounded"
+                      className="w-12 h-10 rounded cursor-pointer"
                     />
+                    <label className="flex items-center gap-1">
+                      <input
+                        type="checkbox"
+                        checked={badge.isActive !== false}
+                        onChange={(e) => {
+                          const badges = [...localConfig.badges];
+                          badges[i].isActive = e.target.checked;
+                          updateField('badges', badges);
+                        }}
+                        className="w-4 h-4"
+                      />
+                    </label>
                     <button
                       onClick={() => {
-                        const badges = localConfig.badges.filter((_: any, idx: number) => idx !== i);
+                        if (!confirm('حذف الشارة؟')) return;
+                        const badges = localConfig.badges.filter(
+                          (_: any, idx: number) => idx !== i
+                        );
                         updateField('badges', badges);
                       }}
                       className="text-red-500"
@@ -565,174 +717,405 @@ const handleSideBannerUpload = async (e: React.ChangeEvent<HTMLInputElement>) =>
 
             <div>
               <label className="block text-sm font-medium mb-2">النوع</label>
-              <div className="grid grid-cols-3 gap-3">
-                {['animated', 'gradient', 'image', 'video'].map((type) => (
+              <div className="grid grid-cols-3 md:grid-cols-5 gap-3">
+                {[
+                  { id: 'animated', label: '🌟 متحرك' },
+                  { id: 'gradient', label: '🌈 تدرج' },
+                  { id: 'solid', label: '🎨 لون صلب' },
+                  { id: 'image', label: '🖼️ صورة' },
+                  { id: 'video', label: '🎬 فيديو' },
+                ].map((t) => (
                   <button
-                    key={type}
-                    onClick={() => updateField('background.type', type)}
+                    key={t.id}
+                    onClick={() => updateField('background.type', t.id)}
                     className={`p-3 rounded-lg border-2 ${
-                      localConfig.background?.type === type
+                      localConfig.background?.type === t.id
                         ? 'border-purple-600 bg-purple-50'
                         : 'border-gray-200'
                     }`}
                   >
-                    {type === 'animated' && '🌟 متحرك'}
-                    {type === 'gradient' && '🌈 تدرج'}
-                    {type === 'image' && '🖼️ صورة'}
-                    {type === 'video' && '🎬 فيديو'}
+                    {t.label}
                   </button>
                 ))}
               </div>
             </div>
-{/* ✅ رفع صورة خلفية */}
-{localConfig.background?.type === 'image' && (
-  <div>
-    <label className="block text-sm font-medium mb-2">
-      <FaImage className="inline ml-2" />
-      صورة الخلفية
-    </label>
 
-    <div className="border-2 border-dashed border-gray-300 dark:border-gray-600 rounded-xl p-6 text-center hover:border-purple-400">
-      <input
-        ref={imageInputRef}
-        type="file"
-        accept="image/*"
-        onChange={handleBackgroundImageUpload}
-        className="hidden"
-      />
+            {localConfig.background?.type === 'solid' && (
+              <div>
+                <label className="block text-sm font-medium mb-2">اللون</label>
+                <input
+                  type="color"
+                  value={localConfig.background?.value || '#0f0f23'}
+                  onChange={(e) =>
+                    updateField('background.value', e.target.value)
+                  }
+                  className="w-24 h-12 rounded cursor-pointer"
+                />
+              </div>
+            )}
 
-      {localConfig.background?.value ? (
-        <div className="space-y-3">
-          <img
-            src={localConfig.background.value}
-            alt="Background"
-            className="max-h-48 mx-auto rounded-lg"
-          />
-          <div className="flex gap-3 justify-center">
-            <button
-              type="button"
-              onClick={() => imageInputRef.current?.click()}
-              className="px-4 py-2 bg-purple-600 text-white rounded-lg flex items-center gap-2"
-              disabled={uploadingImage}
-            >
-              <FaUpload /> تغيير
-            </button>
-            <button
-              type="button"
-              onClick={() => updateField('background.value', '')}
-              className="px-4 py-2 bg-red-100 text-red-600 rounded-lg flex items-center gap-2"
-            >
-              <FaTrash /> حذف
-            </button>
-          </div>
-        </div>
-      ) : (
-        <button
-          type="button"
-          onClick={() => imageInputRef.current?.click()}
-          className="py-4 w-full"
-          disabled={uploadingImage}
-        >
-          <FaUpload className="w-8 h-8 text-gray-400 mx-auto mb-2" />
-          <p className="text-sm text-gray-500">اضغط لرفع صورة خلفية</p>
-        </button>
-      )}
-    </div>
-  </div>
-)}
+            {localConfig.background?.type === 'gradient' && (
+              <div>
+                <label className="block text-sm font-medium mb-2">
+                  ألوان التدرج (مفصولة بفاصلة)
+                </label>
+                <input
+                  type="text"
+                  placeholder="#7c3aed, #ec4899"
+                  value={(localConfig.background?.gradientColors || []).join(
+                    ', '
+                  )}
+                  onChange={(e) =>
+                    updateField(
+                      'background.gradientColors',
+                      e.target.value
+                        .split(',')
+                        .map((s) => s.trim())
+                        .filter(Boolean)
+                    )
+                  }
+                  className="w-full px-3 py-2 rounded-lg border"
+                />
+              </div>
+            )}
 
-{/* ✅ رفع فيديو خلفية */}
-{localConfig.background?.type === 'video' && (
-  <div>
-    <label className="block text-sm font-medium mb-2">
-      <FaVideo className="inline ml-2" />
-      فيديو الخلفية (MP4)
-    </label>
+            {localConfig.background?.type === 'image' && (
+              <ImageUploader
+                label="صورة الخلفية"
+                value={localConfig.background?.value || ''}
+                onChange={(url) => updateField('background.value', url)}
+                onUpload={handleBackgroundImageUpload}
+                uploading={uploadingBgImage}
+              />
+            )}
 
-    <div className="border-2 border-dashed border-gray-300 dark:border-gray-600 rounded-xl p-6 text-center hover:border-purple-400">
-      <input
-        ref={videoInputRef}
-        type="file"
-        accept="video/mp4,video/webm"
-        onChange={handleVideoUpload}
-        className="hidden"
-      />
-
-      {localConfig.background?.value ? (
-        <div className="space-y-3">
-          <video
-            src={localConfig.background.value}
-            controls
-            className="max-h-48 mx-auto rounded-lg"
-          />
-          <div className="flex gap-3 justify-center">
-            <button
-              type="button"
-              onClick={() => videoInputRef.current?.click()}
-              className="px-4 py-2 bg-purple-600 text-white rounded-lg flex items-center gap-2"
-              disabled={uploadingVideo}
-            >
-              {uploadingVideo ? <FaSpinner className="animate-spin" /> : <FaUpload />}
-              تغيير الفيديو
-            </button>
-            <button
-              type="button"
-              onClick={() => updateField('background.value', '')}
-              className="px-4 py-2 bg-red-100 text-red-600 rounded-lg flex items-center gap-2"
-            >
-              <FaTrash /> حذف
-            </button>
-          </div>
-        </div>
-      ) : (
-        <button
-          type="button"
-          onClick={() => videoInputRef.current?.click()}
-          className="py-4 w-full"
-          disabled={uploadingVideo}
-        >
-          {uploadingVideo ? (
-            <>
-              <FaSpinner className="w-8 h-8 text-purple-600 animate-spin mx-auto mb-2" />
-              <p className="text-sm text-gray-500">جاري رفع الفيديو... قد يستغرق دقيقة</p>
-            </>
-          ) : (
-            <>
-              <FaVideo className="w-8 h-8 text-gray-400 mx-auto mb-2" />
-              <p className="text-sm text-gray-500">اضغط لرفع فيديو MP4</p>
-              <p className="text-xs text-gray-400 mt-1">حتى 500MB</p>
-            </>
-          )}
-        </button>
-      )}
-    </div>
-  </div>
-)}
+            {localConfig.background?.type === 'video' && (
+              <div>
+                <label className="block text-sm font-medium mb-2">
+                  <FaVideo className="inline ml-2" /> فيديو الخلفية (MP4)
+                </label>
+                <div className="border-2 border-dashed border-gray-300 rounded-xl p-6 text-center hover:border-purple-400">
+                  <input
+                    ref={videoInputRef}
+                    type="file"
+                    accept="video/mp4,video/webm"
+                    onChange={handleVideoUpload}
+                    className="hidden"
+                  />
+                  {localConfig.background?.value ? (
+                    <div className="space-y-3">
+                      <video
+                        src={localConfig.background.value}
+                        controls
+                        className="max-h-48 mx-auto rounded-lg"
+                      />
+                      <div className="flex gap-3 justify-center">
+                        <button
+                          type="button"
+                          onClick={() => videoInputRef.current?.click()}
+                          className="px-4 py-2 bg-purple-600 text-white rounded-lg flex items-center gap-2"
+                          disabled={uploadingVideo}
+                        >
+                          {uploadingVideo ? (
+                            <FaSpinner className="animate-spin" />
+                          ) : (
+                            <FaUpload />
+                          )}
+                          تغيير الفيديو
+                        </button>
+                        <button
+                          type="button"
+                          onClick={() => updateField('background.value', '')}
+                          className="px-4 py-2 bg-red-100 text-red-600 rounded-lg flex items-center gap-2"
+                        >
+                          <FaTrash /> حذف
+                        </button>
+                      </div>
+                    </div>
+                  ) : (
+                    <button
+                      type="button"
+                      onClick={() => videoInputRef.current?.click()}
+                      className="py-4 w-full"
+                      disabled={uploadingVideo}
+                    >
+                      {uploadingVideo ? (
+                        <>
+                          <FaSpinner className="w-8 h-8 text-purple-600 animate-spin mx-auto mb-2" />
+                          <p className="text-sm text-gray-500">
+                            جاري رفع الفيديو... قد يستغرق دقيقة
+                          </p>
+                        </>
+                      ) : (
+                        <>
+                          <FaVideo className="w-8 h-8 text-gray-400 mx-auto mb-2" />
+                          <p className="text-sm text-gray-500">
+                            اضغط لرفع فيديو MP4
+                          </p>
+                          <p className="text-xs text-gray-400 mt-1">
+                            حتى 500MB
+                          </p>
+                        </>
+                      )}
+                    </button>
+                  )}
+                </div>
+              </div>
+            )}
 
             <div className="flex items-center gap-3">
               <input
                 type="checkbox"
                 checked={localConfig.background?.starsEnabled}
-                onChange={(e) => updateField('background.starsEnabled', e.target.checked)}
+                onChange={(e) =>
+                  updateField('background.starsEnabled', e.target.checked)
+                }
                 className="w-5 h-5"
               />
               <label>تفعيل النجوم المتحركة</label>
             </div>
 
-            <div>
-              <label className="block text-sm font-medium mb-2">
-                شفافية Overlay: {Math.round((localConfig.background?.overlayOpacity || 0.5) * 100)}%
-              </label>
-              <input
-                type="range"
-                min="0"
-                max="1"
-                step="0.05"
-                value={localConfig.background?.overlayOpacity || 0.5}
-                onChange={(e) => updateField('background.overlayOpacity', parseFloat(e.target.value))}
-                className="w-full"
-              />
+            <div className="grid grid-cols-2 gap-3">
+              <div>
+                <label className="block text-sm font-medium mb-2">
+                  لون Overlay
+                </label>
+                <input
+                  type="color"
+                  value={localConfig.background?.overlayColor || '#000000'}
+                  onChange={(e) =>
+                    updateField('background.overlayColor', e.target.value)
+                  }
+                  className="w-full h-10 rounded cursor-pointer"
+                />
+              </div>
+              <div>
+                <label className="block text-sm font-medium mb-2">
+                  شفافية Overlay:{' '}
+                  {Math.round(
+                    (localConfig.background?.overlayOpacity || 0.3) * 100
+                  )}
+                  %
+                </label>
+                <input
+                  type="range"
+                  min="0"
+                  max="1"
+                  step="0.05"
+                  value={localConfig.background?.overlayOpacity || 0.3}
+                  onChange={(e) =>
+                    updateField(
+                      'background.overlayOpacity',
+                      parseFloat(e.target.value)
+                    )
+                  }
+                  className="w-full"
+                />
+              </div>
             </div>
+          </div>
+        )}
+
+        {/* ===== Slides ===== */}
+        {activeTab === 'slides' && (
+          <div className="space-y-6">
+            <div className="flex justify-between items-center">
+              <h2 className="text-xl font-bold">
+                شرائح الكاروسيل ({localConfig.slides?.length || 0})
+              </h2>
+              <button
+                onClick={() => {
+                  const slides = [...(localConfig.slides || [])];
+                  slides.push({
+                    title: 'شريحة جديدة',
+                    description: '',
+                    image: '',
+                    bgColor: '#7c3aed',
+                    cta: { text: '', link: '' },
+                    duration: 5000,
+                    order: slides.length,
+                    isActive: true,
+                  });
+                  updateField('slides', slides);
+                }}
+                className="px-4 py-2 bg-purple-600 text-white rounded-lg flex items-center gap-2"
+              >
+                <FaPlus /> إضافة شريحة
+              </button>
+            </div>
+
+            <p className="text-sm text-gray-500">
+              ℹ️ الشرائح تُستخدم فقط عند اختيار نمط "كاروسيل"
+            </p>
+
+            {(localConfig.slides || []).map((slide: any, i: number) => (
+              <div
+                key={i}
+                className="bg-gray-50 dark:bg-gray-700 p-4 rounded-xl space-y-4 border-2 border-gray-200 dark:border-gray-600"
+              >
+                <div className="flex justify-between items-center">
+                  <span className="font-bold text-lg">شريحة {i + 1}</span>
+                  <div className="flex items-center gap-3">
+                    <label className="flex items-center gap-2 text-sm">
+                      <input
+                        type="checkbox"
+                        checked={slide.isActive !== false}
+                        onChange={(e) => {
+                          const slides = [...localConfig.slides];
+                          slides[i].isActive = e.target.checked;
+                          updateField('slides', slides);
+                        }}
+                        className="w-4 h-4"
+                      />
+                      <span>نشط</span>
+                    </label>
+                    <button
+                      onClick={() => {
+                        if (!confirm('حذف الشريحة؟')) return;
+                        const slides = localConfig.slides.filter(
+                          (_: any, idx: number) => idx !== i
+                        );
+                        updateField('slides', slides);
+                      }}
+                      className="text-red-500 hover:text-red-700 p-1"
+                    >
+                      <FaTrash />
+                    </button>
+                  </div>
+                </div>
+
+                <div className="grid grid-cols-2 gap-3">
+                  <div className="col-span-2">
+                    <label className="block text-sm font-medium mb-1">
+                      العنوان
+                    </label>
+                    <input
+                      type="text"
+                      placeholder="عنوان الشريحة"
+                      value={slide.title || ''}
+                      onChange={(e) => {
+                        const slides = [...localConfig.slides];
+                        slides[i].title = e.target.value;
+                        updateField('slides', slides);
+                      }}
+                      className="w-full px-3 py-2 rounded-lg border"
+                    />
+                  </div>
+
+                  <div className="col-span-2">
+                    <label className="block text-sm font-medium mb-1">
+                      الوصف
+                    </label>
+                    <textarea
+                      placeholder="وصف الشريحة"
+                      value={slide.description || ''}
+                      onChange={(e) => {
+                        const slides = [...localConfig.slides];
+                        slides[i].description = e.target.value;
+                        updateField('slides', slides);
+                      }}
+                      className="w-full px-3 py-2 rounded-lg border"
+                      rows={2}
+                    />
+                  </div>
+
+                  <div>
+                    <label className="block text-sm font-medium mb-1">
+                      نص الزر
+                    </label>
+                    <input
+                      type="text"
+                      placeholder="اعرف المزيد"
+                      value={slide.cta?.text || ''}
+                      onChange={(e) => {
+                        const slides = [...localConfig.slides];
+                        slides[i].cta = {
+                          ...slides[i].cta,
+                          text: e.target.value,
+                        };
+                        updateField('slides', slides);
+                      }}
+                      className="w-full px-3 py-2 rounded-lg border"
+                    />
+                  </div>
+
+                  <div>
+                    <label className="block text-sm font-medium mb-1">
+                      رابط الزر
+                    </label>
+                    <input
+                      type="text"
+                      placeholder="/services"
+                      value={slide.cta?.link || ''}
+                      onChange={(e) => {
+                        const slides = [...localConfig.slides];
+                        slides[i].cta = {
+                          ...slides[i].cta,
+                          link: e.target.value,
+                        };
+                        updateField('slides', slides);
+                      }}
+                      className="w-full px-3 py-2 rounded-lg border"
+                    />
+                  </div>
+
+                  <div>
+                    <label className="block text-sm font-medium mb-1">
+                      المدة (ms)
+                    </label>
+                    <input
+                      type="number"
+                      value={slide.duration || 5000}
+                      onChange={(e) => {
+                        const slides = [...localConfig.slides];
+                        slides[i].duration =
+                          parseInt(e.target.value) || 5000;
+                        updateField('slides', slides);
+                      }}
+                      className="w-full px-3 py-2 rounded-lg border"
+                    />
+                  </div>
+
+                  <div>
+                    <label className="block text-sm font-medium mb-1">
+                      لون الخلفية
+                    </label>
+                    <input
+                      type="color"
+                      value={slide.bgColor || '#7c3aed'}
+                      onChange={(e) => {
+                        const slides = [...localConfig.slides];
+                        slides[i].bgColor = e.target.value;
+                        updateField('slides', slides);
+                      }}
+                      className="w-full h-10 rounded cursor-pointer"
+                    />
+                  </div>
+                </div>
+
+                {/* ✅ رفع صورة الشريحة */}
+                <ImageUploader
+                  label="صورة الشريحة"
+                  value={slide.image || ''}
+                  onChange={(url) => {
+                    const slides = [...localConfig.slides];
+                    slides[i].image = url;
+                    updateField('slides', slides);
+                  }}
+                  onUpload={(file) => handleSlideImageUpload(file, i)}
+                  uploading={uploadingSlideIndex === i}
+                  hint="PNG, JPG, WebP — يُفضّل 1920×1080"
+                />
+              </div>
+            ))}
+
+            {(!localConfig.slides || localConfig.slides.length === 0) && (
+              <div className="text-center py-12 text-gray-400">
+                <FaImage className="w-16 h-16 mx-auto mb-4 opacity-50" />
+                <p>لا توجد شرائح بعد</p>
+                <p className="text-sm mt-1">اضغط "إضافة شريحة" للبدء</p>
+              </div>
+            )}
           </div>
         )}
 
@@ -747,7 +1130,12 @@ const handleSideBannerUpload = async (e: React.ChangeEvent<HTMLInputElement>) =>
                 <input
                   type="checkbox"
                   checked={localConfig.announcements?.topBar?.enabled}
-                  onChange={(e) => updateField('announcements.topBar.enabled', e.target.checked)}
+                  onChange={(e) =>
+                    updateField(
+                      'announcements.topBar.enabled',
+                      e.target.checked
+                    )
+                  }
                   className="w-5 h-5"
                 />
                 <h3 className="font-bold">📢 إعلان علوي</h3>
@@ -758,86 +1146,143 @@ const handleSideBannerUpload = async (e: React.ChangeEvent<HTMLInputElement>) =>
                   <input
                     type="text"
                     placeholder="النص"
-                    value={localConfig.announcements.topBar.text}
-                    onChange={(e) => updateField('announcements.topBar.text', e.target.value)}
+                    value={localConfig.announcements.topBar.text || ''}
+                    onChange={(e) =>
+                      updateField('announcements.topBar.text', e.target.value)
+                    }
                     className="w-full px-3 py-2 rounded-lg border"
                   />
-                  <div>
-  <label className="block text-sm font-medium mb-2">صورة Popup</label>
-
-  <div className="border-2 border-dashed border-gray-300 rounded-xl p-4 text-center">
-    <input
-      ref={popupInputRef}
-      type="file"
-      accept="image/*"
-      onChange={handlePopupImageUpload}
-      className="hidden"
-    />
-
-    {localConfig.announcements?.popup?.image ? (
-      <div className="space-y-2">
-        <img
-          src={localConfig.announcements.popup.image}
-          alt="Popup"
-          className="max-h-32 mx-auto rounded-lg"
-        />
-        <div className="flex gap-2 justify-center">
-          <button
-            type="button"
-            onClick={() => popupInputRef.current?.click()}
-            className="px-3 py-1 bg-purple-600 text-white rounded text-sm"
-            disabled={uploadingPopup}
-          >
-            تغيير
-          </button>
-          <button
-            type="button"
-            onClick={() => updateField('announcements.popup.image', '')}
-            className="px-3 py-1 bg-red-100 text-red-600 rounded text-sm"
-          >
-            حذف
-          </button>
-        </div>
-      </div>
-    ) : (
-      <button
-        type="button"
-        onClick={() => popupInputRef.current?.click()}
-        className="py-3 w-full"
-        disabled={uploadingPopup}
-      >
-        {uploadingPopup ? (
-          <FaSpinner className="w-6 h-6 text-purple-600 animate-spin mx-auto" />
-        ) : (
-          <>
-            <FaUpload className="w-6 h-6 text-gray-400 mx-auto mb-1" />
-            <p className="text-xs text-gray-500">رفع صورة</p>
-          </>
-        )}
-      </button>
-    )}
-  </div>
-</div>
+                  <input
+                    type="text"
+                    placeholder="الرابط"
+                    value={localConfig.announcements.topBar.link || ''}
+                    onChange={(e) =>
+                      updateField('announcements.topBar.link', e.target.value)
+                    }
+                    className="w-full px-3 py-2 rounded-lg border"
+                  />
                   <div className="grid grid-cols-2 gap-3">
                     <div>
                       <label className="text-sm">لون الخلفية</label>
                       <input
                         type="color"
-                        value={localConfig.announcements.topBar.bgColor}
-                        onChange={(e) => updateField('announcements.topBar.bgColor', e.target.value)}
-                        className="w-full h-10 rounded"
+                        value={
+                          localConfig.announcements.topBar.bgColor ||
+                          '#7c3aed'
+                        }
+                        onChange={(e) =>
+                          updateField(
+                            'announcements.topBar.bgColor',
+                            e.target.value
+                          )
+                        }
+                        className="w-full h-10 rounded cursor-pointer"
                       />
                     </div>
                     <div>
                       <label className="text-sm">لون النص</label>
                       <input
                         type="color"
-                        value={localConfig.announcements.topBar.textColor}
-                        onChange={(e) => updateField('announcements.topBar.textColor', e.target.value)}
-                        className="w-full h-10 rounded"
+                        value={
+                          localConfig.announcements.topBar.textColor ||
+                          '#ffffff'
+                        }
+                        onChange={(e) =>
+                          updateField(
+                            'announcements.topBar.textColor',
+                            e.target.value
+                          )
+                        }
+                        className="w-full h-10 rounded cursor-pointer"
                       />
                     </div>
                   </div>
+                </div>
+              )}
+            </div>
+
+            {/* Mid Banner */}
+            <div className="bg-gray-50 dark:bg-gray-700 p-4 rounded-xl">
+              <div className="flex items-center gap-3 mb-4">
+                <input
+                  type="checkbox"
+                  checked={localConfig.announcements?.midBanner?.enabled}
+                  onChange={(e) =>
+                    updateField(
+                      'announcements.midBanner.enabled',
+                      e.target.checked
+                    )
+                  }
+                  className="w-5 h-5"
+                />
+                <h3 className="font-bold">📣 بانر وسط الصفحة</h3>
+              </div>
+
+              {localConfig.announcements?.midBanner?.enabled && (
+                <div className="space-y-3">
+                  <input
+                    type="text"
+                    placeholder="العنوان"
+                    value={localConfig.announcements.midBanner.title || ''}
+                    onChange={(e) =>
+                      updateField(
+                        'announcements.midBanner.title',
+                        e.target.value
+                      )
+                    }
+                    className="w-full px-3 py-2 rounded-lg border"
+                  />
+                  <textarea
+                    placeholder="الوصف"
+                    value={
+                      localConfig.announcements.midBanner.description || ''
+                    }
+                    onChange={(e) =>
+                      updateField(
+                        'announcements.midBanner.description',
+                        e.target.value
+                      )
+                    }
+                    className="w-full px-3 py-2 rounded-lg border"
+                    rows={2}
+                  />
+                  <div className="grid grid-cols-2 gap-3">
+                    <input
+                      type="text"
+                      placeholder="نص الزر"
+                      value={localConfig.announcements.midBanner.ctaText || ''}
+                      onChange={(e) =>
+                        updateField(
+                          'announcements.midBanner.ctaText',
+                          e.target.value
+                        )
+                      }
+                      className="px-3 py-2 rounded-lg border"
+                    />
+                    <input
+                      type="text"
+                      placeholder="رابط الزر"
+                      value={localConfig.announcements.midBanner.link || ''}
+                      onChange={(e) =>
+                        updateField(
+                          'announcements.midBanner.link',
+                          e.target.value
+                        )
+                      }
+                      className="px-3 py-2 rounded-lg border"
+                    />
+                  </div>
+
+                  <ImageUploader
+                    label="صورة البانر"
+                    value={localConfig.announcements.midBanner.image || ''}
+                    onChange={(url) =>
+                      updateField('announcements.midBanner.image', url)
+                    }
+                    onUpload={handleMidBannerUpload}
+                    uploading={uploadingMidBanner}
+                    maxHeight="max-h-32"
+                  />
                 </div>
               )}
             </div>
@@ -848,7 +1293,12 @@ const handleSideBannerUpload = async (e: React.ChangeEvent<HTMLInputElement>) =>
                 <input
                   type="checkbox"
                   checked={localConfig.announcements?.popup?.enabled}
-                  onChange={(e) => updateField('announcements.popup.enabled', e.target.checked)}
+                  onChange={(e) =>
+                    updateField(
+                      'announcements.popup.enabled',
+                      e.target.checked
+                    )
+                  }
                   className="w-5 h-5"
                 />
                 <h3 className="font-bold">💬 Popup إعلاني</h3>
@@ -859,29 +1309,58 @@ const handleSideBannerUpload = async (e: React.ChangeEvent<HTMLInputElement>) =>
                   <input
                     type="text"
                     placeholder="العنوان"
-                    value={localConfig.announcements.popup.title}
-                    onChange={(e) => updateField('announcements.popup.title', e.target.value)}
+                    value={localConfig.announcements.popup.title || ''}
+                    onChange={(e) =>
+                      updateField('announcements.popup.title', e.target.value)
+                    }
                     className="w-full px-3 py-2 rounded-lg border"
                   />
                   <textarea
                     placeholder="الوصف"
-                    value={localConfig.announcements.popup.description}
-                    onChange={(e) => updateField('announcements.popup.description', e.target.value)}
+                    value={localConfig.announcements.popup.description || ''}
+                    onChange={(e) =>
+                      updateField(
+                        'announcements.popup.description',
+                        e.target.value
+                      )
+                    }
                     className="w-full px-3 py-2 rounded-lg border"
                   />
+
+                  <ImageUploader
+                    label="صورة Popup"
+                    value={localConfig.announcements.popup.image || ''}
+                    onChange={(url) =>
+                      updateField('announcements.popup.image', url)
+                    }
+                    onUpload={handlePopupImageUpload}
+                    uploading={uploadingPopup}
+                    maxHeight="max-h-32"
+                  />
+
                   <div className="grid grid-cols-2 gap-3">
                     <input
                       type="text"
                       placeholder="نص الزر"
-                      value={localConfig.announcements.popup.ctaText}
-                      onChange={(e) => updateField('announcements.popup.ctaText', e.target.value)}
+                      value={localConfig.announcements.popup.ctaText || ''}
+                      onChange={(e) =>
+                        updateField(
+                          'announcements.popup.ctaText',
+                          e.target.value
+                        )
+                      }
                       className="px-3 py-2 rounded-lg border"
                     />
                     <input
                       type="text"
                       placeholder="رابط الزر"
-                      value={localConfig.announcements.popup.ctaLink}
-                      onChange={(e) => updateField('announcements.popup.ctaLink', e.target.value)}
+                      value={localConfig.announcements.popup.ctaLink || ''}
+                      onChange={(e) =>
+                        updateField(
+                          'announcements.popup.ctaLink',
+                          e.target.value
+                        )
+                      }
                       className="px-3 py-2 rounded-lg border"
                     />
                   </div>
@@ -889,11 +1368,77 @@ const handleSideBannerUpload = async (e: React.ChangeEvent<HTMLInputElement>) =>
                     <label className="text-sm">يظهر بعد (ms)</label>
                     <input
                       type="number"
-                      value={localConfig.announcements.popup.showAfter}
-                      onChange={(e) => updateField('announcements.popup.showAfter', parseInt(e.target.value))}
+                      value={localConfig.announcements.popup.showAfter || 5000}
+                      onChange={(e) =>
+                        updateField(
+                          'announcements.popup.showAfter',
+                          parseInt(e.target.value) || 5000
+                        )
+                      }
                       className="w-full px-3 py-2 rounded-lg border"
                     />
                   </div>
+                </div>
+              )}
+            </div>
+
+            {/* Side Banner */}
+            <div className="bg-gray-50 dark:bg-gray-700 p-4 rounded-xl">
+              <div className="flex items-center gap-3 mb-4">
+                <input
+                  type="checkbox"
+                  checked={localConfig.announcements?.sideBanner?.enabled}
+                  onChange={(e) =>
+                    updateField(
+                      'announcements.sideBanner.enabled',
+                      e.target.checked
+                    )
+                  }
+                  className="w-5 h-5"
+                />
+                <h3 className="font-bold">📌 إعلان جانبي</h3>
+              </div>
+
+              {localConfig.announcements?.sideBanner?.enabled && (
+                <div className="space-y-3">
+                  <ImageUploader
+                    label="صورة الجانب"
+                    value={localConfig.announcements.sideBanner.image || ''}
+                    onChange={(url) =>
+                      updateField('announcements.sideBanner.image', url)
+                    }
+                    onUpload={handleSideBannerUpload}
+                    uploading={uploadingSideBanner}
+                    maxHeight="max-h-32"
+                  />
+
+                  <input
+                    type="text"
+                    placeholder="الرابط"
+                    value={localConfig.announcements.sideBanner.link || ''}
+                    onChange={(e) =>
+                      updateField(
+                        'announcements.sideBanner.link',
+                        e.target.value
+                      )
+                    }
+                    className="w-full px-3 py-2 rounded-lg border"
+                  />
+                  <select
+                    value={
+                      localConfig.announcements.sideBanner.position || 'right'
+                    }
+                    onChange={(e) =>
+                      updateField(
+                        'announcements.sideBanner.position',
+                        e.target.value
+                      )
+                    }
+                    className="w-full px-3 py-2 rounded-lg border"
+                  >
+                    <option value="right">يمين</option>
+                    <option value="left">يسار</option>
+                  </select>
                 </div>
               )}
             </div>
@@ -907,7 +1452,9 @@ const handleSideBannerUpload = async (e: React.ChangeEvent<HTMLInputElement>) =>
               <input
                 type="checkbox"
                 checked={localConfig.liveStats?.enabled}
-                onChange={(e) => updateField('liveStats.enabled', e.target.checked)}
+                onChange={(e) =>
+                  updateField('liveStats.enabled', e.target.checked)
+                }
                 className="w-5 h-5"
               />
               <h2 className="text-xl font-bold">📊 تفعيل الإحصائيات المباشرة</h2>
@@ -915,58 +1462,162 @@ const handleSideBannerUpload = async (e: React.ChangeEvent<HTMLInputElement>) =>
 
             {localConfig.liveStats?.enabled && (
               <div className="space-y-3">
-                {(localConfig.liveStats.items || []).map((item: any, i: number) => (
-                  <div key={i} className="bg-gray-50 dark:bg-gray-700 p-4 rounded-xl">
-                    <div className="grid grid-cols-3 gap-3">
-                      <input
-                        type="text"
-                        placeholder="التسمية"
-                        value={item.label}
-                        onChange={(e) => {
-                          const items = [...localConfig.liveStats.items];
-                          items[i].label = e.target.value;
-                          updateField('liveStats.items', items);
-                        }}
-                        className="px-3 py-2 rounded-lg border"
-                      />
-                      <select
-                        value={item.dynamicKey}
-                        onChange={(e) => {
-                          const items = [...localConfig.liveStats.items];
-                          items[i].dynamicKey = e.target.value;
-                          updateField('liveStats.items', items);
-                        }}
-                        className="px-3 py-2 rounded-lg border"
-                      >
-                        <option value="users">المستخدمون</option>
-                        <option value="requests">الطلبات</option>
-                        <option value="services">الخدمات</option>
-                        <option value="rating">التقييم</option>
-                        <option value="custom">مخصص</option>
-                      </select>
-                      <button
-                        onClick={() => {
-                          const items = localConfig.liveStats.items.filter((_: any, idx: number) => idx !== i);
-                          updateField('liveStats.items', items);
-                        }}
-                        className="text-red-500"
-                      >
-                        <FaTrash />
-                      </button>
+                {(localConfig.liveStats.items || []).map(
+                  (item: any, i: number) => (
+                    <div
+                      key={i}
+                      className="bg-gray-50 dark:bg-gray-700 p-4 rounded-xl"
+                    >
+                      <div className="grid grid-cols-4 gap-3">
+                        <input
+                          type="text"
+                          placeholder="التسمية"
+                          value={item.label}
+                          onChange={(e) => {
+                            const items = [...localConfig.liveStats.items];
+                            items[i].label = e.target.value;
+                            updateField('liveStats.items', items);
+                          }}
+                          className="px-3 py-2 rounded-lg border"
+                        />
+                        <select
+                          value={item.dynamicKey}
+                          onChange={(e) => {
+                            const items = [...localConfig.liveStats.items];
+                            items[i].dynamicKey = e.target.value;
+                            items[i].isDynamic = e.target.value !== 'custom';
+                            updateField('liveStats.items', items);
+                          }}
+                          className="px-3 py-2 rounded-lg border"
+                        >
+                          <option value="users">المستخدمون</option>
+                          <option value="requests">الطلبات</option>
+                          <option value="services">الخدمات</option>
+                          <option value="rating">التقييم</option>
+                          <option value="custom">مخصص</option>
+                        </select>
+                        <input
+                          type="text"
+                          placeholder="قيمة ثابتة (إن custom)"
+                          value={item.staticValue || ''}
+                          onChange={(e) => {
+                            const items = [...localConfig.liveStats.items];
+                            items[i].staticValue = e.target.value;
+                            updateField('liveStats.items', items);
+                          }}
+                          disabled={item.dynamicKey !== 'custom'}
+                          className="px-3 py-2 rounded-lg border disabled:opacity-50"
+                        />
+                        <button
+                          onClick={() => {
+                            if (!confirm('حذف الإحصائية؟')) return;
+                            const items = localConfig.liveStats.items.filter(
+                              (_: any, idx: number) => idx !== i
+                            );
+                            updateField('liveStats.items', items);
+                          }}
+                          className="text-red-500"
+                        >
+                          <FaTrash />
+                        </button>
+                      </div>
                     </div>
-                  </div>
-                ))}
+                  )
+                )}
 
                 <button
                   onClick={() => {
                     const items = [...(localConfig.liveStats.items || [])];
-                    items.push({ label: 'إحصائية', dynamicKey: 'users', color: '#7c3aed' });
+                    items.push({
+                      label: 'إحصائية',
+                      dynamicKey: 'custom',
+                      isDynamic: false,
+                      staticValue: '0',
+                      color: '#7c3aed',
+                    });
                     updateField('liveStats.items', items);
                   }}
                   className="px-4 py-2 bg-purple-600 text-white rounded-lg flex items-center gap-2"
                 >
                   <FaPlus /> إضافة إحصائية
                 </button>
+              </div>
+            )}
+          </div>
+        )}
+
+        {/* ===== Splash Screen ===== */}
+        {activeTab === 'splash' && (
+          <div className="space-y-6">
+            <h2 className="text-xl font-bold">💫 شاشة البداية</h2>
+
+            <div className="flex items-center gap-3">
+              <input
+                type="checkbox"
+                checked={localConfig.splashScreen?.enabled !== false}
+                onChange={(e) =>
+                  updateField('splashScreen.enabled', e.target.checked)
+                }
+                className="w-5 h-5"
+              />
+              <label>تفعيل شاشة البداية</label>
+            </div>
+
+            {localConfig.splashScreen?.enabled !== false && (
+              <div className="space-y-4">
+                <div>
+                  <label className="block text-sm font-medium mb-2">
+                    النص
+                  </label>
+                  <input
+                    type="text"
+                    value={localConfig.splashScreen?.text || ''}
+                    onChange={(e) =>
+                      updateField('splashScreen.text', e.target.value)
+                    }
+                    className="w-full px-3 py-2 rounded-lg border"
+                  />
+                </div>
+
+                <div>
+                  <label className="block text-sm font-medium mb-2">
+                    المدة (ms)
+                  </label>
+                  <input
+                    type="number"
+                    value={localConfig.splashScreen?.duration || 3500}
+                    onChange={(e) =>
+                      updateField(
+                        'splashScreen.duration',
+                        parseInt(e.target.value) || 3500
+                      )
+                    }
+                    className="w-full px-3 py-2 rounded-lg border"
+                  />
+                </div>
+
+                <div>
+                  <label className="block text-sm font-medium mb-2">
+                    لون الخلفية
+                  </label>
+                  <input
+                    type="color"
+                    value={localConfig.splashScreen?.bgColor || '#0f0f23'}
+                    onChange={(e) =>
+                      updateField('splashScreen.bgColor', e.target.value)
+                    }
+                    className="w-24 h-12 rounded cursor-pointer"
+                  />
+                </div>
+
+                <ImageUploader
+                  label="شعار Splash"
+                  value={localConfig.splashScreen?.logo || ''}
+                  onChange={(url) => updateField('splashScreen.logo', url)}
+                  onUpload={handleSplashLogoUpload}
+                  uploading={uploadingSplashLogo}
+                  maxHeight="max-h-32"
+                />
               </div>
             )}
           </div>
@@ -987,11 +1638,19 @@ const handleSideBannerUpload = async (e: React.ChangeEvent<HTMLInputElement>) =>
                 { key: 'newsletter', label: '📧 النشرة البريدية' },
                 { key: 'faq', label: '❓ الأسئلة الشائعة' },
               ].map((section) => (
-                <div key={section.key} className="flex items-center gap-3 p-4 bg-gray-50 dark:bg-gray-700 rounded-xl">
+                <div
+                  key={section.key}
+                  className="flex items-center gap-3 p-4 bg-gray-50 dark:bg-gray-700 rounded-xl"
+                >
                   <input
                     type="checkbox"
                     checked={localConfig.sections?.[section.key] || false}
-                    onChange={(e) => updateField(`sections.${section.key}`, e.target.checked)}
+                    onChange={(e) =>
+                      updateField(
+                        `sections.${section.key}`,
+                        e.target.checked
+                      )
+                    }
                     className="w-5 h-5"
                   />
                   <label className="font-medium">{section.label}</label>

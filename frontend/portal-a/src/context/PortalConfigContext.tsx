@@ -1,7 +1,16 @@
 // src/context/PortalConfigContext.tsx
-import React, { createContext, useContext, useEffect, useState } from 'react';
+import React, {
+  createContext,
+  useContext,
+  useEffect,
+  useState,
+  useRef,
+} from 'react';
 import { useAuth } from './AuthContext';
 
+// ============================================================
+// ✅ Types
+// ============================================================
 interface PortalConfigContextType {
   config: any;
   loading: boolean;
@@ -24,56 +33,129 @@ const PortalConfigContext = createContext<PortalConfigContextType>({
 
 export const usePortalConfig = () => useContext(PortalConfigContext);
 
-export const PortalConfigProvider: React.FC<{ children: React.ReactNode }> = ({ children }) => {
+// ============================================================
+// ✅ Helpers
+// ============================================================
+const resolvePortalId = (): string => {
+  const envId = import.meta.env.VITE_PORTAL_ID;
+  if (envId) return envId;
+
+  const pathMatch = window.location.pathname.match(/\/portal\/([^/]+)/);
+  if (pathMatch?.[1]) return pathMatch[1];
+
+  const host = window.location.hostname;
+  if (host !== 'localhost' && host.includes('.')) {
+    const sub = host.split('.')[0];
+    if (sub && sub !== 'www') return sub;
+  }
+  return '';
+};
+
+const ensureOk = async (res: Response, context: string): Promise<Response> => {
+  if (!res.ok) {
+    let message = `HTTP ${res.status}`;
+    try {
+      const data = await res.json();
+      if (data?.message) message = data.message;
+    } catch {}
+    throw new Error(`${context}: ${message}`);
+  }
+  return res;
+};
+
+// ============================================================
+// ✅ Provider
+// ============================================================
+export const PortalConfigProvider: React.FC<{ children: React.ReactNode }> = ({
+  children,
+}) => {
   const { token } = useAuth();
   const [config, setConfig] = useState<any>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [liveStats, setLiveStats] = useState<any>(null);
 
-  const API_URL = import.meta.env.VITE_API_URL || 'http://localhost:5001/api';
-  const PORTAL_ID = import.meta.env.VITE_PORTAL_ID || '';
+  const isFetchingRef = useRef(false);
+  const mountedRef = useRef(true);
 
-  const getHeaders = () => ({
+  const API_URL = import.meta.env.VITE_API_URL || 'http://localhost:5001/api';
+  const PORTAL_ID = resolvePortalId();
+  const ENDPOINT = `${API_URL}/appearance/hero`;
+
+  const getHeaders = (): Record<string, string> => ({
     'Content-Type': 'application/json',
     'X-Portal-Id': PORTAL_ID,
     ...(token ? { Authorization: `Bearer ${token}` } : {}),
   });
 
+  // ============================================================
+  // ✅ refreshConfig
+  // ============================================================
   const refreshConfig = async () => {
+    if (isFetchingRef.current) return;
+    isFetchingRef.current = true;
+
     try {
       setLoading(true);
       setError(null);
 
+      console.log('🌐 Fetching config from:', ENDPOINT);
+
       const [configRes, statsRes] = await Promise.all([
-        fetch(`${API_URL}/appearance/hero`, { headers: getHeaders() }),
-        fetch(`${API_URL}/appearance/hero/stats`, { headers: getHeaders() }),
+        fetch(`${ENDPOINT}`, { headers: getHeaders() }),
+        fetch(`${ENDPOINT}/stats`, { headers: getHeaders() }).catch(() => null),
       ]);
 
-      const configData = await configRes.json();
-      const statsData = await statsRes.json();
+      await ensureOk(configRes, 'Hero config');
+      const configData = await configRes.json().catch(() => ({ success: false }));
 
-      if (configData.success) setConfig(configData.data);
-      if (statsData.success) setLiveStats(statsData.data);
+      if (!mountedRef.current) return;
+
+      if (configData.success) {
+        setConfig(configData.data);
+        setError(null);
+        console.log('✅ Config loaded successfully');
+      } else {
+        setConfig(null);
+        setError(configData.message || 'Failed to load config');
+      }
+
+      if (statsRes && statsRes.ok) {
+        const statsData = await statsRes.json().catch(() => ({ success: false }));
+        if (statsData.success && mountedRef.current) {
+          setLiveStats(statsData.data);
+        }
+      }
     } catch (err: any) {
       console.error('❌ Config error:', err);
-      setError(err.message);
+      if (mountedRef.current) {
+        setError(err.message || 'Unknown error');
+        setConfig(null);
+      }
     } finally {
-      setLoading(false);
+      if (mountedRef.current) setLoading(false);
+      isFetchingRef.current = false;
     }
   };
 
+  // ============================================================
+  // ✅ updateConfig
+  // ============================================================
   const updateConfig = async (updates: any) => {
     try {
-      const res = await fetch(`${API_URL}/appearance/hero`, {
+      const res = await fetch(`${ENDPOINT}`, {
         method: 'PUT',
         headers: getHeaders(),
         body: JSON.stringify(updates),
       });
 
+      await ensureOk(res, 'Update config');
+
       const data = await res.json();
       if (data.success) {
         setConfig(data.data);
+      } else {
+        throw new Error(data.message || 'فشل الحفظ');
       }
       return data;
     } catch (err: any) {
@@ -82,29 +164,30 @@ export const PortalConfigProvider: React.FC<{ children: React.ReactNode }> = ({ 
     }
   };
 
-  // ✅ ✅ ✅ رفع ملف Hero (صورة/فيديو)
+  // ============================================================
+  // ✅ uploadHeroFile
+  // ============================================================
   const uploadHeroFile = async (file: File, category: string = 'main') => {
     try {
       const formData = new FormData();
       formData.append('file', file);
       formData.append('category', category);
 
-      const res = await fetch(`${API_URL}/appearance/hero/upload`, {
+      const res = await fetch(`${ENDPOINT}/upload`, {
         method: 'POST',
         headers: {
           'X-Portal-Id': PORTAL_ID,
           ...(token ? { Authorization: `Bearer ${token}` } : {}),
-          // ⚠️ لا تضع Content-Type — fetch يضعه تلقائياً مع FormData
         },
         body: formData,
       });
 
-      const data = await res.json();
+      await ensureOk(res, 'Upload file');
 
+      const data = await res.json();
       if (!data.success) {
         throw new Error(data.message || 'فشل رفع الملف');
       }
-
       return data.data;
     } catch (err: any) {
       console.error('❌ Upload error:', err);
@@ -112,20 +195,31 @@ export const PortalConfigProvider: React.FC<{ children: React.ReactNode }> = ({ 
     }
   };
 
+  // ============================================================
+  // ✅ useEffect — مرة واحدة
+  // ============================================================
   useEffect(() => {
+    mountedRef.current = true;
     refreshConfig();
-  }, [PORTAL_ID, token]);
+
+    return () => {
+      mountedRef.current = false;
+    };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
 
   return (
-    <PortalConfigContext.Provider value={{
-      config,
-      loading,
-      error,
-      refreshConfig,
-      updateConfig,
-      uploadHeroFile,
-      liveStats,
-    }}>
+    <PortalConfigContext.Provider
+      value={{
+        config,
+        loading,
+        error,
+        refreshConfig,
+        updateConfig,
+        uploadHeroFile,
+        liveStats,
+      }}
+    >
       {children}
     </PortalConfigContext.Provider>
   );
