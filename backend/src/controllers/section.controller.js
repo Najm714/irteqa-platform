@@ -1,7 +1,34 @@
 // backend/src/controllers/section.controller.js
+import mongoose from 'mongoose';
 import { Section } from '../models/Section.model.js';
 
-// ===== دالة مساعدة لتوليد slug =====
+// ============================================================
+// ✅ Helper: تنظيف parentId
+// ============================================================
+const sanitizeParentId = (parentId) => {
+  // تحويل "" أو "null" أو "undefined" أو undefined → null
+  if (
+    parentId === undefined ||
+    parentId === null ||
+    parentId === '' ||
+    parentId === 'null' ||
+    parentId === 'undefined' ||
+    (typeof parentId === 'string' && parentId.trim() === '')
+  ) {
+    return null;
+  }
+
+  // التحقق من ObjectId صالح
+  if (!mongoose.Types.ObjectId.isValid(parentId)) {
+    throw new Error('parentId غير صالح');
+  }
+
+  return parentId;
+};
+
+// ============================================================
+// ✅ Helper: توليد slug
+// ============================================================
 const generateSlug = (text) => {
   if (!text || text.trim() === '') return 'section-' + Date.now();
   return text
@@ -13,11 +40,40 @@ const generateSlug = (text) => {
     .replace(/^-+|-+$/g, '');
 };
 
-// ===== إنشاء قسم جديد =====
+// ============================================================
+// ✅ Helper: جلب كل الأبناء (لمنع الدورات)
+// ============================================================
+async function getDescendantIds(sectionId, portalId) {
+  const descendants = [];
+  const queue = [sectionId];
+
+  while (queue.length > 0) {
+    const currentId = queue.shift();
+    const children = await Section.find({
+      parentId: currentId,
+      portalId,
+      isDeleted: { $ne: true },
+    }).select('_id');
+
+    for (const child of children) {
+      const childId = child._id.toString();
+      if (!descendants.includes(childId)) {
+        descendants.push(childId);
+        queue.push(child._id);
+      }
+    }
+  }
+
+  return descendants;
+}
+
+// ============================================================
+// ✅ إنشاء قسم جديد
+// ============================================================
 export const createSection = async (req, res) => {
   try {
     const portalId = req.portalId;
-    const { id: userId } = req.user || {};
+    const userId = req.user?.id || req.accountId;
 
     const {
       name,
@@ -36,16 +92,17 @@ export const createSection = async (req, res) => {
     console.log('  - Portal:', portalId);
     console.log('  - User:', userId);
     console.log('  - Name:', nameAr);
+    console.log('  - Raw parentId:', JSON.stringify(parentId));
 
-    // ✅ التحقق من وجود portalId
+    // ✅ التحقق من portalId
     if (!portalId) {
       return res.status(400).json({
         success: false,
-        message: 'portalId is required',
+        message: 'Portal context is required',
       });
     }
 
-    // ✅ التحقق من وجود اسم
+    // ✅ التحقق من الاسم
     if (!nameAr || nameAr.trim() === '') {
       return res.status(400).json({
         success: false,
@@ -53,19 +110,30 @@ export const createSection = async (req, res) => {
       });
     }
 
-    // ✅ توليد slug تلقائياً إذا لم يتم توفيره
+    // ✅ تنظيف parentId
+    let cleanParentId = null;
+    try {
+      cleanParentId = sanitizeParentId(parentId);
+    } catch (err) {
+      return res.status(400).json({
+        success: false,
+        message: err.message,
+      });
+    }
+
+    // ✅ توليد slug
     let finalSlug = slug;
     if (!finalSlug || finalSlug.trim() === '') {
       finalSlug = generateSlug(nameAr || name || 'section');
     }
 
     // ✅ التحقق من عدم وجود slug مكرر
-    const existingSection = await Section.findOne({ 
-      portalId, 
+    const existingSection = await Section.findOne({
+      portalId,
       slug: finalSlug,
       isDeleted: { $ne: true },
     });
-    
+
     if (existingSection) {
       return res.status(400).json({
         success: false,
@@ -73,14 +141,14 @@ export const createSection = async (req, res) => {
       });
     }
 
-    // ✅ التحقق من وجود القسم الرئيسي (إذا تم تحديده)
-    if (parentId && parentId !== '') {
-      const parentSection = await Section.findOne({ 
-        _id: parentId, 
+    // ✅ التحقق من وجود القسم الرئيسي
+    if (cleanParentId) {
+      const parentSection = await Section.findOne({
+        _id: cleanParentId,
         portalId,
         isDeleted: { $ne: true },
       });
-      
+
       if (!parentSection) {
         return res.status(404).json({
           success: false,
@@ -99,7 +167,7 @@ export const createSection = async (req, res) => {
       icon: icon || 'fa-folder',
       image: image || '',
       slug: finalSlug,
-      parentId: parentId || null,
+      parentId: cleanParentId,
       order: order || 0,
       isPublished: isPublished !== undefined ? isPublished : true,
       createdBy: userId,
@@ -114,25 +182,22 @@ export const createSection = async (req, res) => {
       message: 'Section created successfully',
       data: section,
     });
-
   } catch (error) {
     console.error('❌ Create section error:', error);
-    
-    // ✅ معالجة أخطاء التحقق
+
     if (error.name === 'ValidationError') {
       const errors = Object.keys(error.errors).reduce((acc, key) => {
         acc[key] = error.errors[key].message;
         return acc;
       }, {});
-      
+
       return res.status(400).json({
         success: false,
         message: 'Validation error',
-        errors: errors,
+        errors,
       });
     }
 
-    // ✅ معالجة أخطاء التكرار
     if (error.code === 11000) {
       return res.status(400).json({
         success: false,
@@ -147,7 +212,9 @@ export const createSection = async (req, res) => {
   }
 };
 
-// ===== الحصول على جميع الأقسام =====
+// ============================================================
+// ✅ جلب جميع الأقسام
+// ============================================================
 export const getSections = async (req, res) => {
   try {
     const portalId = req.portalId;
@@ -156,19 +223,19 @@ export const getSections = async (req, res) => {
     if (!portalId) {
       return res.status(400).json({
         success: false,
-        message: 'portalId is required',
+        message: 'Portal context is required',
       });
     }
 
-    const query = { 
-      portalId, 
-      isDeleted: { $ne: true } 
+    const query = {
+      portalId,
+      isDeleted: { $ne: true },
     };
-    
+
     if (isPublished !== undefined) {
       query.isPublished = isPublished === 'true';
     }
-    
+
     if (parentId !== undefined) {
       query.parentId = parentId === 'null' ? null : parentId;
     }
@@ -177,14 +244,17 @@ export const getSections = async (req, res) => {
       .populate('parentId', 'name nameAr')
       .sort({ order: 1, nameAr: 1 });
 
-    // ✅ بناء شجرة الأقسام (JavaScript بدون TypeScript)
+    // ✅ بناء شجرة الأقسام
     const buildTree = (items, parentId = null) => {
       return items
-        .filter(item => {
-          const itemParentId = item.parentId?._id?.toString() || item.parentId?.toString() || null;
+        .filter((item) => {
+          const itemParentId =
+            item.parentId?._id?.toString() ||
+            item.parentId?.toString() ||
+            null;
           return itemParentId === parentId;
         })
-        .map(item => {
+        .map((item) => {
           const children = buildTree(items, item._id.toString());
           const itemObj = item.toObject();
           if (children.length > 0) {
@@ -209,14 +279,23 @@ export const getSections = async (req, res) => {
   }
 };
 
-// ===== الحصول على قسم واحد =====
+// ============================================================
+// ✅ جلب قسم واحد
+// ============================================================
 export const getSectionById = async (req, res) => {
   try {
     const { id } = req.params;
     const portalId = req.portalId;
 
-    const section = await Section.findOne({ 
-      _id: id, 
+    if (!mongoose.Types.ObjectId.isValid(id)) {
+      return res.status(400).json({
+        success: false,
+        message: 'Invalid section ID',
+      });
+    }
+
+    const section = await Section.findOne({
+      _id: id,
       portalId,
       isDeleted: { $ne: true },
     }).populate('parentId', 'name nameAr');
@@ -241,14 +320,66 @@ export const getSectionById = async (req, res) => {
   }
 };
 
-// ===== تحديث قسم =====
+// ============================================================
+// ✅ تحديث قسم
+// ============================================================
 export const updateSection = async (req, res) => {
   try {
     const { id } = req.params;
     const portalId = req.portalId;
-    const updates = req.body;
+    const updates = { ...req.body };
 
-    const section = await Section.findOne({ _id: id, portalId });
+    console.log('📝 Updating section:', id);
+    console.log('  - Raw parentId:', JSON.stringify(updates.parentId));
+
+    if (!portalId) {
+      return res.status(400).json({
+        success: false,
+        message: 'Portal context is required',
+      });
+    }
+
+    if (!mongoose.Types.ObjectId.isValid(id)) {
+      return res.status(400).json({
+        success: false,
+        message: 'Invalid section ID',
+      });
+    }
+
+    // ✅ تنظيف parentId (تحويل "" إلى null)
+    if (updates.parentId !== undefined) {
+      try {
+        updates.parentId = sanitizeParentId(updates.parentId);
+      } catch (err) {
+        return res.status(400).json({
+          success: false,
+          message: err.message,
+        });
+      }
+
+      // ✅ منع تعيين القسم كوالد لنفسه
+      if (updates.parentId === id) {
+        return res.status(400).json({
+          success: false,
+          message: 'لا يمكن تعيين القسم كوالد لنفسه',
+        });
+      }
+    }
+
+    // ✅ إزالة الحقول غير القابلة للتحديث
+    delete updates._id;
+    delete updates.portalId;
+    delete updates.createdAt;
+    delete updates.createdBy;
+    delete updates.__v;
+
+    // ✅ إيجاد القسم
+    const section = await Section.findOne({
+      _id: id,
+      portalId,
+      isDeleted: { $ne: true },
+    });
+
     if (!section) {
       return res.status(404).json({
         success: false,
@@ -256,7 +387,18 @@ export const updateSection = async (req, res) => {
       });
     }
 
-    // ✅ منع تحديث slug إذا كان مكرراً
+    // ✅ منع الدورات (Circular)
+    if (updates.parentId) {
+      const descendants = await getDescendantIds(id, portalId);
+      if (descendants.includes(updates.parentId.toString())) {
+        return res.status(400).json({
+          success: false,
+          message: 'لا يمكن تعيين قسم فرعي كوالد (سيسبب حلقة لا نهائية)',
+        });
+      }
+    }
+
+    // ✅ منع slug مكرر
     if (updates.slug && updates.slug !== section.slug) {
       const existing = await Section.findOne({
         portalId,
@@ -264,7 +406,7 @@ export const updateSection = async (req, res) => {
         _id: { $ne: id },
         isDeleted: { $ne: true },
       });
-      
+
       if (existing) {
         return res.status(400).json({
           success: false,
@@ -273,15 +415,15 @@ export const updateSection = async (req, res) => {
       }
     }
 
-    // ✅ تحديث الحقول
-    Object.keys(updates).forEach(key => {
-      if (key !== '_id' && key !== 'portalId' && key !== 'createdAt' && key !== 'createdBy') {
-        section[key] = updates[key];
-      }
+    // ✅ تطبيق التحديثات
+    Object.keys(updates).forEach((key) => {
+      section[key] = updates[key];
     });
 
     section.updatedAt = new Date();
     await section.save();
+
+    console.log('✅ Section updated:', section._id);
 
     res.status(200).json({
       success: true,
@@ -290,6 +432,27 @@ export const updateSection = async (req, res) => {
     });
   } catch (error) {
     console.error('❌ Update section error:', error);
+
+    if (error.name === 'ValidationError') {
+      const errors = Object.keys(error.errors).reduce((acc, key) => {
+        acc[key] = error.errors[key].message;
+        return acc;
+      }, {});
+
+      return res.status(400).json({
+        success: false,
+        message: 'Validation error',
+        errors,
+      });
+    }
+
+    if (error.code === 11000) {
+      return res.status(400).json({
+        success: false,
+        message: 'Duplicate slug. Please use a unique slug.',
+      });
+    }
+
     res.status(500).json({
       success: false,
       message: error.message || 'Failed to update section',
@@ -297,13 +460,27 @@ export const updateSection = async (req, res) => {
   }
 };
 
-// ===== حذف قسم =====
+// ============================================================
+// ✅ حذف قسم (حذف منطقي + الأبناء)
+// ============================================================
 export const deleteSection = async (req, res) => {
   try {
     const { id } = req.params;
     const portalId = req.portalId;
 
-    const section = await Section.findOne({ _id: id, portalId });
+    if (!mongoose.Types.ObjectId.isValid(id)) {
+      return res.status(400).json({
+        success: false,
+        message: 'Invalid section ID',
+      });
+    }
+
+    const section = await Section.findOne({
+      _id: id,
+      portalId,
+      isDeleted: { $ne: true },
+    });
+
     if (!section) {
       return res.status(404).json({
         success: false,
@@ -311,8 +488,13 @@ export const deleteSection = async (req, res) => {
       });
     }
 
-    // ✅ التحقق من وجود أقسام فرعية
-    const children = await Section.find({ parentId: id, portalId });
+    // ✅ التحقق من الأبناء
+    const children = await Section.find({
+      parentId: id,
+      portalId,
+      isDeleted: { $ne: true },
+    });
+
     if (children.length > 0) {
       return res.status(400).json({
         success: false,
@@ -338,13 +520,27 @@ export const deleteSection = async (req, res) => {
   }
 };
 
-// ===== تبديل حالة النشر =====
+// ============================================================
+// ✅ تبديل حالة النشر
+// ============================================================
 export const toggleSectionStatus = async (req, res) => {
   try {
     const { id } = req.params;
     const portalId = req.portalId;
 
-    const section = await Section.findOne({ _id: id, portalId });
+    if (!mongoose.Types.ObjectId.isValid(id)) {
+      return res.status(400).json({
+        success: false,
+        message: 'Invalid section ID',
+      });
+    }
+
+    const section = await Section.findOne({
+      _id: id,
+      portalId,
+      isDeleted: { $ne: true },
+    });
+
     if (!section) {
       return res.status(404).json({
         success: false,
@@ -358,7 +554,9 @@ export const toggleSectionStatus = async (req, res) => {
 
     res.status(200).json({
       success: true,
-      message: `Section ${section.isPublished ? 'published' : 'unpublished'} successfully`,
+      message: `Section ${
+        section.isPublished ? 'published' : 'unpublished'
+      } successfully`,
       data: section,
     });
   } catch (error) {

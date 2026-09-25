@@ -1,7 +1,6 @@
 // src/App.tsx
 import React from 'react';
-import { BrowserRouter, Routes, Route, useLocation } from 'react-router-dom';
-
+import { BrowserRouter, Routes, Route, useLocation, useParams } from 'react-router-dom';
 // Pages
 import Home from './pages/Home';
 import Services from './pages/Services';
@@ -50,6 +49,7 @@ import PaymentRefundPolicy from './pages/Policies/PaymentRefundPolicy';
 import CookiePolicy from './pages/Policies/CookiePolicy';
 import AdminLiveStreams from './pages/Admin/AdminLiveStreams';
 import LiveStreamViewer from './pages/LiveStreamViewer';
+import AdminSectionsStyle from './pages/Admin/AdminSectionsStyle';
 
 // ✅ إضافة صفحة إدارة Hero
 import AdminHeroConfig from './pages/Admin/AdminHeroConfig';
@@ -149,10 +149,10 @@ const AppRoutes = () => {
       } />
 
       <Route path="/request/:id" element={
-        <ProtectedRoute allowedRoles={['customer', 'specialist', 'portal_admin', 'super_admin']}>
-          <RequestWorkspace />
-        </ProtectedRoute>
-      } />
+  <ProtectedRoute allowedRoles={['customer', 'specialist', 'portal_admin', 'super_admin']}>
+    <RequestWorkspaceWithKey />
+  </ProtectedRoute>
+} />
 
       {/* Routes الخدمات */}
       <Route path="/request-service/:id" element={
@@ -209,6 +209,11 @@ const AppRoutes = () => {
         </ProtectedRoute>
       } />
 
+      <Route path="/admin/sections-style" element={
+        <ProtectedRoute allowedRoles={['portal_admin', 'super_admin']}>
+          <AdminSectionsStyle/>
+        </ProtectedRoute>
+      } />
       <Route path="/admin-sections" element={
         <ProtectedRoute allowedRoles={['portal_admin', 'super_admin']}>
           <AdminSections />
@@ -394,7 +399,16 @@ const AppRoutes = () => {
     </Routes>
   );
 };
-
+// ============================================================
+// ✅ Wrapper لإعادة بناء RequestWorkspace عند تغيير الطلب
+// ============================================================
+const RequestWorkspaceWithKey = () => {
+  const { id } = useParams<{ id: string }>();
+  
+  console.log('🔑 RequestWorkspaceWithKey — id:', id);
+  
+  return <RequestWorkspace key={id} />;
+};
 function App() {
   return (
     <ThemeProvider>

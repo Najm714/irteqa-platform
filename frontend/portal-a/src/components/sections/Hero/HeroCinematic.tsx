@@ -1,61 +1,160 @@
 // src/components/sections/Hero/HeroCinematic.tsx
 import React from 'react';
+import HeroStats from './HeroStats';
 
+// ============================================================
+// ✅ Types
+// ============================================================
 interface HeroCinematicProps {
   config?: any;
+  liveStats?: any;
 }
 
-const HeroCinematic: React.FC<HeroCinematicProps> = ({ config }) => {
-  // ✅ القيم الافتراضية
+// ============================================================
+// ✅ Helper: استخراج portalId (للاستخدام في الـ images إن لزم)
+// ============================================================
+const resolvePortalId = (): string => {
+  const envId = import.meta.env.VITE_PORTAL_ID;
+  if (envId) return envId;
+
+  const pathMatch = window.location.pathname.match(/\/portal\/([^/]+)/);
+  if (pathMatch?.[1]) return pathMatch[1];
+
+  const host = window.location.hostname;
+  if (host !== 'localhost' && host.includes('.')) {
+    const sub = host.split('.')[0];
+    if (sub && sub !== 'www') return sub;
+  }
+  return '';
+};
+
+// ============================================================
+// ✅ Helper: فصل العنوان عن الكلمة المميزة
+// ============================================================
+const splitTitle = (title: string, highlight: string) => {
+  if (!title) return { before: '', highlight: '' };
+  if (!highlight || !title.includes(highlight)) {
+    return { before: title, highlight: '' };
+  }
+  const parts = title.split(highlight);
+  return {
+    before: parts[0] || '',
+    highlight: highlight,
+    after: parts.slice(1).join(highlight) || '',
+  };
+};
+
+// ============================================================
+// ✅ Helper: بناء style الخلفية
+// ============================================================
+const buildBackgroundStyle = (background: any): React.CSSProperties => {
+  if (!background) return {};
+
+  const style: React.CSSProperties = {};
+
+  switch (background.type) {
+    case 'solid':
+      if (background.value) style.background = background.value;
+      break;
+
+    case 'gradient':
+      if (background.gradientColors?.length >= 2) {
+        style.background = `linear-gradient(135deg, ${background.gradientColors.join(', ')})`;
+      }
+      break;
+
+    case 'image':
+      if (background.value) {
+        style.backgroundImage = `url(${background.value})`;
+        style.backgroundSize = 'cover';
+        style.backgroundPosition = 'center';
+        style.backgroundRepeat = 'no-repeat';
+      }
+      break;
+
+    case 'video':
+    case 'animated':
+    default:
+      // القيم الافتراضية موجودة في CSS
+      break;
+  }
+
+  return style;
+};
+
+// ============================================================
+// ✅ Helper: توليد النجوم
+// ============================================================
+const generateStars = (count: number = 80) =>
+  Array.from({ length: count }, (_, i) => ({
+    id: i,
+    size: Math.random() * 3 + 1,
+    left: Math.random() * 100,
+    top: Math.random() * 100,
+    duration: Math.random() * 3 + 2,
+    delay: Math.random() * 3,
+  }));
+
+// ============================================================
+// ✅ المكوّن
+// ============================================================
+const HeroCinematic: React.FC<HeroCinematicProps> = ({ config, liveStats }) => {
+  // ============================================================
+  // ✅ المحتوى الرئيسي
+  // ============================================================
   const mainContent = {
     title: config?.mainContent?.title || 'منصة ارتقاء',
     titleHighlight: config?.mainContent?.titleHighlight || 'ارتقاء',
     description:
       config?.mainContent?.description ||
       'تقدم خدمات متخصصة تجمع بين الخبرة والجودة',
+    image: config?.mainContent?.image || '',
   };
 
-  const ctas = (config?.ctas || []).filter((c: any) => c.isActive !== false);
-  const badges = (config?.badges || []).filter((b: any) => b.isActive !== false);
+  // ============================================================
+  // ✅ العناصر النشطة
+  // ============================================================
+  const ctas = (config?.ctas || [])
+    .filter((c: any) => c.isActive !== false)
+    .sort((a: any, b: any) => (a.order || 0) - (b.order || 0));
 
+  const badges = (config?.badges || [])
+    .filter((b: any) => b.isActive !== false)
+    .sort((a: any, b: any) => (a.order || 0) - (b.order || 0));
+
+  // ============================================================
   // ✅ الخلفية
+  // ============================================================
   const bg = config?.background || {};
-  const starsEnabled = bg.starsEnabled !== false && (bg.type === 'animated' || bg.type === 'gradient');
+  const isVideo = bg.type === 'video' && bg.value;
+  const isStarsEnabled =
+    bg.starsEnabled !== false &&
+    (bg.type === 'animated' || bg.type === 'gradient' || !bg.type);
+
   const overlayOpacity = bg.overlayOpacity ?? 0.3;
   const overlayColor = bg.overlayColor || '#000000';
+  const showOverlay = bg.type !== 'solid' && overlayOpacity > 0;
 
-  // ✅ فصل العنوان عن الكلمة المميزة
-  const titleText = mainContent.title || '';
-  const highlight = mainContent.titleHighlight || '';
-  const titleBefore = highlight ? titleText.replace(highlight, '') : titleText;
+  const stars = isStarsEnabled ? generateStars(80) : [];
+  const heroStyle = buildBackgroundStyle(bg);
 
-  const stars = starsEnabled
-    ? Array.from({ length: 80 }, (_, i) => ({
-        id: i,
-        size: Math.random() * 3 + 1,
-        left: Math.random() * 100,
-        top: Math.random() * 100,
-        duration: Math.random() * 3 + 2,
-        delay: Math.random() * 3,
-      }))
-    : [];
+  // ============================================================
+  // ✅ فصل العنوان
+  // ============================================================
+  const { before, highlight, after } = splitTitle(
+    mainContent.title,
+    mainContent.titleHighlight
+  );
 
-  // ✅ بناء ستايل الخلفية
-  const heroStyle: React.CSSProperties = {};
-  if (bg.type === 'image' && bg.value) {
-    heroStyle.backgroundImage = `url(${bg.value})`;
-    heroStyle.backgroundSize = 'cover';
-    heroStyle.backgroundPosition = 'center';
-  } else if (bg.type === 'solid' && bg.value) {
-    heroStyle.background = bg.value;
-  } else if (bg.type === 'gradient' && bg.gradientColors?.length) {
-    heroStyle.background = `linear-gradient(135deg, ${bg.gradientColors.join(', ')})`;
-  }
-
+  // ============================================================
+  // ✅ Render
+  // ============================================================
   return (
-    <section className="hero" style={heroStyle}>
-      {/* ✅ فيديو الخلفية */}
-      {bg.type === 'video' && bg.value && (
+    <section className="hero hero-cinematic" style={heroStyle}>
+      {/* ====================================================
+          فيديو الخلفية
+      ==================================================== */}
+      {isVideo && (
         <video
           className="hero-video-bg"
           src={bg.value}
@@ -63,68 +162,107 @@ const HeroCinematic: React.FC<HeroCinematicProps> = ({ config }) => {
           loop
           muted
           playsInline
+          preload="metadata"
         />
       )}
 
-      {/* ✅ Overlay */}
-      {bg.type !== 'solid' && (
+      {/* ====================================================
+          Overlay
+      ==================================================== */}
+      {showOverlay && (
         <div
           className="hero-overlay"
-          style={{ background: overlayColor, opacity: overlayOpacity }}
+          style={{
+            background: overlayColor,
+            opacity: overlayOpacity,
+          }}
+          aria-hidden="true"
         />
       )}
 
-      {/* ✅ النجوم */}
+      {/* ====================================================
+          النجوم
+      ==================================================== */}
       {stars.length > 0 && (
-        <div className="stars">
+        <div className="stars" aria-hidden="true">
           {stars.map((star) => (
             <div
               key={star.id}
               className="star"
-              style={{
-                width: star.size + 'px',
-                height: star.size + 'px',
-                left: star.left + '%',
-                top: star.top + '%',
-                '--duration': star.duration + 's',
-                animationDelay: star.delay + 's',
-              } as any}
+              style={
+                {
+                  width: `${star.size}px`,
+                  height: `${star.size}px`,
+                  left: `${star.left}%`,
+                  top: `${star.top}%`,
+                  '--duration': `${star.duration}s`,
+                  animationDelay: `${star.delay}s`,
+                } as React.CSSProperties
+              }
             />
           ))}
         </div>
       )}
 
+      {/* ====================================================
+          المحتوى الرئيسي
+      ==================================================== */}
       <div className="container-custom">
-        <div className="hero-content">
-          {/* ✅ إصلاح: استخدام titleHighlight */}
+        <div className="hero-cinematic-content">
+          {/* ✅ العنوان مع الكلمة المميزة */}
           <h1 className="hero-title">
-            {titleBefore}
-            {highlight && <span className="hero-title-highlight">{highlight}</span>}
+            {before}
+            {highlight && (
+              <span className="hero-title-highlight">{highlight}</span>
+            )}
+            {after}
           </h1>
-          <p>{mainContent.description}</p>
 
-          <div className="hero-actions">
-            {ctas.map((cta: any, i: number) => (
-              <a
-                key={i}
-                href={cta.link}
-                target={cta.target || '_self'}
-                rel={cta.target === '_blank' ? 'noopener noreferrer' : undefined}
-                className={`btn-${cta.variant || 'primary'}`}
-              >
-                {cta.text}
-              </a>
-            ))}
-          </div>
+          {/* ✅ الوصف */}
+          {mainContent.description && (
+            <p className="hero-description">{mainContent.description}</p>
+          )}
 
+          {/* ✅ الأزرار */}
+          {ctas.length > 0 && (
+            <div className="hero-actions">
+              {ctas.map((cta: any, i: number) => (
+                <a
+                  key={i}
+                  href={cta.link || '#'}
+                  target={cta.target || '_self'}
+                  rel={
+                    cta.target === '_blank'
+                      ? 'noopener noreferrer'
+                      : undefined
+                  }
+                  className={`btn-${cta.variant || 'primary'}`}
+                >
+                  {cta.icon && (
+                    <i className={`fa ${cta.icon}`} aria-hidden="true" />
+                  )}
+                  {cta.text}
+                </a>
+              ))}
+            </div>
+          )}
+
+          {/* ✅ الشارات */}
           {badges.length > 0 && (
             <div className="hero-badges">
               {badges.map((badge: any, i: number) => (
                 <span
                   key={i}
                   className="hero-badge"
-                  style={badge.color ? { color: badge.color } : undefined}
+                  style={
+                    badge.color
+                      ? { color: badge.color, borderColor: `${badge.color}40` }
+                      : undefined
+                  }
                 >
+                  {badge.icon && (
+                    <i className={`fa ${badge.icon}`} aria-hidden="true" />
+                  )}
                   {badge.text}
                 </span>
               ))}
@@ -132,6 +270,11 @@ const HeroCinematic: React.FC<HeroCinematicProps> = ({ config }) => {
           )}
         </div>
       </div>
+
+      {/* ====================================================
+          الإحصائيات المباشرة
+      ==================================================== */}
+      <HeroStats config={config} liveStats={liveStats} />
     </section>
   );
 };

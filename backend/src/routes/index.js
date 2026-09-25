@@ -39,6 +39,9 @@ import offerRoutes from './offer.routes.js';
 import aboutRoutes from './about.routes.js';
 import liveStreamRoutes from './liveStream.routes.js';
 import heroConfigRoutes from './heroConfig.routes.js';
+import sectionsStyleRoutes from './sectionsStyle.routes.js';
+
+// ...
 
 const router = express.Router();
 
@@ -116,6 +119,7 @@ router.use('/api/admin/services', adminServicesRoutes);
 router.use('/api/admin/sections', adminSectionsRoutes);
 router.use('/api/admin/settings', adminSettingsRoutes);
 router.use('/api/videos-library', videoLibraryRoutes);
+router.use('/api/appearance/sections', sectionsStyleRoutes);
 
 // ============================================================
 // ✅ ❌ مسارات تم إزالتها (مدمجة في explanations.routes.js)

@@ -5,17 +5,30 @@ import { useAuth } from '../context/AuthContext';
 import AOS from 'aos';
 import 'aos/dist/aos.css';
 
-// أيقونات
 import {
   FaSearch, FaSpinner, FaArrowLeft, FaStar,
-  FaEye, FaFlask,
-  FaUsers, FaGraduationCap,
+  FaEye, FaFlask, FaUsers, FaGraduationCap,
 } from 'react-icons/fa';
 
 // ============================================================
-// واجهات البيانات
+// ✅ Helper: استخراج portalId ديناميكياً
 // ============================================================
+const resolvePortalId = (): string => {
+  const envId = import.meta.env.VITE_PORTAL_ID;
+  if (envId) return envId;
+  const pathMatch = window.location.pathname.match(/\/portal\/([^/]+)/);
+  if (pathMatch?.[1]) return pathMatch[1];
+  const host = window.location.hostname;
+  if (host !== 'localhost' && host.includes('.')) {
+    const sub = host.split('.')[0];
+    if (sub && sub !== 'www') return sub;
+  }
+  return '';
+};
 
+// ============================================================
+// ✅ Types
+// ============================================================
 interface Service {
   _id: string;
   name: string;
@@ -23,6 +36,7 @@ interface Service {
   description?: string;
   descriptionAr?: string;
   icon: string;
+  image?: string;
   slug: string;
   isPublished: boolean;
   isFeatured: boolean;
@@ -46,15 +60,31 @@ interface Section {
   description?: string;
   descriptionAr?: string;
   icon: string;
+  image?: string;
   slug: string;
   parentId?: string | null;
   children?: Section[];
 }
 
 // ============================================================
-// المكون الرئيسي
+// ✅ Helper: أيقونة القسم/الخدمة
 // ============================================================
+const getServiceIcon = (icon: string): string => {
+  const icons: Record<string, string> = {
+    'fa-cog': '⚙️', 'fa-book': '📚', 'fa-graduation-cap': '🎓',
+    'fa-briefcase': '💼', 'fa-search': '🔍', 'fa-pen': '✏️',
+    'fa-chart': '📊', 'fa-code': '💻', 'fa-heart': '❤️',
+    'fa-star': '⭐', 'fa-flask': '🧪', 'fa-file-alt': '📄',
+    'fa-language': '🌐', 'fa-spell-check': '✅', 'fa-users': '👥',
+    'fa-folder': '📁', 'fa-folder-open': '📂',
+    'fa-university': '🏛️', 'fa-school': '🏫',
+  };
+  return icons[icon] || '📁';
+};
 
+// ============================================================
+// ✅ المكوّن الرئيسي
+// ============================================================
 const Services: React.FC = () => {
   const { token } = useAuth();
   const [searchParams, setSearchParams] = useSearchParams();
@@ -68,67 +98,69 @@ const Services: React.FC = () => {
   const [selectedSection, setSelectedSection] = useState<Section | null>(null);
   const [filterFeatured, setFilterFeatured] = useState(false);
 
-const API_URL = import.meta.env.VITE_API_URL || 'http://localhost:5001/api';
-const PORTAL_ID = import.meta.env.VITE_PORTAL_ID || '';
+  const API_URL = import.meta.env.VITE_API_URL || 'http://localhost:5001/api';
+  const PORTAL_ID = resolvePortalId();
 
-  // ===== جلب الأقسام =====
+  // ✅ Headers
+  const getHeaders = useCallback(
+    (): Record<string, string> => ({
+      'Content-Type': 'application/json',
+      'X-Portal-Id': PORTAL_ID,
+      ...(token ? { Authorization: `Bearer ${token}` } : {}),
+    }),
+    [PORTAL_ID, token]
+  );
+
+  // ============================================================
+  // ✅ جلب الأقسام
+  // ============================================================
   const fetchSections = useCallback(async () => {
     try {
-     const response = await fetch(`${API_URL}/sections?isPublished=true`, {
-  headers: {
-    'Authorization': token ? `Bearer ${token}` : '',
-    'Content-Type': 'application/json',
-    'X-Portal-Id': PORTAL_ID,
-  },
-});
+      const response = await fetch(`${API_URL}/sections?isPublished=true`, {
+        headers: getHeaders(),
+      });
 
       const data = await response.json();
       if (data.success) {
-        setSections(data.data || []);
-        
+        const allSections = data.data || [];
+        setSections(allSections);
+
         if (sectionId) {
-          const section = data.data.find((s: Section) => s._id === sectionId);
-          if (section) {
-            setSelectedSection(section);
-          }
+          const section = allSections.find((s: Section) => s._id === sectionId);
+          if (section) setSelectedSection(section);
         }
       }
     } catch (err) {
-      console.error('Error fetching sections:', err);
+      console.error('❌ Error fetching sections:', err);
     }
-  }, [token, API_URL, sectionId]);
+  }, [API_URL, getHeaders, sectionId]);
 
-  // ===== جلب الخدمات =====
+  // ============================================================
+  // ✅ جلب الخدمات
+  // ============================================================
   const fetchServices = useCallback(async () => {
     try {
       setLoading(true);
       setError(null);
 
       let url = `${API_URL}/services?isPublished=true`;
-      if (sectionId) {
-        url += `&sectionId=${sectionId}`;
-      }
-const response = await fetch(url, {
-  headers: {
-    'Authorization': token ? `Bearer ${token}` : '',
-    'Content-Type': 'application/json',
-    'X-Portal-Id': PORTAL_ID,
-  },
-});
+      if (sectionId) url += `&sectionId=${sectionId}`;
 
+      const response = await fetch(url, { headers: getHeaders() });
       const data = await response.json();
+
       if (data.success) {
         setServices(data.data || []);
       } else {
         setError(data.message || 'حدث خطأ في تحميل الخدمات');
       }
     } catch (err) {
-      console.error('Error fetching services:', err);
+      console.error('❌ Error fetching services:', err);
       setError('حدث خطأ في تحميل الخدمات');
     } finally {
       setLoading(false);
     }
-  }, [token, API_URL, sectionId]);
+  }, [API_URL, getHeaders, sectionId]);
 
   useEffect(() => {
     AOS.init({ duration: 600, once: true });
@@ -136,67 +168,66 @@ const response = await fetch(url, {
     fetchServices();
   }, [fetchSections, fetchServices, sectionId]);
 
-  // ===== تصفية الخدمات =====
-  const filteredServices = services.filter(service => {
-    const matchesSearch = 
-      (service.nameAr || service.name || '').toLowerCase().includes(searchTerm.toLowerCase()) ||
-      (service.descriptionAr || service.description || '').toLowerCase().includes(searchTerm.toLowerCase());
-    
-    const matchesFeatured = filterFeatured ? service.isFeatured : true;
-    
-    return matchesSearch && matchesFeatured;
-  });
+  // ============================================================
+  // ✅ Helpers
+  // ============================================================
+  const getServiceName = (service: Service) =>
+    service.nameAr || service.name || 'خدمة';
 
-  // ===== أيقونة الخدمة =====
-  const getServiceIcon = (icon: string) => {
-    const icons: { [key: string]: string } = {
-      'fa-cog': '⚙️', 'fa-book': '📚', 'fa-graduation-cap': '🎓',
-      'fa-briefcase': '💼', 'fa-search': '🔍', 'fa-pen': '✏️',
-      'fa-chart': '📊', 'fa-code': '💻', 'fa-heart': '❤️',
-      'fa-star': '⭐', 'fa-flask': '🧪', 'fa-file-alt': '📄',
-      'fa-language': '🌐', 'fa-spell-check': '✅', 'fa-users': '👥',
-    };
-    return icons[icon] || '📁';
-  };
+  const getServiceDescription = (service: Service) =>
+    service.descriptionAr || service.description || 'خدمة متخصصة';
 
-  // ===== اسم الخدمة =====
-  const getServiceName = (service: Service) => {
-    return service.nameAr || service.name || 'خدمة';
-  };
+  const getSectionName = (section: Section) =>
+    section.nameAr || section.name || 'قسم';
 
-  // ===== وصف الخدمة =====
-  const getServiceDescription = (service: Service) => {
-    return service.descriptionAr || service.description || 'خدمة متخصصة';
-  };
+  const getSectionDescription = (section: Section) =>
+    section.descriptionAr || section.description || '';
 
-  // ===== اسم القسم =====
-  const getSectionName = (section: Section) => {
-    return section.nameAr || section.name || 'قسم';
-  };
-
-  // ===== تنسيق السعر =====
   const formatPrice = (price: number) => {
     if (price === 0) return 'مجاني';
     return `${price} ريال`;
   };
 
-  // ===== تغيير القسم =====
-  const handleSectionChange = (sectionId: string | null) => {
-    if (sectionId) {
-      setSearchParams({ section: sectionId });
+  // ============================================================
+  // ✅ تصفية الخدمات
+  // ============================================================
+  const filteredServices = services.filter((service) => {
+    const matchesSearch =
+      (service.nameAr || service.name || '')
+        .toLowerCase()
+        .includes(searchTerm.toLowerCase()) ||
+      (service.descriptionAr || service.description || '')
+        .toLowerCase()
+        .includes(searchTerm.toLowerCase());
+
+    const matchesFeatured = filterFeatured ? service.isFeatured : true;
+
+    return matchesSearch && matchesFeatured;
+  });
+
+  // ============================================================
+  // ✅ تغيير القسم
+  // ============================================================
+  const handleSectionChange = (id: string | null) => {
+    if (id) {
+      setSearchParams({ section: id });
     } else {
       setSearchParams({});
     }
-    setSelectedSection(sections.find(s => s._id === sectionId) || null);
+    setSelectedSection(sections.find((s) => s._id === id) || null);
+    window.scrollTo({ top: 0, behavior: 'smooth' });
   };
 
-  // ===== العودة =====
   const goBack = () => {
     setSearchParams({});
     setSelectedSection(null);
   };
 
-  // ===== عرض حالة التحميل =====
+  const rootSections = sections.filter((s) => !s.parentId);
+
+  // ============================================================
+  // ✅ Loading
+  // ============================================================
   if (loading) {
     return (
       <div className="min-h-screen flex items-center justify-center bg-gray-50 dark:bg-gray-900">
@@ -208,10 +239,27 @@ const response = await fetch(url, {
     );
   }
 
+  // ============================================================
+  // ✅ Render
+  // ============================================================
   return (
     <div className="min-h-screen bg-gray-50 dark:bg-gray-900">
-      {/* ===== Header ===== */}
-      <section className="relative bg-gradient-to-b from-[#0F172A] via-[#1E293B] to-[#1a0a2e] text-white py-12 md:py-16 overflow-hidden">
+      {/* ====================================================
+          Hero Header — مع صورة القسم
+      ==================================================== */}
+      <section
+        className="relative text-white py-12 md:py-16 overflow-hidden"
+        style={{
+          background: selectedSection?.image
+            ? `url("${selectedSection.image}") center/cover no-repeat`
+            : 'linear-gradient(to bottom, #0F172A, #1E293B, #1a0a2e)',
+        }}
+      >
+        {/* ✅ Overlay عند وجود صورة */}
+        {selectedSection?.image && (
+          <div className="absolute inset-0 bg-gradient-to-b from-black/70 via-black/50 to-black/70 z-0" />
+        )}
+
         <div className="container-custom relative z-10 text-center">
           <div className="flex flex-wrap justify-center gap-3 mb-4">
             <span className="flex items-center gap-2 bg-white/10 px-4 py-2 rounded-full backdrop-blur-sm border border-white/10 text-sm">
@@ -225,17 +273,25 @@ const response = await fetch(url, {
             </span>
           </div>
 
-          <h1 className="text-3xl md:text-4xl lg:text-5xl font-black mb-4">
-            {selectedSection 
-              ? getSectionName(selectedSection)
-              : 'الخدمات الأكاديمية'
-            }
-          </h1>
+          {/* ✅ صورة مصغرة + العنوان */}
+          <div className="flex items-center justify-center gap-4 mb-4">
+            {selectedSection?.image && (
+              <img
+                src={selectedSection.image}
+                alt={getSectionName(selectedSection)}
+                className="w-16 h-16 md:w-20 md:h-20 rounded-2xl object-cover border-2 border-white/30 shadow-xl"
+              />
+            )}
+            <h1 className="text-3xl md:text-4xl lg:text-5xl font-black">
+              {selectedSection ? getSectionName(selectedSection) : 'الخدمات الأكاديمية'}
+            </h1>
+          </div>
+
           <p className="text-base md:text-lg opacity-90 max-w-2xl mx-auto leading-relaxed">
             {selectedSection
-              ? `استعرض الخدمات المتاحة في قسم ${getSectionName(selectedSection)}`
-              : 'خدمات أكاديمية متخصصة في مجالات متنوعة بأيدي خبراء أكاديميين وممارسين محترفين'
-            }
+              ? getSectionDescription(selectedSection) ||
+                `استعرض الخدمات المتاحة في قسم ${getSectionName(selectedSection)}`
+              : 'خدمات أكاديمية متخصصة في مجالات متنوعة بأيدي خبراء أكاديميين وممارسين محترفين'}
           </p>
 
           {selectedSection && (
@@ -249,11 +305,65 @@ const response = await fetch(url, {
         </div>
       </section>
 
-      {/* ===== Filter ===== */}
+      {/* ====================================================
+          Grid الأقسام
+      ==================================================== */}
+      {!selectedSection && rootSections.length > 0 && (
+        <section className="py-8 bg-white dark:bg-gray-800 border-b border-gray-200 dark:border-gray-700">
+          <div className="container-custom">
+            <h2 className="text-xl md:text-2xl font-bold text-gray-900 dark:text-white mb-6 text-right flex items-center gap-2">
+              📂 تصفح حسب القسم
+            </h2>
+
+            <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5 gap-4">
+              {rootSections.map((section) => (
+                <button
+                  key={section._id}
+                  onClick={() => handleSectionChange(section._id)}
+                  className="group bg-white dark:bg-gray-900 rounded-xl overflow-hidden shadow-sm hover:shadow-xl transition-all border border-gray-200 dark:border-gray-700 hover:-translate-y-1 text-right"
+                >
+                  {/* ✅ صورة القسم */}
+                  <div className="aspect-video bg-gradient-to-br from-purple-500 to-pink-500 flex items-center justify-center overflow-hidden">
+                    {section.image ? (
+                      <img
+                        src={section.image}
+                        alt={getSectionName(section)}
+                        className="w-full h-full object-cover group-hover:scale-110 transition-transform duration-300"
+                        onError={(e) => {
+                          e.currentTarget.style.display = 'none';
+                        }}
+                      />
+                    ) : (
+                      <span className="text-4xl">
+                        {getServiceIcon(section.icon)}
+                      </span>
+                    )}
+                  </div>
+
+                  <div className="p-3">
+                    <h3 className="font-bold text-sm text-gray-900 dark:text-white line-clamp-1">
+                      {getSectionName(section)}
+                    </h3>
+                    {section.descriptionAr && (
+                      <p className="text-xs text-gray-500 dark:text-gray-400 mt-1 line-clamp-2">
+                        {section.descriptionAr}
+                      </p>
+                    )}
+                  </div>
+                </button>
+              ))}
+            </div>
+          </div>
+        </section>
+      )}
+
+      {/* ====================================================
+          Filter
+      ==================================================== */}
       <section className="py-6 bg-gray-50 dark:bg-gray-900 border-b border-gray-200 dark:border-gray-700">
         <div className="container-custom">
-          {/* الأقسام */}
-          {!selectedSection && sections.filter(s => !s.parentId).length > 0 && (
+          {/* ✅ أزرار الأقسام مع صورة مصغرة */}
+          {!selectedSection && rootSections.length > 0 && (
             <div className="flex flex-wrap gap-2 mb-4">
               <button
                 onClick={() => handleSectionChange(null)}
@@ -265,21 +375,34 @@ const response = await fetch(url, {
               >
                 جميع الأقسام
               </button>
-              {sections
-                .filter(s => !s.parentId)
-                .map((section) => (
-                  <button
-                    key={section._id}
-                    onClick={() => handleSectionChange(section._id)}
-                    className={`px-4 py-2 rounded-lg text-sm font-semibold transition ${
-                      sectionId === section._id
-                        ? 'bg-purple-600 text-white shadow-lg shadow-purple-500/30'
-                        : 'bg-gray-200 dark:bg-gray-700 text-gray-700 dark:text-gray-300 hover:bg-gray-300 dark:hover:bg-gray-600'
-                    }`}
-                  >
-                    {getSectionName(section)}
-                  </button>
-                ))}
+
+              {rootSections.map((section) => (
+                <button
+                  key={section._id}
+                  onClick={() => handleSectionChange(section._id)}
+                  className={`px-4 py-2 rounded-lg text-sm font-semibold transition flex items-center gap-2 ${
+                    sectionId === section._id
+                      ? 'bg-purple-600 text-white shadow-lg shadow-purple-500/30'
+                      : 'bg-gray-200 dark:bg-gray-700 text-gray-700 dark:text-gray-300 hover:bg-gray-300 dark:hover:bg-gray-600'
+                  }`}
+                >
+                  {section.image ? (
+                    <img
+                      src={section.image}
+                      alt=""
+                      className="w-5 h-5 rounded-full object-cover flex-shrink-0"
+                      onError={(e) => {
+                        e.currentTarget.style.display = 'none';
+                      }}
+                    />
+                  ) : (
+                    <span className="text-sm flex-shrink-0">
+                      {getServiceIcon(section.icon)}
+                    </span>
+                  )}
+                  {getSectionName(section)}
+                </button>
+              ))}
             </div>
           )}
 
@@ -316,7 +439,9 @@ const response = await fetch(url, {
         </div>
       </section>
 
-      {/* ===== Services Grid ===== */}
+      {/* ====================================================
+          Services Grid
+      ==================================================== */}
       <section className="py-8 pb-16 bg-gray-50 dark:bg-gray-900">
         <div className="container-custom">
           {error ? (
@@ -333,10 +458,14 @@ const response = await fetch(url, {
             <div className="bg-white dark:bg-gray-800 rounded-xl p-12 text-center border border-gray-200 dark:border-gray-700">
               <div className="text-6xl mb-4 opacity-30">🔍</div>
               <h3 className="text-xl font-bold text-gray-900 dark:text-white mb-2">
-                {searchTerm || filterFeatured ? 'لا توجد خدمات تطابق البحث' : 'لا توجد خدمات في هذا القسم'}
+                {searchTerm || filterFeatured
+                  ? 'لا توجد خدمات تطابق البحث'
+                  : 'لا توجد خدمات في هذا القسم'}
               </h3>
               <p className="text-gray-500 dark:text-gray-400">
-                {searchTerm || filterFeatured ? 'جرب تغيير كلمات البحث' : 'سيتم إضافة الخدمات قريباً'}
+                {searchTerm || filterFeatured
+                  ? 'جرب تغيير كلمات البحث'
+                  : 'سيتم إضافة الخدمات قريباً'}
               </p>
             </div>
           ) : (
@@ -344,24 +473,42 @@ const response = await fetch(url, {
               {filteredServices.map((service, index) => (
                 <div
                   key={service._id}
-                  className="bg-white dark:bg-gray-800 rounded-xl p-4 shadow-sm hover:shadow-xl transition-all border border-gray-200 dark:border-gray-700 hover:-translate-y-1 cursor-pointer group"
+                  className="bg-white dark:bg-gray-800 rounded-xl overflow-hidden shadow-sm hover:shadow-xl transition-all border border-gray-200 dark:border-gray-700 hover:-translate-y-1 cursor-pointer group"
                   data-aos="fade-up"
                   data-aos-delay={index * 50}
-                  onClick={() => window.location.href = `/service/${service._id}`}
+                  onClick={() => (window.location.href = `/service/${service._id}`)}
                 >
-                  <div className="text-center">
-                    <div className="text-4xl mb-3 group-hover:scale-110 transition-transform">
-                      {getServiceIcon(service.icon)}
-                    </div>
+                  {/* ✅ صورة الخدمة أو الأيقونة */}
+                  <div className="aspect-video bg-gradient-to-br from-purple-500 to-pink-500 flex items-center justify-center overflow-hidden">
+                    {service.image ? (
+                      <img
+                        src={service.image}
+                        alt={getServiceName(service)}
+                        className="w-full h-full object-cover group-hover:scale-110 transition-transform duration-300"
+                        onError={(e) => {
+                          console.error('❌ Image failed:', service.image);
+                          e.currentTarget.style.display = 'none';
+                        }}
+                      />
+                    ) : (
+                      <span className="text-4xl">{getServiceIcon(service.icon)}</span>
+                    )}
+                  </div>
+
+                  {/* ✅ محتوى البطاقة */}
+                  <div className="p-4 text-center">
                     <h3 className="font-bold text-sm text-gray-900 dark:text-white line-clamp-2">
                       {getServiceName(service)}
                     </h3>
+
                     {service.isFeatured && (
                       <FaStar className="text-amber-500 mx-auto mt-1" />
                     )}
+
                     <div className="mt-2 text-xs text-gray-500 dark:text-gray-400">
                       {formatPrice(service.pricing?.defaultPrice || 0)}
                     </div>
+
                     <div className="mt-3">
                       <span className="text-purple-600 dark:text-purple-400 text-sm font-semibold flex items-center justify-center gap-1 opacity-0 group-hover:opacity-100 transition">
                         عرض التفاصيل <FaEye className="w-3 h-3" />

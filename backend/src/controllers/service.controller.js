@@ -2,7 +2,9 @@
 import { Service } from '../models/Service.model.js';
 import { Section } from '../models/Section.model.js';
 
-// ===== دالة مساعدة لتوليد slug =====
+// ============================================================
+// ✅ Helper: توليد slug
+// ============================================================
 const generateSlug = (text) => {
   if (!text || text.trim() === '') return 'service-' + Date.now();
   return text
@@ -14,11 +16,13 @@ const generateSlug = (text) => {
     .replace(/^-+|-+$/g, '');
 };
 
-// ===== إنشاء خدمة جديدة =====
+// ============================================================
+// ✅ إنشاء خدمة جديدة
+// ============================================================
 export const createService = async (req, res) => {
   try {
     const portalId = req.portalId;
-    const { id: userId } = req.user || {};
+    const userId = req.user?.id || req.accountId;
 
     const {
       name,
@@ -27,6 +31,7 @@ export const createService = async (req, res) => {
       descriptionAr,
       sectionId,
       icon,
+      image,        // ✅ أضف هذا
       slug,
       isPublished,
       isFeatured,
@@ -38,8 +43,9 @@ export const createService = async (req, res) => {
     console.log('  - Portal:', portalId);
     console.log('  - User:', userId);
     console.log('  - Name:', nameAr);
+    console.log('  - Image:', image);  // ✅ للتشخيص
 
-    // ✅ التحقق من وجود portalId
+    // ✅ التحقق من portalId
     if (!portalId) {
       return res.status(400).json({
         success: false,
@@ -47,7 +53,7 @@ export const createService = async (req, res) => {
       });
     }
 
-    // ✅ التحقق من وجود اسم
+    // ✅ التحقق من الاسم
     if (!nameAr || nameAr.trim() === '') {
       return res.status(400).json({
         success: false,
@@ -55,7 +61,7 @@ export const createService = async (req, res) => {
       });
     }
 
-    // ✅ التحقق من وجود القسم
+    // ✅ التحقق من القسم
     if (!sectionId) {
       return res.status(400).json({
         success: false,
@@ -63,12 +69,12 @@ export const createService = async (req, res) => {
       });
     }
 
-    const section = await Section.findOne({ 
-      _id: sectionId, 
+    const section = await Section.findOne({
+      _id: sectionId,
       portalId,
       isDeleted: { $ne: true },
     });
-    
+
     if (!section) {
       return res.status(404).json({
         success: false,
@@ -82,13 +88,13 @@ export const createService = async (req, res) => {
       finalSlug = generateSlug(nameAr || name || 'service');
     }
 
-    // ✅ التحقق من عدم وجود slug مكرر
-    const existingService = await Service.findOne({ 
-      portalId, 
+    // ✅ التحقق من slug مكرر
+    const existingService = await Service.findOne({
+      portalId,
       slug: finalSlug,
       isDeleted: { $ne: true },
     });
-    
+
     if (existingService) {
       return res.status(400).json({
         success: false,
@@ -105,6 +111,7 @@ export const createService = async (req, res) => {
       description: description || '',
       descriptionAr: descriptionAr || '',
       icon: icon || 'fa-cog',
+      image: image || '',        // ✅ أضف هذا
       slug: finalSlug,
       isPublished: isPublished !== undefined ? isPublished : true,
       isFeatured: isFeatured || false,
@@ -116,26 +123,26 @@ export const createService = async (req, res) => {
     await service.save();
 
     console.log('✅ Service created successfully:', service._id);
+    console.log('   - Image saved:', service.image);  // ✅ للتشخيص
 
     res.status(201).json({
       success: true,
       message: 'Service created successfully',
       data: service,
     });
-
   } catch (error) {
     console.error('❌ Create service error:', error);
-    
+
     if (error.name === 'ValidationError') {
       const errors = Object.keys(error.errors).reduce((acc, key) => {
         acc[key] = error.errors[key].message;
         return acc;
       }, {});
-      
+
       return res.status(400).json({
         success: false,
         message: 'Validation error',
-        errors: errors,
+        errors,
       });
     }
 
@@ -153,7 +160,9 @@ export const createService = async (req, res) => {
   }
 };
 
-// ===== الحصول على جميع الخدمات =====
+// ============================================================
+// ✅ جلب جميع الخدمات
+// ============================================================
 export const getServices = async (req, res) => {
   try {
     const portalId = req.portalId;
@@ -166,17 +175,17 @@ export const getServices = async (req, res) => {
       });
     }
 
-    const query = { 
-      portalId, 
-      isDeleted: { $ne: true } 
+    const query = {
+      portalId,
+      isDeleted: { $ne: true },
     };
-    
+
     if (sectionId) query.sectionId = sectionId;
     if (isPublished !== undefined) query.isPublished = isPublished === 'true';
     if (isFeatured !== undefined) query.isFeatured = isFeatured === 'true';
 
     const services = await Service.find(query)
-      .populate('sectionId', 'name nameAr description descriptionAr icon')
+      .populate('sectionId', 'name nameAr description descriptionAr icon image')  // ✅ image للأقسام
       .sort({ order: 1, nameAr: 1 });
 
     res.status(200).json({
@@ -192,17 +201,19 @@ export const getServices = async (req, res) => {
   }
 };
 
-// ===== الحصول على خدمة واحدة =====
+// ============================================================
+// ✅ جلب خدمة واحدة
+// ============================================================
 export const getServiceById = async (req, res) => {
   try {
     const { id } = req.params;
     const portalId = req.portalId;
 
-    const service = await Service.findOne({ 
-      _id: id, 
+    const service = await Service.findOne({
+      _id: id,
       portalId,
       isDeleted: { $ne: true },
-    }).populate('sectionId', 'name nameAr description descriptionAr icon');
+    }).populate('sectionId', 'name nameAr description descriptionAr icon image');
 
     if (!service) {
       return res.status(404).json({
@@ -224,12 +235,17 @@ export const getServiceById = async (req, res) => {
   }
 };
 
-// ===== تحديث خدمة =====
+// ============================================================
+// ✅ تحديث خدمة
+// ============================================================
 export const updateService = async (req, res) => {
   try {
     const { id } = req.params;
     const portalId = req.portalId;
-    const updates = req.body;
+    const updates = { ...req.body };
+
+    console.log('📝 Updating service:', id);
+    console.log('  - Image in updates:', updates.image);  // ✅ للتشخيص
 
     const service = await Service.findOne({ _id: id, portalId });
     if (!service) {
@@ -241,12 +257,12 @@ export const updateService = async (req, res) => {
 
     // ✅ التحقق من القسم إذا تم تحديثه
     if (updates.sectionId && updates.sectionId !== service.sectionId.toString()) {
-      const section = await Section.findOne({ 
-        _id: updates.sectionId, 
+      const section = await Section.findOne({
+        _id: updates.sectionId,
         portalId,
         isDeleted: { $ne: true },
       });
-      
+
       if (!section) {
         return res.status(404).json({
           success: false,
@@ -263,7 +279,7 @@ export const updateService = async (req, res) => {
         _id: { $ne: id },
         isDeleted: { $ne: true },
       });
-      
+
       if (existing) {
         return res.status(400).json({
           success: false,
@@ -272,15 +288,34 @@ export const updateService = async (req, res) => {
       }
     }
 
-    // ✅ تحديث الحقول
-    Object.keys(updates).forEach(key => {
-      if (key !== '_id' && key !== 'portalId' && key !== 'createdAt' && key !== 'createdBy') {
-        service[key] = updates[key];
+    // ✅ الحقول المسموح بتحديثها
+    const allowedFields = [
+      'name',
+      'nameAr',
+      'description',
+      'descriptionAr',
+      'sectionId',
+      'icon',
+      'image',       // ✅ أضف هذا
+      'slug',
+      'isPublished',
+      'isFeatured',
+      'order',
+      'pricing',
+    ];
+
+    // ✅ تحديث الحقول المسموح بها فقط
+    allowedFields.forEach((field) => {
+      if (updates[field] !== undefined) {
+        service[field] = updates[field];
       }
     });
 
     service.updatedAt = new Date();
     await service.save();
+
+    console.log('✅ Service updated:', service._id);
+    console.log('   - Image now:', service.image);  // ✅ للتشخيص
 
     res.status(200).json({
       success: true,
@@ -289,6 +324,20 @@ export const updateService = async (req, res) => {
     });
   } catch (error) {
     console.error('❌ Update service error:', error);
+
+    if (error.name === 'ValidationError') {
+      const errors = Object.keys(error.errors).reduce((acc, key) => {
+        acc[key] = error.errors[key].message;
+        return acc;
+      }, {});
+
+      return res.status(400).json({
+        success: false,
+        message: 'Validation error',
+        errors,
+      });
+    }
+
     res.status(500).json({
       success: false,
       message: error.message || 'Failed to update service',
@@ -296,7 +345,9 @@ export const updateService = async (req, res) => {
   }
 };
 
-// ===== حذف خدمة =====
+// ============================================================
+// ✅ حذف خدمة
+// ============================================================
 export const deleteService = async (req, res) => {
   try {
     const { id } = req.params;
@@ -310,7 +361,6 @@ export const deleteService = async (req, res) => {
       });
     }
 
-    // ✅ حذف منطقي
     service.isDeleted = true;
     service.deletedAt = new Date();
     await service.save();
@@ -328,7 +378,9 @@ export const deleteService = async (req, res) => {
   }
 };
 
-// ===== تبديل حالة النشر =====
+// ============================================================
+// ✅ تبديل حالة النشر
+// ============================================================
 export const toggleServiceStatus = async (req, res) => {
   try {
     const { id } = req.params;
@@ -360,7 +412,9 @@ export const toggleServiceStatus = async (req, res) => {
   }
 };
 
-// ===== تبديل حالة التميز =====
+// ============================================================
+// ✅ تبديل حالة التميز
+// ============================================================
 export const toggleServiceFeatured = async (req, res) => {
   try {
     const { id } = req.params;

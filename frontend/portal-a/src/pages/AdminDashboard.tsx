@@ -1182,6 +1182,12 @@ const AdminDashboard: React.FC = () => {
       icon: <FaFileUpload />,
       color: 'teal',
     },
+ {
+      to: '/admin/sections-style',
+      label: 'تخصيص الأقسام',
+      icon: <FaFileUpload />,
+      color: 'teal',
+    },   
 {
   to: '/admin/appearance/hero',
   label: 'إدارة الصفحة الرئيسية',
@@ -2202,6 +2208,14 @@ const QuickActions: React.FC = () => {
       to: '/admin-reports',
       title: 'التقارير',
       description: 'عرض التقارير',
+      icon: <FaChartBar />,
+      color:
+        'from-orange-500 to-amber-500',
+    },
+{
+      to: '/sections-style',
+      title: 'تخصيص الأقسام',
+      description: 'تخصيص الأقسام',
       icon: <FaChartBar />,
       color:
         'from-orange-500 to-amber-500',

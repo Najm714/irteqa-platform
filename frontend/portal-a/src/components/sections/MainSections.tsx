@@ -1,12 +1,28 @@
 // frontend/portal-a/src/components/sections/MainSections.tsx
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useCallback, useRef, useMemo } from 'react';
 import { Link } from 'react-router-dom';
 import { useAuth } from '../../context/AuthContext';
+import './MainSections.css';
 
 // ============================================================
-// واجهات البيانات
+// ✅ Helpers
 // ============================================================
+const resolvePortalId = (): string => {
+  const envId = import.meta.env.VITE_PORTAL_ID;
+  if (envId) return envId;
+  const pathMatch = window.location.pathname.match(/\/portal\/([^/]+)/);
+  if (pathMatch?.[1]) return pathMatch[1];
+  const host = window.location.hostname;
+  if (host !== 'localhost' && host.includes('.')) {
+    const sub = host.split('.')[0];
+    if (sub && sub !== 'www') return sub;
+  }
+  return '';
+};
 
+// ============================================================
+// ✅ Types
+// ============================================================
 interface Section {
   _id: string;
   name: string;
@@ -15,17 +31,29 @@ interface Section {
   descriptionAr?: string;
   icon: string;
   slug: string;
+  category?: string;
   order: number;
   isPublished: boolean;
   parentId?: string | null;
   children?: Section[];
 }
 
-// ============================================================
-// الأقسام الرئيسية الثابتة
-// ============================================================
+interface MainSectionConfig {
+  id: string;
+  title: string;
+  description: string;
+  icon: string;
+  stats: string;
+  link: string;
+  category: string;
+  matchSlugs?: string[];
+  matchParentIds?: string[];
+}
 
-const MAIN_SECTIONS = [
+// ============================================================
+// ✅ الأقسام الرئيسية الثابتة
+// ============================================================
+const MAIN_SECTIONS: MainSectionConfig[] = [
   {
     id: 'main-explanations',
     title: 'الشروحات والملخصات',
@@ -34,163 +62,354 @@ const MAIN_SECTIONS = [
     stats: 'مقررات جامعية',
     link: '/explanations',
     category: 'explanations',
+    matchSlugs: ['explanations', 'sharh', 'shurooh', 'ملخصات', 'شروحات'],
   },
 ];
 
 // ============================================================
-// المكون الرئيسي
+// ✅ الأيقونات
 // ============================================================
+const SECTION_ICONS: Record<string, string> = {
+  'fa-folder': '📁',
+  'fa-folder-open': '📂',
+  'fa-book': '📚',
+  'fa-graduation-cap': '🎓',
+  'fa-briefcase': '💼',
+  'fa-heart': '❤️',
+  'fa-star': '⭐',
+  'fa-cog': '⚙️',
+  'fa-university': '🏛️',
+  'fa-school': '🏫',
+  'fa-tag': '🏷️',
+  'fa-flask': '🧪',
+  'fa-file-alt': '📄',
+  'fa-language': '🌐',
+  'fa-pen': '✏️',
+  'fa-bookmark': '🔖',
+  'fa-laptop': '💻',
+  'fa-chart-line': '📈',
+  'fa-lightbulb': '💡',
+  'fa-atom': '⚛️',
+  'fa-calculator': '🧮',
+  'fa-microscope': '🔬',
+  'fa-palette': '🎨',
+  'fa-music': '🎵',
+  'fa-code': '💻',
+};
 
+// ============================================================
+// ✅ نمط افتراضي (يُستبدل من الأدمن)
+// ============================================================
+const DEFAULT_STYLE = {
+  header: {
+    enabled: true,
+    eyebrow: 'الخدمات الأكاديمية',
+    title: 'الأقسام',
+    titleHighlight: 'الرئيسية',
+    description:
+      'اختر القسم المناسب لاحتياجاتك واستكشف الخدمات المتخصصة المقدمة من منصة ارتقاء',
+    alignment: 'center',
+    showLine: true,
+    showEyebrowDot: true,
+  },
+  colors: {
+    primary: '#7c3aed',
+    secondary: '#ec4899',
+    accent: '#a855f7',
+    sectionBg: 'transparent',
+    cardBg: '#ffffff',
+    cardBgDark: '#111827',
+    titleColor: '#111827',
+    titleColorDark: '#f9fafb',
+    descriptionColor: '#6b7280',
+    descriptionColorDark: '#9ca3af',
+    borderColor: '#e5e7eb',
+    borderColorDark: '#374151',
+    gradientStart: '#7c3aed',
+    gradientEnd: '#ec4899',
+  },
+  background: { type: 'none', value: '', gradientColors: [], opacity: 1, pattern: 'none' },
+  card: {
+    style: 'elevated',
+    borderRadius: 24,
+    shadow: 'lg',
+    hoverEffect: 'lift',
+    borderWidth: 1,
+    padding: 28,
+  },
+  layout: {
+    gridColumns: 3,
+    gap: 16,
+    maxWidth: 1200,
+    paddingVertical: 80,
+    showDecorCircles: true,
+  },
+  icons: { size: 'md', style: 'rounded', background: 'gradient' },
+  typography: {
+    titleSize: 24,
+    descriptionSize: 15,
+    fontFamily: 'inherit',
+    titleWeight: 800,
+  },
+  animations: { enabled: true, type: 'fade', duration: 500, stagger: true },
+};
+
+// ============================================================
+// ✅ Helper: بناء style الخلفية
+// ============================================================
+const buildBackgroundStyle = (background: any): React.CSSProperties => {
+  const style: React.CSSProperties = {};
+
+  switch (background?.type) {
+    case 'solid':
+      if (background.value) style.background = background.value;
+      break;
+    case 'gradient':
+      if (background.gradientColors?.length >= 2) {
+        style.background = `linear-gradient(135deg, ${background.gradientColors.join(', ')})`;
+      }
+      break;
+    case 'image':
+      if (background.value) {
+        style.backgroundImage = `url(${background.value})`;
+        style.backgroundSize = 'cover';
+        style.backgroundPosition = 'center';
+      }
+      break;
+    default:
+      break;
+  }
+
+  if (background?.opacity !== undefined && background.opacity < 1) {
+    style.opacity = background.opacity;
+  }
+
+  return style;
+};
+
+// ============================================================
+// ✅ Helper: تحويل Shadow
+// ============================================================
+const getShadowValue = (shadow: string): string => {
+  const shadows: Record<string, string> = {
+    none: 'none',
+    sm: '0 1px 3px rgba(0,0,0,0.08)',
+    md: '0 4px 12px rgba(0,0,0,0.08)',
+    lg: '0 10px 35px rgba(17,24,39,0.06), 0 2px 8px rgba(17,24,39,0.03)',
+    xl: '0 20px 50px rgba(17,24,39,0.12), 0 5px 15px rgba(17,24,39,0.05)',
+  };
+  return shadows[shadow] || shadows.lg;
+};
+
+// ============================================================
+// ✅ Helper: تحويل Icon Size
+// ============================================================
+const getIconSize = (size: string): string => {
+  return { sm: '48px', md: '58px', lg: '68px', xl: '80px' }[size] || '58px';
+};
+
+// ============================================================
+// ✅ المكوّن الرئيسي
+// ============================================================
 const MainSections: React.FC = () => {
   const { token } = useAuth();
   const [dynamicSections, setDynamicSections] = useState<Section[]>([]);
+  const [styleConfig, setStyleConfig] = useState<any>(DEFAULT_STYLE);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
 
-  const API_URL = import.meta.env.VITE_API_URL || 'http://localhost:5001/api';
-  const PORTAL_ID = import.meta.env.VITE_PORTAL_ID || '';
+  const isFetchingRef = useRef(false);
+  const mountedRef = useRef(true);
 
-  // ===== جلب الأقسام الديناميكية من API =====
-  const fetchDynamicSections = async () => {
+  const API_URL = import.meta.env.VITE_API_URL || 'http://localhost:5001/api';
+  const PORTAL_ID = resolvePortalId();
+
+  // ============================================================
+  // ✅ جلب الأقسام + النمط بالتوازي
+  // ============================================================
+  const fetchAll = useCallback(async () => {
+    if (isFetchingRef.current) return;
+    isFetchingRef.current = true;
+
     try {
       setLoading(true);
       setError(null);
 
-      const response = await fetch(`${API_URL}/sections?isPublished=true`, {
-        headers: {
-          Authorization: token ? `Bearer ${token}` : '',
-          'Content-Type': 'application/json',
-          'X-Portal-Id': PORTAL_ID,
-        },
-      });
+      const headers = {
+        'Content-Type': 'application/json',
+        'X-Portal-Id': PORTAL_ID,
+        ...(token ? { Authorization: `Bearer ${token}` } : {}),
+      };
 
-      const data = await response.json();
+      const [sectionsRes, styleRes] = await Promise.all([
+        fetch(`${API_URL}/sections?isPublished=true`, { headers }),
+        fetch(`${API_URL}/appearance/sections`, { headers }).catch(() => null),
+      ]);
 
-      if (data.success) {
-        const sortedSections = (data.data || [])
+      if (!sectionsRes.ok) {
+        throw new Error(`HTTP ${sectionsRes.status}`);
+      }
+
+      const sectionsData = await sectionsRes.json();
+      const styleData = styleRes
+        ? await styleRes.json().catch(() => ({ success: false }))
+        : { success: false };
+
+      if (!mountedRef.current) return;
+
+      if (sectionsData.success) {
+        const sortedSections = (sectionsData.data || [])
           .filter((s: Section) => s.isPublished)
           .sort((a: Section, b: Section) => a.order - b.order);
-
         setDynamicSections(sortedSections);
+        setError(null);
       } else {
-        setError(data.message || 'حدث خطأ في تحميل الأقسام');
+        setError(sectionsData.message || 'حدث خطأ في تحميل الأقسام');
       }
-    } catch (err) {
-      console.error('Error fetching sections:', err);
-      setError('حدث خطأ في تحميل الأقسام');
+
+      if (styleData.success && styleData.data) {
+        setStyleConfig({ ...DEFAULT_STYLE, ...styleData.data });
+      }
+    } catch (err: any) {
+      console.error('❌ Error fetching sections:', err);
+      if (mountedRef.current) {
+        setError(
+          err.message?.includes('fetch')
+            ? 'تعذر الاتصال بالخادم'
+            : 'حدث خطأ في تحميل الأقسام'
+        );
+      }
     } finally {
-      setLoading(false);
+      if (mountedRef.current) setLoading(false);
+      isFetchingRef.current = false;
     }
-  };
+  }, [API_URL, PORTAL_ID, token]);
 
   useEffect(() => {
-    fetchDynamicSections();
-  }, []);
-
-  // ===== الحصول على أيقونة القسم =====
-  const getSectionIcon = (icon: string) => {
-    const icons: { [key: string]: string } = {
-      'fa-folder': '📁',
-      'fa-folder-open': '📂',
-      'fa-book': '📚',
-      'fa-graduation-cap': '🎓',
-      'fa-briefcase': '💼',
-      'fa-heart': '❤️',
-      'fa-star': '⭐',
-      'fa-cog': '⚙️',
-      'fa-university': '🏛️',
-      'fa-school': '🏫',
-      'fa-tag': '🏷️',
-      'fa-flask': '🧪',
-      'fa-file-alt': '📄',
-      'fa-language': '🌐',
+    mountedRef.current = true;
+    fetchAll();
+    return () => {
+      mountedRef.current = false;
     };
+  }, [fetchAll]);
 
-    return icons[icon] || '📁';
-  };
+  // ============================================================
+  // ✅ Helpers
+  // ============================================================
+  const getSectionIcon = (icon: string): string =>
+    SECTION_ICONS[icon] || '📁';
 
-  // ===== الحصول على اسم القسم =====
-  const getSectionName = (section: Section) => {
-    return section.nameAr || section.name || 'قسم';
-  };
+  const getSectionName = (section: Section): string =>
+    section.nameAr || section.name || 'قسم';
 
-  // ===== الحصول على وصف القسم =====
-  const getSectionDescription = (section: Section) => {
-    return (
-      section.descriptionAr ||
-      section.description ||
-      'قسم متخصص في تقديم الخدمات'
-    );
-  };
+  const getSectionDescription = (section: Section): string =>
+    section.descriptionAr ||
+    section.description ||
+    'قسم متخصص في تقديم الخدمات';
 
-  // ===== تصنيف الأقسام الديناميكية =====
-  const getDynamicSectionsByCategory = (category: string) => {
-    return dynamicSections.filter((s) => {
-      if (!s.parentId) return false;
+  const getDynamicSectionsByCategory = useCallback(
+    (category: string): Section[] => {
+      const mainSection = MAIN_SECTIONS.find((m) => m.category === category);
+      if (!mainSection) return [];
 
-      const parentSection = dynamicSections.find(
-        (p) => p._id === s.parentId
-      );
+      return dynamicSections.filter((s) => {
+        if (!s.parentId) return false;
+        const parent = dynamicSections.find((p) => p._id === s.parentId);
+        if (!parent) return false;
+        return (
+          mainSection.matchSlugs?.includes(parent.slug) ||
+          mainSection.matchParentIds?.includes(parent._id)
+        );
+      });
+    },
+    [dynamicSections]
+  );
 
-      if (!parentSection) return false;
+  // ============================================================
+  // ✅ CSS Variables محسوبة
+  // ============================================================
+  const cssVars = useMemo(() => {
+    const c = styleConfig.colors || {};
+    const l = styleConfig.layout || {};
+    const cd = styleConfig.card || {};
+    const t = styleConfig.typography || {};
+    const i = styleConfig.icons || {};
 
-      const parentName = (
-        parentSection.nameAr ||
-        parentSection.name ||
-        ''
-      ).toLowerCase();
+    return {
+      // Colors
+      '--ms-primary': c.primary,
+      '--ms-secondary': c.secondary,
+      '--ms-accent': c.accent,
+      '--ms-card-bg': c.cardBg,
+      '--ms-card-bg-dark': c.cardBgDark,
+      '--ms-title-color': c.titleColor,
+      '--ms-title-color-dark': c.titleColorDark,
+      '--ms-desc-color': c.descriptionColor,
+      '--ms-desc-color-dark': c.descriptionColorDark,
+      '--ms-border-color': c.borderColor,
+      '--ms-border-color-dark': c.borderColorDark,
+      '--ms-gradient-start': c.gradientStart,
+      '--ms-gradient-end': c.gradientEnd,
 
-      switch (category) {
-        case 'explanations':
-          return (
-            parentName.includes('شرح') ||
-            parentName.includes('تعليم') ||
-            parentName.includes('جامعة')
-          );
+      // Card
+      '--ms-card-radius': `${cd.borderRadius}px`,
+      '--ms-card-shadow': getShadowValue(cd.shadow),
+      '--ms-card-border-width': `${cd.borderWidth}px`,
+      '--ms-card-padding': `${cd.padding}px`,
 
-        case 'business':
-          return (
-            parentName.includes('عمل') ||
-            parentName.includes('اقتصاد') ||
-            parentName.includes('مال')
-          );
+      // Layout
+      '--ms-grid-cols': l.gridColumns,
+      '--ms-gap': `${l.gap}px`,
+      '--ms-max-width': `${l.maxWidth}px`,
+      '--ms-padding-v': `${l.paddingVertical}px`,
 
-        case 'research':
-          return (
-            parentName.includes('بحث') ||
-            parentName.includes('ترجم') ||
-            parentName.includes('تصميم')
-          );
+      // Icons
+      '--ms-icon-size': getIconSize(i.size),
 
-        default:
-          return false;
-      }
-    });
-  };
+      // Typography
+      '--ms-title-size': `${t.titleSize}px`,
+      '--ms-desc-size': `${t.descriptionSize}px`,
+      '--ms-title-weight': t.titleWeight,
+      '--ms-font-family': t.fontFamily,
 
-  // ===== عرض حالة التحميل =====
+      // Animations
+      '--ms-anim-duration': `${styleConfig.animations?.duration || 500}ms`,
+    } as React.CSSProperties;
+  }, [styleConfig]);
+
+  // ============================================================
+  // ✅ Helper: تصنيف hover
+  // ============================================================
+  const hoverClass = `ms-hover-${styleConfig.card?.hoverEffect || 'lift'}`;
+  const cardStyle = `ms-card-${styleConfig.card?.style || 'elevated'}`;
+  const bgStyle = buildBackgroundStyle(styleConfig.background);
+  const alignment = styleConfig.header?.alignment || 'center';
+
+  // ============================================================
+  // ✅ Loading
+  // ============================================================
   if (loading) {
     return (
-      <section className="main-sections" id="sections">
-        <div className="container-custom">
-          <div className="section-header">
-            <span className="section-eyebrow">
-              الخدمات الأكاديمية
-            </span>
-
-            <h2>
-              الأقسام <span>الرئيسية</span>
-            </h2>
-
-            <p>جاري تحميل الأقسام...</p>
+      <section
+        className="main-sections ms-loading"
+        id="sections"
+        style={{ ...cssVars, ...bgStyle }}
+      >
+        <div className="container-custom" style={{ maxWidth: cssVars['--ms-max-width'] }}>
+          <div className={`section-header ms-align-${alignment}`}>
+            <span className="section-eyebrow">جاري التحميل...</span>
           </div>
 
-          <div className="sections-grid sections-loading-grid">
+          <div
+            className="sections-grid"
+            style={{
+              display: 'grid',
+              gridTemplateColumns: `repeat(${styleConfig.layout?.gridColumns || 3}, minmax(0, 1fr))`,
+              gap: 'var(--ms-gap)',
+            }}
+          >
             {[1, 2, 3].map((item) => (
-              <div
-                key={item}
-                className="section-skeleton"
-              >
+              <div key={item} className="section-skeleton">
                 <div className="skeleton-icon"></div>
                 <div className="skeleton-title"></div>
                 <div className="skeleton-line"></div>
@@ -203,96 +422,105 @@ const MainSections: React.FC = () => {
     );
   }
 
-  // ===== عرض الأقسام =====
+  // ============================================================
+  // ✅ Render
+  // ============================================================
+  const extraSections = dynamicSections.filter((s) => !s.parentId);
+
   return (
-    <section className="main-sections" id="sections">
-      <div className="container-custom">
+    <section
+      className="main-sections"
+      id="sections"
+      style={{ ...cssVars, ...bgStyle }}
+      data-card-style={cardStyle}
+      data-hover={hoverClass}
+    >
+      {/* ✅ دوائر زخرفية */}
+      {styleConfig.layout?.showDecorCircles && (
+        <>
+          <div className="ms-decor ms-decor-1" aria-hidden="true" />
+          <div className="ms-decor ms-decor-2" aria-hidden="true" />
+        </>
+      )}
+
+      <div
+        className="container-custom"
+        style={{ maxWidth: cssVars['--ms-max-width'] }}
+      >
+        {/* ====================================================
+            Header
+        ==================================================== */}
+        {styleConfig.header?.enabled !== false && (
+          <div className={`section-header enhanced-section-header ms-align-${alignment}`}>
+            <span className="section-eyebrow">
+              {styleConfig.header?.showEyebrowDot && (
+                <span className="eyebrow-dot"></span>
+              )}
+              {styleConfig.header?.eyebrow}
+            </span>
+
+            <h2>
+              {styleConfig.header?.title}{' '}
+              <span>{styleConfig.header?.titleHighlight}</span>
+            </h2>
+
+            {styleConfig.header?.description && (
+              <p>{styleConfig.header.description}</p>
+            )}
+
+            {styleConfig.header?.showLine && (
+              <div className="section-header-line"></div>
+            )}
+          </div>
+        )}
 
         {/* ====================================================
-            عنوان القسم
+            Error
         ==================================================== */}
-
-        <div className="section-header enhanced-section-header">
-
-          <span className="section-eyebrow">
-            <span className="eyebrow-dot"></span>
-            منصة ارتقاء الأكاديمية
-          </span>
-
-          <h2>
-            الأقسام <span>الرئيسية</span>
-          </h2>
-
-          <p>
-            اختر القسم المناسب لاحتياجاتك واستكشف الخدمات المتخصصة
-            المقدمة من منصة ارتقاء
-          </p>
-
-          <div className="section-header-line"></div>
-        </div>
-
         {error ? (
           <div className="section-error-card">
             <div className="error-icon">!</div>
-
             <p>{error}</p>
-
             <button
-              onClick={fetchDynamicSections}
+              onClick={fetchAll}
               className="retry-button"
+              disabled={isFetchingRef.current}
             >
-              إعادة المحاولة
+              {isFetchingRef.current ? 'جاري المحاولة...' : 'إعادة المحاولة'}
             </button>
           </div>
         ) : (
           <div className="sections-grid">
-
-            {/* ==================================================
-                الأقسام الرئيسية الثابتة
-            ================================================== */}
-
             {MAIN_SECTIONS.map((mainSection, index) => {
-              const subSections =
-                getDynamicSectionsByCategory(mainSection.category);
+              const subSections = getDynamicSectionsByCategory(
+                mainSection.category
+              );
 
               return (
                 <div
                   key={mainSection.id}
-                  className="section-card main-section-card"
-                  data-aos-delay={100 + index * 100}
+                  className={`section-card main-section-card ${cardStyle} ${hoverClass}`}
+                  style={{
+                    animationDelay: styleConfig.animations?.stagger
+                      ? `${index * 100}ms`
+                      : '0ms',
+                  }}
                 >
-
-                  {/* شريط علوي زخرفي */}
                   <div className="card-top-line"></div>
 
-                  {/* الرابط الرئيسي */}
-                  <Link
-                    to={mainSection.link}
-                    className="main-section-link"
-                  >
-
+                  <Link to={mainSection.link} className="main-section-link">
                     <div className="main-card-header">
-
                       <div className="card-icon main-card-icon">
                         <span>{mainSection.icon}</span>
                       </div>
-
-                      <div className="main-card-badge">
-                        أكاديمي
-                      </div>
-
+                      <div className="main-card-badge">أكاديمي</div>
                     </div>
 
                     <div className="main-card-content">
-
                       <h3>{mainSection.title}</h3>
-
-                      <p className="card-desc">
-                        {mainSection.description}
-                      </p>
+                      <p className="card-desc">{mainSection.description}</p>
 
                       <div className="card-stats">
-
                         <span className="stat-item">
                           <span className="stat-icon">📖</span>
                           {mainSection.stats}
@@ -304,14 +532,11 @@ const MainSections: React.FC = () => {
                             {subSections.length} أقسام الخدمات الأكاديمية
                           </span>
                         )}
-
                       </div>
-
                     </div>
 
                     <div className="main-card-action">
                       <span>استعراض القسم</span>
-
                       <span className="action-arrow">
                         <svg
                           xmlns="http://www.w3.org/2000/svg"
@@ -324,27 +549,15 @@ const MainSections: React.FC = () => {
                         </svg>
                       </span>
                     </div>
-
                   </Link>
-
-                  {/* ==================================================
-                      الأقسام الفرعية
-                  ================================================== */}
 
                   {subSections.length > 0 && (
                     <div className="sub-sections">
-
                       <div className="sub-section-heading">
                         <div className="sub-heading-title">
-                          <span className="sub-heading-icon">
-                            ✦
-                          </span>
-
-                          <span>
-                            أقسام الخدمات الأكاديمية
-                          </span>
+                          <span className="sub-heading-icon">✦</span>
+                          <span>أقسام الخدمات الأكاديمية</span>
                         </div>
-
                         <span className="sub-heading-count">
                           {subSections.length}
                         </span>
@@ -362,21 +575,15 @@ const MainSections: React.FC = () => {
                             <span className="sub-section-icon">
                               {getSectionIcon(subSection.icon)}
                             </span>
-
                             <span className="sub-section-name">
                               {getSectionName(subSection)}
                             </span>
-
-                            <span className="sub-section-arrow">
-                              ←
-                            </span>
+                            <span className="sub-section-arrow">←</span>
                           </Link>
                         ))}
                       </div>
-
                     </div>
                   )}
-
                 </div>
               );
             })}
@@ -384,866 +591,41 @@ const MainSections: React.FC = () => {
         )}
 
         {/* ====================================================
-            الأقسام الإضافية
+            Extra Sections
         ==================================================== */}
-
-        {dynamicSections.filter((s) => !s.parentId).length > 0 && (
+        {extraSections.length > 0 && (
           <div className="extra-sections">
-
             <div className="extra-section-heading">
               <div>
-                <span className="section-eyebrow">
-                  الخدمات المتخصصة
-                </span>
-
-                <h3>
-                  أقسام الخدمات الأكاديمية
-                </h3>
+                <span className="section-eyebrow">الخدمات المتخصصة</span>
+                <h3>أقسام الخدمات الأكاديمية</h3>
               </div>
-
               <span className="extra-section-total">
-                {
-                  dynamicSections.filter((s) => !s.parentId).length
-                }{' '}
-                أقسام
+                {extraSections.length} أقسام
               </span>
             </div>
 
             <div className="extra-sections-grid">
-              {dynamicSections
-                .filter((s) => !s.parentId)
-                .map((section) => (
-                  <Link
-                    key={section._id}
-                    to={`/services?section=${section._id}`}
-                    className="extra-section-card"
-                  >
-
-                    <div className="extra-card-icon">
-                      {getSectionIcon(section.icon)}
-                    </div>
-
-                    <div className="extra-card-content">
-                      <h4>
-                        {getSectionName(section)}
-                      </h4>
-
-                      <p>
-                        {getSectionDescription(section)}
-                      </p>
-                    </div>
-
-                    <span className="extra-card-arrow">
-                      ←
-                    </span>
-
-                  </Link>
-                ))}
+              {extraSections.map((section) => (
+                <Link
+                  key={section._id}
+                  to={`/services?section=${section._id}`}
+                  className={`extra-section-card ${cardStyle} ${hoverClass}`}
+                >
+                  <div className="extra-card-icon">
+                    {getSectionIcon(section.icon)}
+                  </div>
+                  <div className="extra-card-content">
+                    <h4>{getSectionName(section)}</h4>
+                    <p>{getSectionDescription(section)}</p>
+                  </div>
+                  <span className="extra-card-arrow">←</span>
+                </Link>
+              ))}
             </div>
-
           </div>
         )}
-
       </div>
-
-      {/* ========================================================
-          التصميم
-      ======================================================== */}
-
-      <style>{`
-        .main-sections {
-          position: relative;
-          padding: 5rem 0;
-          overflow: hidden;
-        }
-
-        .main-sections::before {
-          content: '';
-          position: absolute;
-          width: 420px;
-          height: 420px;
-          border-radius: 50%;
-          background: rgba(124, 58, 237, 0.035);
-          top: -180px;
-          right: -180px;
-          pointer-events: none;
-        }
-
-        .main-sections::after {
-          content: '';
-          position: absolute;
-          width: 300px;
-          height: 300px;
-          border-radius: 50%;
-          background: rgba(236, 72, 153, 0.025);
-          bottom: -150px;
-          left: -100px;
-          pointer-events: none;
-        }
-
-        .enhanced-section-header {
-          position: relative;
-          z-index: 1;
-          margin-bottom: 3rem;
-        }
-
-        .section-eyebrow {
-          display: inline-flex;
-          align-items: center;
-          gap: 0.45rem;
-          color: #7c3aed;
-          font-size: 0.78rem;
-          font-weight: 700;
-          letter-spacing: 0.04em;
-          margin-bottom: 0.7rem;
-        }
-
-        .eyebrow-dot {
-          width: 7px;
-          height: 7px;
-          border-radius: 50%;
-          background: #8b5cf6;
-          box-shadow: 0 0 0 4px rgba(139, 92, 246, 0.1);
-        }
-
-        .section-header-line {
-          width: 55px;
-          height: 3px;
-          border-radius: 99px;
-          background: linear-gradient(
-            90deg,
-            #7c3aed,
-            #ec4899
-          );
-          margin: 1.25rem auto 0;
-        }
-
-        .sections-grid {
-          position: relative;
-          z-index: 1;
-        }
-
-        .main-section-card {
-          position: relative;
-          display: flex;
-          flex-direction: column;
-          overflow: hidden;
-          border-radius: 1.5rem;
-          background: rgba(255, 255, 255, 0.98);
-          border: 1px solid #e5e7eb;
-          box-shadow:
-            0 10px 35px rgba(17, 24, 39, 0.06),
-            0 2px 8px rgba(17, 24, 39, 0.03);
-          transition:
-            transform 0.3s ease,
-            box-shadow 0.3s ease,
-            border-color 0.3s ease;
-        }
-
-        .main-section-card:hover {
-          transform: translateY(-6px);
-          border-color: rgba(139, 92, 246, 0.3);
-          box-shadow:
-            0 20px 50px rgba(124, 58, 237, 0.11),
-            0 5px 15px rgba(17, 24, 39, 0.05);
-        }
-
-        .dark .main-section-card {
-          background: rgba(17, 24, 39, 0.96);
-          border-color: #374151;
-          box-shadow:
-            0 15px 40px rgba(0, 0, 0, 0.2);
-        }
-
-        .card-top-line {
-          height: 4px;
-          width: 100%;
-          background: linear-gradient(
-            90deg,
-            #7c3aed,
-            #a855f7,
-            #ec4899
-          );
-        }
-
-        .main-section-link {
-          display: block;
-          text-decoration: none;
-          color: inherit;
-          padding: 1.75rem 1.75rem 1.5rem;
-        }
-
-        .main-card-header {
-          display: flex;
-          align-items: center;
-          justify-content: space-between;
-          gap: 1rem;
-        }
-
-        .card-icon {
-          display: flex;
-          align-items: center;
-          justify-content: center;
-        }
-
-        .main-card-icon {
-          width: 68px;
-          height: 68px;
-          border-radius: 1.25rem;
-          background:
-            linear-gradient(
-              135deg,
-              rgba(124, 58, 237, 0.12),
-              rgba(236, 72, 153, 0.09)
-            );
-          border: 1px solid rgba(124, 58, 237, 0.12);
-          box-shadow:
-            inset 0 1px 0 rgba(255, 255, 255, 0.7);
-          transition: transform 0.3s ease;
-        }
-
-        .main-section-card:hover .main-card-icon {
-          transform: scale(1.06) rotate(-2deg);
-        }
-
-        .main-card-icon span {
-          font-size: 2.1rem;
-        }
-
-        .main-card-badge {
-          padding: 0.4rem 0.75rem;
-          border-radius: 9999px;
-          background: #f5f3ff;
-          color: #7c3aed;
-          border: 1px solid #ede9fe;
-          font-size: 0.72rem;
-          font-weight: 700;
-        }
-
-        .dark .main-card-badge {
-          background: rgba(124, 58, 237, 0.13);
-          color: #c4b5fd;
-          border-color: rgba(124, 58, 237, 0.2);
-        }
-
-        .main-card-content {
-          margin-top: 1.4rem;
-        }
-
-        .main-card-content h3 {
-          margin: 0;
-          color: #111827;
-          font-size: 1.45rem;
-          line-height: 1.5;
-          font-weight: 800;
-        }
-
-        .dark .main-card-content h3 {
-          color: #f9fafb;
-        }
-
-        .card-desc {
-          margin-top: 0.65rem;
-          color: #6b7280;
-          line-height: 1.8;
-          font-size: 0.92rem;
-        }
-
-        .dark .card-desc {
-          color: #9ca3af;
-        }
-
-        .card-stats {
-          display: flex;
-          flex-wrap: wrap;
-          gap: 0.6rem;
-          margin-top: 1.1rem;
-        }
-
-        .stat-item {
-          display: inline-flex;
-          align-items: center;
-          gap: 0.4rem;
-          padding: 0.45rem 0.7rem;
-          border-radius: 0.7rem;
-          background: #f9fafb;
-          border: 1px solid #f3f4f6;
-          color: #6b7280;
-          font-size: 0.74rem;
-          font-weight: 600;
-        }
-
-        .dark .stat-item {
-          background: #1f2937;
-          border-color: #374151;
-          color: #9ca3af;
-        }
-
-        .stat-icon {
-          font-size: 0.82rem;
-        }
-
-        .stat-primary {
-          color: #7c3aed;
-          background: #faf5ff;
-          border-color: #ede9fe;
-        }
-
-        .dark .stat-primary {
-          color: #c4b5fd;
-          background: rgba(124, 58, 237, 0.1);
-          border-color: rgba(124, 58, 237, 0.18);
-        }
-
-        .main-card-action {
-          display: flex;
-          align-items: center;
-          justify-content: space-between;
-          margin-top: 1.4rem;
-          padding-top: 1rem;
-          border-top: 1px solid #f3f4f6;
-          color: #7c3aed;
-          font-size: 0.86rem;
-          font-weight: 700;
-        }
-
-        .dark .main-card-action {
-          border-top-color: #374151;
-          color: #a78bfa;
-        }
-
-        .action-arrow {
-          width: 32px;
-          height: 32px;
-          border-radius: 50%;
-          display: flex;
-          align-items: center;
-          justify-content: center;
-          background: #f5f3ff;
-          transition:
-            transform 0.25s ease,
-            background 0.25s ease;
-        }
-
-        .dark .action-arrow {
-          background: rgba(124, 58, 237, 0.12);
-        }
-
-        .action-arrow svg {
-          width: 0.7rem;
-          height: 0.7rem;
-        }
-
-        .main-section-card:hover .action-arrow {
-          transform: translateX(-4px);
-          background: #ede9fe;
-        }
-
-        .sub-sections {
-          margin: 0 1.75rem 1.75rem;
-          padding-top: 1.25rem;
-          border-top: 1px solid #f3f4f6;
-        }
-
-        .dark .sub-sections {
-          border-top-color: #374151;
-        }
-
-        .sub-section-heading {
-          display: flex;
-          align-items: center;
-          justify-content: space-between;
-          gap: 1rem;
-          margin-bottom: 0.8rem;
-        }
-
-        .sub-heading-title {
-          display: flex;
-          align-items: center;
-          gap: 0.5rem;
-          color: #374151;
-          font-size: 0.82rem;
-          font-weight: 700;
-        }
-
-        .dark .sub-heading-title {
-          color: #d1d5db;
-        }
-
-        .sub-heading-icon {
-          color: #8b5cf6;
-        }
-
-        .sub-heading-count {
-          min-width: 26px;
-          height: 26px;
-          padding: 0 0.45rem;
-          display: inline-flex;
-          align-items: center;
-          justify-content: center;
-          border-radius: 9999px;
-          background: #f5f3ff;
-          color: #7c3aed;
-          font-size: 0.72rem;
-          font-weight: 800;
-        }
-
-        .dark .sub-heading-count {
-          background: rgba(124, 58, 237, 0.13);
-          color: #c4b5fd;
-        }
-
-        .sub-sections-divider {
-          display: none;
-        }
-
-        .sub-sections-grid {
-          display: grid;
-          grid-template-columns: repeat(2, minmax(0, 1fr));
-          gap: 0.55rem;
-        }
-
-        .sub-section-item {
-          display: flex;
-          align-items: center;
-          gap: 0.5rem;
-          min-width: 0;
-          padding: 0.65rem 0.7rem;
-          border-radius: 0.8rem;
-          background: #f9fafb;
-          border: 1px solid #f3f4f6;
-          color: #374151;
-          text-decoration: none;
-          transition:
-            all 0.2s ease;
-        }
-
-        .dark .sub-section-item {
-          background: #1f2937;
-          border-color: #374151;
-          color: #d1d5db;
-        }
-
-        .sub-section-item:hover {
-          background: #faf5ff;
-          border-color: #ddd6fe;
-          color: #7c3aed;
-          transform: translateY(-2px);
-          box-shadow: 0 5px 15px rgba(124, 58, 237, 0.07);
-        }
-
-        .dark .sub-section-item:hover {
-          background: rgba(124, 58, 237, 0.1);
-          border-color: rgba(124, 58, 237, 0.3);
-          color: #c4b5fd;
-        }
-
-        .sub-section-icon {
-          width: 30px;
-          height: 30px;
-          flex: 0 0 30px;
-          display: flex;
-          align-items: center;
-          justify-content: center;
-          border-radius: 0.55rem;
-          background: white;
-          font-size: 0.9rem;
-          box-shadow: 0 1px 3px rgba(0, 0, 0, 0.04);
-        }
-
-        .dark .sub-section-icon {
-          background: #111827;
-        }
-
-        .sub-section-name {
-          flex: 1;
-          min-width: 0;
-          font-size: 0.76rem;
-          font-weight: 600;
-          overflow: hidden;
-          text-overflow: ellipsis;
-          white-space: nowrap;
-        }
-
-        .sub-section-arrow {
-          color: #9ca3af;
-          font-size: 0.8rem;
-          transition: transform 0.2s ease;
-        }
-
-        .sub-section-item:hover .sub-section-arrow {
-          transform: translateX(-3px);
-          color: #8b5cf6;
-        }
-
-        .extra-sections {
-          position: relative;
-          z-index: 1;
-          margin-top: 3rem;
-          padding: 2rem;
-          border-radius: 1.5rem;
-          background: linear-gradient(
-            135deg,
-            #fafafa,
-            #ffffff
-          );
-          border: 1px solid #e5e7eb;
-        }
-
-        .dark .extra-sections {
-          background: linear-gradient(
-            135deg,
-            #111827,
-            #1f2937
-          );
-          border-color: #374151;
-        }
-
-        .extra-section-heading {
-          display: flex;
-          align-items: center;
-          justify-content: space-between;
-          gap: 1rem;
-          margin-bottom: 1.25rem;
-        }
-
-        .extra-section-heading .section-eyebrow {
-          margin-bottom: 0.2rem;
-        }
-
-        .extra-section-heading h3 {
-          margin: 0;
-          color: #111827;
-          font-size: 1.2rem;
-          font-weight: 800;
-        }
-
-        .dark .extra-section-heading h3 {
-          color: #f9fafb;
-        }
-
-        .extra-section-total {
-          padding: 0.45rem 0.8rem;
-          border-radius: 9999px;
-          background: #f5f3ff;
-          color: #7c3aed;
-          font-size: 0.74rem;
-          font-weight: 700;
-        }
-
-        .dark .extra-section-total {
-          background: rgba(124, 58, 237, 0.12);
-          color: #c4b5fd;
-        }
-
-        .extra-sections-grid {
-          display: grid;
-          grid-template-columns: repeat(3, minmax(0, 1fr));
-          gap: 0.8rem;
-        }
-
-        .extra-section-card {
-          display: flex;
-          align-items: center;
-          gap: 0.8rem;
-          min-width: 0;
-          padding: 1rem;
-          border-radius: 1rem;
-          background: white;
-          border: 1px solid #e5e7eb;
-          text-decoration: none;
-          color: inherit;
-          transition: all 0.25s ease;
-        }
-
-        .dark .extra-section-card {
-          background: #1f2937;
-          border-color: #374151;
-        }
-
-        .extra-section-card:hover {
-          transform: translateY(-3px);
-          border-color: #c4b5fd;
-          box-shadow: 0 10px 25px rgba(124, 58, 237, 0.08);
-        }
-
-        .extra-card-icon {
-          width: 42px;
-          height: 42px;
-          flex: 0 0 42px;
-          display: flex;
-          align-items: center;
-          justify-content: center;
-          border-radius: 0.8rem;
-          background: #f5f3ff;
-          font-size: 1.25rem;
-        }
-
-        .dark .extra-card-icon {
-          background: rgba(124, 58, 237, 0.12);
-        }
-
-        .extra-card-content {
-          flex: 1;
-          min-width: 0;
-        }
-
-        .extra-card-content h4 {
-          margin: 0;
-          color: #111827;
-          font-size: 0.88rem;
-          font-weight: 750;
-        }
-
-        .dark .extra-card-content h4 {
-          color: #f3f4f6;
-        }
-
-        .extra-card-content p {
-          margin: 0.25rem 0 0;
-          color: #9ca3af;
-          font-size: 0.72rem;
-          overflow: hidden;
-          text-overflow: ellipsis;
-          white-space: nowrap;
-        }
-
-        .extra-card-arrow {
-          color: #9ca3af;
-          transition: transform 0.2s ease;
-        }
-
-        .extra-section-card:hover .extra-card-arrow {
-          transform: translateX(-4px);
-          color: #8b5cf6;
-        }
-
-        /* ======================================================
-           Loading Skeleton
-        ====================================================== */
-
-        .sections-loading-grid {
-          display: grid;
-          grid-template-columns: repeat(3, minmax(0, 1fr));
-          gap: 1rem;
-        }
-
-        .section-skeleton {
-          min-height: 250px;
-          padding: 1.5rem;
-          border-radius: 1.5rem;
-          background: #ffffff;
-          border: 1px solid #e5e7eb;
-        }
-
-        .dark .section-skeleton {
-          background: #111827;
-          border-color: #374151;
-        }
-
-        .skeleton-icon,
-        .skeleton-title,
-        .skeleton-line {
-          border-radius: 0.6rem;
-          background: linear-gradient(
-            90deg,
-            #f3f4f6,
-            #e5e7eb,
-            #f3f4f6
-          );
-          background-size: 200% 100%;
-          animation: skeleton-loading 1.5s infinite;
-        }
-
-        .dark .skeleton-icon,
-        .dark .skeleton-title,
-        .dark .skeleton-line {
-          background: linear-gradient(
-            90deg,
-            #1f2937,
-            #374151,
-            #1f2937
-          );
-          background-size: 200% 100%;
-        }
-
-        .skeleton-icon {
-          width: 62px;
-          height: 62px;
-          border-radius: 1rem;
-        }
-
-        .skeleton-title {
-          width: 65%;
-          height: 22px;
-          margin-top: 1.4rem;
-        }
-
-        .skeleton-line {
-          width: 90%;
-          height: 12px;
-          margin-top: 0.8rem;
-        }
-
-        .skeleton-line.short {
-          width: 55%;
-        }
-
-        @keyframes skeleton-loading {
-          0% {
-            background-position: 200% 0;
-          }
-
-          100% {
-            background-position: -200% 0;
-          }
-        }
-
-        /* ======================================================
-           Error
-        ====================================================== */
-
-        .section-error-card {
-          position: relative;
-          z-index: 1;
-          max-width: 550px;
-          margin: 0 auto;
-          padding: 2rem;
-          text-align: center;
-          border-radius: 1.25rem;
-          background: #fff;
-          border: 1px solid #fee2e2;
-          box-shadow: 0 10px 30px rgba(127, 29, 29, 0.05);
-        }
-
-        .dark .section-error-card {
-          background: #1f2937;
-          border-color: #7f1d1d;
-        }
-
-        .error-icon {
-          width: 42px;
-          height: 42px;
-          margin: 0 auto 1rem;
-          display: flex;
-          align-items: center;
-          justify-content: center;
-          border-radius: 50%;
-          background: #fef2f2;
-          color: #dc2626;
-          font-size: 1.2rem;
-          font-weight: 800;
-        }
-
-        .dark .error-icon {
-          background: rgba(220, 38, 38, 0.12);
-          color: #f87171;
-        }
-
-        .section-error-card p {
-          color: #ef4444;
-          margin: 0;
-        }
-
-        .retry-button {
-          margin-top: 1rem;
-          padding: 0.6rem 1.3rem;
-          border: 0;
-          border-radius: 0.75rem;
-          background: linear-gradient(
-            135deg,
-            #7c3aed,
-            #9333ea
-          );
-          color: white;
-          font-weight: 700;
-          cursor: pointer;
-          transition: transform 0.2s ease, box-shadow 0.2s ease;
-        }
-
-        .retry-button:hover {
-          transform: translateY(-2px);
-          box-shadow: 0 8px 20px rgba(124, 58, 237, 0.2);
-        }
-
-        /* ======================================================
-           Responsive
-        ====================================================== */
-
-        @media (max-width: 1024px) {
-          .extra-sections-grid {
-            grid-template-columns: repeat(2, minmax(0, 1fr));
-          }
-
-          .sub-sections-grid {
-            grid-template-columns: 1fr;
-          }
-        }
-
-        @media (max-width: 768px) {
-          .main-sections {
-            padding: 3.5rem 0;
-          }
-
-          .main-section-link {
-            padding: 1.3rem;
-          }
-
-          .sub-sections {
-            margin: 0 1.3rem 1.3rem;
-          }
-
-          .main-card-content h3 {
-            font-size: 1.2rem;
-          }
-
-          .extra-sections {
-            padding: 1.3rem;
-            margin-top: 2rem;
-          }
-
-          .extra-sections-grid {
-            grid-template-columns: 1fr;
-          }
-
-          .extra-section-heading {
-            align-items: flex-start;
-            flex-direction: column;
-          }
-        }
-
-        @media (max-width: 480px) {
-          .main-card-header {
-            align-items: flex-start;
-          }
-
-          .main-card-badge {
-            font-size: 0.65rem;
-          }
-
-          .main-card-icon {
-            width: 58px;
-            height: 58px;
-          }
-
-          .main-card-icon span {
-            font-size: 1.8rem;
-          }
-
-          .card-stats {
-            flex-direction: column;
-            align-items: stretch;
-          }
-
-          .stat-item {
-            width: fit-content;
-          }
-
-          .sub-section-item {
-            padding: 0.6rem;
-          }
-        }
-      `}</style>
     </section>
   );
 };

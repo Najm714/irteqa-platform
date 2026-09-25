@@ -3,11 +3,13 @@ import { ServiceDetail } from '../models/ServiceDetail.model.js';
 import { Service } from '../models/Service.model.js';
 import { Section } from '../models/Section.model.js';
 
-// ===== إنشاء تفاصيل الخدمة =====
+// ============================================================
+// ✅ إنشاء تفاصيل الخدمة
+// ============================================================
 export const createServiceDetail = async (req, res) => {
   try {
     const portalId = req.portalId;
-    const { id: userId } = req.user || {};
+    const userId = req.user?.id || req.accountId;
 
     const {
       sectionId,
@@ -89,20 +91,19 @@ export const createServiceDetail = async (req, res) => {
       message: 'Service details created successfully',
       data: serviceDetail,
     });
-
   } catch (error) {
     console.error('❌ Create service detail error:', error);
-    
+
     if (error.name === 'ValidationError') {
       const errors = Object.keys(error.errors).reduce((acc, key) => {
         acc[key] = error.errors[key].message;
         return acc;
       }, {});
-      
+
       return res.status(400).json({
         success: false,
         message: 'Validation error',
-        errors: errors,
+        errors,
       });
     }
 
@@ -113,7 +114,9 @@ export const createServiceDetail = async (req, res) => {
   }
 };
 
-// ===== الحصول على جميع تفاصيل الخدمات =====
+// ============================================================
+// ✅ جلب جميع تفاصيل الخدمات
+// ============================================================
 export const getServiceDetails = async (req, res) => {
   try {
     const portalId = req.portalId;
@@ -132,8 +135,8 @@ export const getServiceDetails = async (req, res) => {
     if (isPublished !== undefined) query.isPublished = isPublished === 'true';
 
     const serviceDetails = await ServiceDetail.find(query)
-      .populate('sectionId', 'name nameAr')
-      .populate('serviceId', 'name nameAr icon')
+      .populate('sectionId', 'name nameAr icon image')
+      .populate('serviceId', 'name nameAr icon image')  // ✅ أضف image
       .populate('createdBy', 'profile.fullName')
       .sort({ createdAt: -1 });
 
@@ -150,20 +153,22 @@ export const getServiceDetails = async (req, res) => {
   }
 };
 
-// ===== ✅ الحصول على تفاصيل خدمة واحدة (مُصلح) =====
+// ============================================================
+// ✅ جلب تفاصيل خدمة واحدة
+// ============================================================
 export const getServiceDetailById = async (req, res) => {
   try {
     const { id } = req.params;
     const portalId = req.portalId;
 
     // ✅ ابحث باستخدام serviceId (وليس _id)
-    const serviceDetail = await ServiceDetail.findOne({ 
+    const serviceDetail = await ServiceDetail.findOne({
       serviceId: id,
       portalId,
       isDeleted: { $ne: true },
     })
-      .populate('sectionId', 'name nameAr')
-      .populate('serviceId', 'name nameAr icon')
+      .populate('sectionId', 'name nameAr icon image')
+      .populate('serviceId', 'name nameAr icon image')  // ✅ أضف image
       .populate('createdBy', 'profile.fullName');
 
     if (!serviceDetail) {
@@ -186,7 +191,9 @@ export const getServiceDetailById = async (req, res) => {
   }
 };
 
-// ===== تحديث تفاصيل الخدمة =====
+// ============================================================
+// ✅ تحديث تفاصيل الخدمة
+// ============================================================
 export const updateServiceDetail = async (req, res) => {
   try {
     const { id } = req.params;
@@ -201,8 +208,13 @@ export const updateServiceDetail = async (req, res) => {
       });
     }
 
-    Object.keys(updates).forEach(key => {
-      if (key !== '_id' && key !== 'portalId' && key !== 'createdAt' && key !== 'createdBy') {
+    Object.keys(updates).forEach((key) => {
+      if (
+        key !== '_id' &&
+        key !== 'portalId' &&
+        key !== 'createdAt' &&
+        key !== 'createdBy'
+      ) {
         serviceDetail[key] = updates[key];
       }
     });
@@ -224,7 +236,9 @@ export const updateServiceDetail = async (req, res) => {
   }
 };
 
-// ===== حذف تفاصيل الخدمة =====
+// ============================================================
+// ✅ حذف تفاصيل الخدمة
+// ============================================================
 export const deleteServiceDetail = async (req, res) => {
   try {
     const { id } = req.params;
@@ -255,7 +269,9 @@ export const deleteServiceDetail = async (req, res) => {
   }
 };
 
-// ===== تبديل حالة النشر =====
+// ============================================================
+// ✅ تبديل حالة النشر
+// ============================================================
 export const toggleServiceDetailStatus = async (req, res) => {
   try {
     const { id } = req.params;
@@ -275,7 +291,9 @@ export const toggleServiceDetailStatus = async (req, res) => {
 
     res.status(200).json({
       success: true,
-      message: `Service details ${serviceDetail.isPublished ? 'published' : 'unpublished'} successfully`,
+      message: `Service details ${
+        serviceDetail.isPublished ? 'published' : 'unpublished'
+      } successfully`,
       data: serviceDetail,
     });
   } catch (error) {
@@ -286,4 +304,3 @@ export const toggleServiceDetailStatus = async (req, res) => {
     });
   }
 };
-

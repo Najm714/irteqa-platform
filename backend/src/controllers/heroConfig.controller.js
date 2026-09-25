@@ -55,6 +55,9 @@ const resolveCategory = (isVideo, requestedCategory) => {
     midBanner: 'mid-banner-image',
     slide: 'slide-image',
     splash: 'splash-logo',
+    'sections-bg': 'sections-bg',        // ✅ جديد
+    'sections-pattern': 'sections-pattern', // ✅ جديد
+
   };
 
   return categoryMap[requestedCategory] || 'hero-image';

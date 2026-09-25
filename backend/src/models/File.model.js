@@ -79,6 +79,8 @@ const FileSchema = new mongoose.Schema({
     'hero-video',
     'popup-image',
     'side-banner-image',
+    'sections-bg',
+    'sections-pattern',
     ],
     required: [true, 'Category is required'],
     default: 'user',

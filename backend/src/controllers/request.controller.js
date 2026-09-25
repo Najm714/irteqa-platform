@@ -2,10 +2,13 @@
 import { Request } from '../models/Request.model.js';
 import { File } from '../models/File.model.js';
 import { Account } from '../models/Account.model.js';
+import { Service } from '../models/Service.model.js';
+import { RequestType } from '../models/RequestType.model.js';
 import { getNotificationService } from '../services/notification.service.js';
 import mongoose from 'mongoose';
+
 // ============================================================
-// ✅ دالة مساعدة: إرسال إشعار بأمان
+// ✅ Helper: إرسال إشعار بأمان
 // ============================================================
 const safeSendNotification = async (req, notificationData) => {
   try {
@@ -16,6 +19,55 @@ const safeSendNotification = async (req, notificationData) => {
     console.error('⚠️ Notification error:', notifError.message);
   }
 };
+
+// ============================================================
+// ✅ Helper: فحص صلاحية الوصول للطلب
+// ============================================================
+const checkRequestAccess = (request, accountId, role) => {
+  return request.canUserAccess(accountId, role);
+};
+
+// ============================================================
+// ✅ Helper: هل المستخدم مدير؟
+// ============================================================
+const isAdmin = (role) => {
+  return role === 'portal_admin' || role === 'super_admin';
+};
+
+// ============================================================
+// ✅ Helper: تنسيق بيانات الطلب للقوائم
+// ============================================================
+const formatRequestForList = (order) => ({
+  _id: order._id,
+  requestNumber: order.requestNumber,
+  title: order.formData?.title || order.title || 'طلب',
+  description: order.formData?.description || order.description || '',
+  service: order.serviceId || { name: 'خدمة', nameAr: 'خدمة' },
+  requestType: order.requestTypeId,
+  specialist: order.specialistId,
+  customer: order.accountId,
+  status: order.status || 'new',
+  paymentStatus: order.paymentStatus || 'pending',
+  price: order.scope?.price || order.price || 0,
+  estimatedDuration: order.scope?.estimatedDuration,
+  createdAt: order.createdAt,
+  updatedAt: order.updatedAt,
+  files: order.files?.map((f) => ({
+    _id: f.fileId?._id,
+    filename: f.fileId?.originalName,
+    category: f.category,
+  })) || [],
+  paymentProofs: order.paymentProofs?.map((p) => ({
+    _id: p._id,
+    fileId: p.fileId?._id || p.fileId,
+    filename: p.fileId?.originalName || p.filename,
+    verified: p.verified || false,
+    rejectionReason: p.rejectionReason || null,
+  })) || [],
+  messages: order.messages?.length || 0,
+  calls: order.calls?.length || 0,
+  activityLog: order.activityLog?.slice(0, 5) || [],
+});
 
 // ============================================================
 // ✅ جلب طلبات المستخدم الحالي (العميل)
@@ -38,7 +90,9 @@ export const getMyRequests = async (req, res) => {
 
     const skip = (parseInt(page) - 1) * parseInt(limit);
 
+    // ✅ select محدود لتجنب جلب حقول ضخمة
     let requests = await Request.find(query)
+      .select('-messages -activityLog')
       .populate('serviceId', 'name nameAr icon')
       .populate('requestTypeId', 'name nameAr')
       .populate('specialistId', 'profile.fullName')
@@ -50,50 +104,20 @@ export const getMyRequests = async (req, res) => {
 
     if (search) {
       const searchRegex = new RegExp(search, 'i');
-      requests = requests.filter(r =>
-        searchRegex.test(r.requestNumber) ||
-        searchRegex.test(r.formData?.title || '') ||
-        searchRegex.test(r.serviceId?.name || '') ||
-        searchRegex.test(r.serviceId?.nameAr || '')
+      requests = requests.filter(
+        (r) =>
+          searchRegex.test(r.requestNumber) ||
+          searchRegex.test(r.formData?.title || '') ||
+          searchRegex.test(r.serviceId?.name || '') ||
+          searchRegex.test(r.serviceId?.nameAr || '')
       );
     }
 
     const total = await Request.countDocuments(query);
 
-    const formattedRequests = requests.map(order => ({
-      _id: order._id,
-      requestNumber: order.requestNumber,
-      title: order.formData?.title || order.title || 'طلب',
-      description: order.formData?.description || order.description || '',
-      service: order.serviceId || { name: 'خدمة', nameAr: 'خدمة' },
-      requestType: order.requestTypeId,
-      specialist: order.specialistId,
-      status: order.status || 'new',
-      paymentStatus: order.paymentStatus || 'pending',
-      price: order.scope?.price || order.price || 0,
-      estimatedDuration: order.scope?.estimatedDuration,
-      createdAt: order.createdAt,
-      updatedAt: order.updatedAt,
-      files: order.files?.map(f => ({
-        _id: f.fileId?._id,
-        filename: f.fileId?.originalName,
-        category: f.category,
-      })) || [],
-      paymentProofs: order.paymentProofs?.map(p => ({
-        _id: p._id,
-        fileId: p.fileId?._id || p.fileId,
-        filename: p.fileId?.originalName || p.filename,
-        verified: p.verified || false,
-        rejectionReason: p.rejectionReason || null,
-      })) || [],
-      messages: order.messages?.length || 0,
-      calls: order.calls?.length || 0,
-      activityLog: order.activityLog?.slice(0, 5) || [],
-    }));
-
     res.json({
       success: true,
-      data: formattedRequests,
+      data: requests.map(formatRequestForList),
       pagination: {
         page: parseInt(page),
         limit: parseInt(limit),
@@ -103,10 +127,7 @@ export const getMyRequests = async (req, res) => {
     });
   } catch (error) {
     console.error('❌ Error in getMyRequests:', error);
-    res.status(500).json({
-      success: false,
-      message: error.message,
-    });
+    res.status(500).json({ success: false, message: error.message });
   }
 };
 
@@ -133,6 +154,7 @@ export const getSpecialistRequests = async (req, res) => {
     const skip = (parseInt(page) - 1) * parseInt(limit);
 
     const requests = await Request.find(query)
+      .select('-messages -activityLog')
       .populate('serviceId', 'name nameAr icon')
       .populate('requestTypeId', 'name nameAr')
       .populate('accountId', 'profile.fullName email')
@@ -144,39 +166,9 @@ export const getSpecialistRequests = async (req, res) => {
 
     const total = await Request.countDocuments(query);
 
-    const formattedRequests = requests.map(order => ({
-      _id: order._id,
-      requestNumber: order.requestNumber,
-      title: order.formData?.title || order.title || 'طلب',
-      description: order.formData?.description || order.description || '',
-      service: order.serviceId,
-      requestType: order.requestTypeId,
-      customer: order.accountId,
-      status: order.status || 'new',
-      paymentStatus: order.paymentStatus || 'pending',
-      price: order.scope?.price || order.price || 0,
-      estimatedDuration: order.scope?.estimatedDuration,
-      createdAt: order.createdAt,
-      updatedAt: order.updatedAt,
-      files: order.files?.map(f => ({
-        _id: f.fileId?._id,
-        filename: f.fileId?.originalName,
-        category: f.category,
-      })) || [],
-      paymentProofs: order.paymentProofs?.map(p => ({
-        _id: p._id,
-        fileId: p.fileId?._id || p.fileId,
-        filename: p.fileId?.originalName || p.filename,
-        verified: p.verified || false,
-        rejectionReason: p.rejectionReason || null,
-      })) || [],
-      messages: order.messages?.length || 0,
-      calls: order.calls?.length || 0,
-    }));
-
     res.json({
       success: true,
-      data: formattedRequests,
+      data: requests.map(formatRequestForList),
       pagination: {
         page: parseInt(page),
         limit: parseInt(limit),
@@ -186,10 +178,7 @@ export const getSpecialistRequests = async (req, res) => {
     });
   } catch (error) {
     console.error('❌ Error in getSpecialistRequests:', error);
-    res.status(500).json({
-      success: false,
-      message: error.message,
-    });
+    res.status(500).json({ success: false, message: error.message });
   }
 };
 
@@ -213,6 +202,7 @@ export const getAllRequests = async (req, res) => {
     const skip = (parseInt(page) - 1) * parseInt(limit);
 
     let requests = await Request.find(query)
+      .select('-messages -activityLog')
       .populate('serviceId', 'name nameAr icon')
       .populate('requestTypeId', 'name nameAr')
       .populate('accountId', 'profile.fullName email')
@@ -225,52 +215,21 @@ export const getAllRequests = async (req, res) => {
 
     if (search) {
       const searchRegex = new RegExp(search, 'i');
-      requests = requests.filter(r =>
-        searchRegex.test(r.requestNumber) ||
-        searchRegex.test(r.formData?.title || '') ||
-        searchRegex.test(r.serviceId?.name || '') ||
-        searchRegex.test(r.serviceId?.nameAr || '') ||
-        searchRegex.test(r.accountId?.profile?.fullName || '')
+      requests = requests.filter(
+        (r) =>
+          searchRegex.test(r.requestNumber) ||
+          searchRegex.test(r.formData?.title || '') ||
+          searchRegex.test(r.serviceId?.name || '') ||
+          searchRegex.test(r.serviceId?.nameAr || '') ||
+          searchRegex.test(r.accountId?.profile?.fullName || '')
       );
     }
 
     const total = await Request.countDocuments(query);
 
-    const formattedRequests = requests.map(order => ({
-      _id: order._id,
-      requestNumber: order.requestNumber,
-      title: order.formData?.title || order.title || 'طلب',
-      description: order.formData?.description || order.description || '',
-      service: order.serviceId,
-      requestType: order.requestTypeId,
-      customer: order.accountId,
-      specialist: order.specialistId,
-      status: order.status || 'new',
-      paymentStatus: order.paymentStatus || 'pending',
-      price: order.scope?.price || order.price || 0,
-      estimatedDuration: order.scope?.estimatedDuration,
-      createdAt: order.createdAt,
-      updatedAt: order.updatedAt,
-      files: order.files?.map(f => ({
-        _id: f.fileId?._id,
-        filename: f.fileId?.originalName,
-        category: f.category,
-      })) || [],
-      paymentProofs: order.paymentProofs?.map(p => ({
-        _id: p._id,
-        fileId: p.fileId?._id || p.fileId,
-        filename: p.fileId?.originalName || p.filename,
-        verified: p.verified || false,
-        rejectionReason: p.rejectionReason || null,
-      })) || [],
-      messages: order.messages?.length || 0,
-      calls: order.calls?.length || 0,
-      activityLog: order.activityLog?.slice(0, 5) || [],
-    }));
-
     res.json({
       success: true,
-      data: formattedRequests,
+      data: requests.map(formatRequestForList),
       pagination: {
         page: parseInt(page),
         limit: parseInt(limit),
@@ -280,10 +239,7 @@ export const getAllRequests = async (req, res) => {
     });
   } catch (error) {
     console.error('❌ Error in getAllRequests:', error);
-    res.status(500).json({
-      success: false,
-      message: error.message,
-    });
+    res.status(500).json({ success: false, message: error.message });
   }
 };
 
@@ -297,18 +253,19 @@ export const getRequestById = async (req, res) => {
     console.log('📤 Fetching request by ID:', request._id);
 
     const populatedRequest = await Request.findById(request._id)
-      .populate('serviceId', 'name nameAr icon description')
+      .populate('serviceId', 'name nameAr icon description image')
       .populate('requestTypeId', 'name nameAr description')
       .populate('accountId', 'profile.fullName email phone')
       .populate('specialistId', 'profile.fullName email phone')
       .populate('files.fileId', 'originalName size mimeType storageKey')
       .populate('paymentProofs.fileId', 'originalName size mimeType storageKey')
-      .populate('messages.senderId', 'profile.fullName')
-      .populate('activityLog.actorId', 'profile.fullName');
+      .populate('messages.senderId', 'profile.fullName email')
+      .populate('activityLog.actorId', 'profile.fullName email');
 
     console.log('📤 Request data:');
     console.log('  - Files:', populatedRequest.files?.length || 0);
     console.log('  - Payment Proofs:', populatedRequest.paymentProofs?.length || 0);
+    console.log('  - Messages:', populatedRequest.messages?.length || 0);
 
     res.json({
       success: true,
@@ -316,12 +273,13 @@ export const getRequestById = async (req, res) => {
     });
   } catch (error) {
     console.error('❌ Error in getRequestById:', error);
-    res.status(500).json({
-      success: false,
-      message: error.message,
-    });
+    res.status(500).json({ success: false, message: error.message });
   }
 };
+
+// ============================================================
+// ✅ إنشاء طلب جديد
+// ============================================================
 export const createRequest = async (req, res) => {
   try {
     const accountId = req.accountId;
@@ -345,7 +303,59 @@ export const createRequest = async (req, res) => {
       });
     }
 
-    // 🔐 Security: validate all uploaded files before attaching them to the request
+    // ✅ فحص وجود الخدمة في نفس البوابة
+    if (!serviceId) {
+      return res.status(400).json({
+        success: false,
+        message: 'Service ID is required',
+      });
+    }
+
+    if (!mongoose.Types.ObjectId.isValid(serviceId)) {
+      return res.status(400).json({
+        success: false,
+        message: 'Invalid service ID',
+      });
+    }
+
+    const service = await Service.findOne({
+      _id: serviceId,
+      portalId,
+      isDeleted: { $ne: true },
+    }).select('_id name nameAr');
+
+    if (!service) {
+      return res.status(404).json({
+        success: false,
+        message: 'Service not found in this portal',
+        code: 'SERVICE_NOT_FOUND',
+      });
+    }
+
+    // ✅ فحص نوع الطلب إن وُجد
+    if (requestTypeId) {
+      if (!mongoose.Types.ObjectId.isValid(requestTypeId)) {
+        return res.status(400).json({
+          success: false,
+          message: 'Invalid request type ID',
+        });
+      }
+
+      const requestType = await RequestType.findOne({
+        _id: requestTypeId,
+        portalId,
+      }).select('_id serviceId');
+
+      if (!requestType) {
+        return res.status(404).json({
+          success: false,
+          message: 'Request type not found',
+          code: 'REQUEST_TYPE_NOT_FOUND',
+        });
+      }
+    }
+
+    // 🔐 فحص الملفات
     const fileIds = Array.isArray(files)
       ? [...new Set(files.filter(Boolean).map(String))]
       : [];
@@ -363,9 +373,6 @@ export const createRequest = async (req, res) => {
         });
       }
 
-      // A request may only attach non-deleted files that:
-      // 1. belong to the same portal
-      // 2. belong to the authenticated account
       const uploadedFiles = await File.find({
         _id: { $in: fileIds },
         portalId,
@@ -384,7 +391,7 @@ export const createRequest = async (req, res) => {
 
         console.warn(
           `🚫 Invalid file attachment attempt: account=${accountId}, ` +
-          `portal=${portalId}, invalidFiles=${invalidFileIds.join(',')}`
+            `portal=${portalId}, invalidFiles=${invalidFileIds.join(',')}`
         );
 
         return res.status(403).json({
@@ -397,11 +404,12 @@ export const createRequest = async (req, res) => {
       }
     }
 
+    // ✅ إنشاء الطلب
     const request = new Request({
       portalId,
       accountId,
       serviceId,
-      requestTypeId,
+      requestTypeId: requestTypeId || undefined,
       formData: formData || {},
       formSchemaSnapshot: formData || {},
       status: 'new',
@@ -413,7 +421,6 @@ export const createRequest = async (req, res) => {
       },
     });
 
-    // Attach only files already verified above
     for (const fileId of fileIds) {
       request.files.push({
         fileId,
@@ -423,23 +430,17 @@ export const createRequest = async (req, res) => {
       });
     }
 
-    request.addActivity(
-      'request_created',
-      accountId,
-      'customer',
-      null,
-      {
-        serviceId,
-        requestTypeId,
-        formData,
-      }
-    );
+    request.addActivity('request_created', accountId, 'customer', null, {
+      serviceId,
+      requestTypeId,
+      formData,
+    });
 
     await request.save();
 
     console.log('✅ Request created successfully:', request._id);
 
-    // ✅ 1. إشعار للعميل (صاحب الطلب)
+    // ✅ إشعار للعميل
     await safeSendNotification(req, {
       portalId: request.portalId,
       accountId: request.accountId,
@@ -452,7 +453,7 @@ export const createRequest = async (req, res) => {
       priority: 'medium',
     });
 
-    // ✅ 2. إشعار لجميع المديرين
+    // ✅ إشعار للمديرين
     try {
       const notificationService = getNotificationService(req.app?.get('io'));
 
@@ -466,12 +467,17 @@ export const createRequest = async (req, res) => {
         priority: 'medium',
       };
 
-      // 🎯 2a. إشعار لـ portal_admin في نفس البوابة
-      const portalAdmins = await Account.find({
-        portalId: request.portalId,
-        role: 'portal_admin',
-        isActive: true,
-      });
+      const [portalAdmins, superAdmins] = await Promise.all([
+        Account.find({
+          portalId: request.portalId,
+          role: 'portal_admin',
+          isActive: true,
+        }).select('_id'),
+        Account.find({
+          role: 'super_admin',
+          isActive: true,
+        }).select('_id'),
+      ]);
 
       for (const admin of portalAdmins) {
         await notificationService.sendNotification({
@@ -480,14 +486,6 @@ export const createRequest = async (req, res) => {
           ...adminNotification,
         });
       }
-
-      console.log(`✅ Notified ${portalAdmins.length} portal_admin(s)`);
-
-      // 🎯 2b. إشعار لـ super_admin
-      const superAdmins = await Account.find({
-        role: 'super_admin',
-        isActive: true,
-      });
 
       for (const admin of superAdmins) {
         await notificationService.sendNotification({
@@ -498,7 +496,9 @@ export const createRequest = async (req, res) => {
         });
       }
 
-      console.log(`✅ Notified ${superAdmins.length} super_admin(s)`);
+      console.log(
+        `✅ Notified ${portalAdmins.length} portal_admin(s), ${superAdmins.length} super_admin(s)`
+      );
     } catch (err) {
       console.error('⚠️ Admin notification error:', err.message);
     }
@@ -510,21 +510,26 @@ export const createRequest = async (req, res) => {
     });
   } catch (error) {
     console.error('❌ Error in createRequest:', error);
-
-    res.status(500).json({
-      success: false,
-      message: error.message,
-    });
+    res.status(500).json({ success: false, message: error.message });
   }
 };
+
 // ============================================================
-// ✅ تحديث الطلب
+// ✅ تحديث الطلب (formData / scope)
 // ============================================================
 export const updateRequest = async (req, res) => {
   try {
     const request = req.request;
     const accountId = req.accountId;
     const { formData, scope } = req.body;
+
+    // ✅ فحص الصلاحية
+    if (!checkRequestAccess(request, accountId, req.account?.role)) {
+      return res.status(403).json({
+        success: false,
+        message: 'Access denied',
+      });
+    }
 
     if (formData) {
       request.formData = { ...request.formData, ...formData };
@@ -534,10 +539,13 @@ export const updateRequest = async (req, res) => {
       request.scope = { ...request.scope, ...scope };
     }
 
-    request.addActivity('request_updated', accountId, req.account?.role || 'customer', null, {
-      formData,
-      scope,
-    });
+    request.addActivity(
+      'request_updated',
+      accountId,
+      req.account?.role || 'customer',
+      null,
+      { formData, scope }
+    );
 
     await request.save();
 
@@ -548,10 +556,7 @@ export const updateRequest = async (req, res) => {
     });
   } catch (error) {
     console.error('❌ Error in updateRequest:', error);
-    res.status(500).json({
-      success: false,
-      message: error.message,
-    });
+    res.status(500).json({ success: false, message: error.message });
   }
 };
 
@@ -563,6 +568,34 @@ export const updateRequestStatus = async (req, res) => {
     const request = req.request;
     const accountId = req.accountId;
     const { status, notes } = req.body;
+    const userRole = req.account?.role || 'customer';
+
+    // ✅ فحص الحالة المطلوبة
+    if (!status) {
+      return res.status(400).json({
+        success: false,
+        message: 'Status is required',
+      });
+    }
+
+    // ✅ فحص صلاحية الوصول
+    if (!checkRequestAccess(request, accountId, userRole)) {
+      return res.status(403).json({
+        success: false,
+        message: 'Access denied',
+      });
+    }
+
+    // ✅ فحص الانتقال الصحيح
+    if (!request.canTransitionTo(status)) {
+      return res.status(400).json({
+        success: false,
+        message: `Cannot transition from "${request.status}" to "${status}"`,
+        code: 'INVALID_STATUS_TRANSITION',
+        currentStatus: request.status,
+        requestedStatus: status,
+      });
+    }
 
     const oldStatus = request.status;
     request.status = status;
@@ -576,23 +609,30 @@ export const updateRequestStatus = async (req, res) => {
     if (status === 'closed') request.closedAt = new Date();
     if (status === 'cancelled') request.isActive = false;
 
-    request.addActivity(
-      'status_changed',
-      accountId,
-      req.account?.role || 'customer',
-      oldStatus,
-      status,
-      { notes }
-    );
+    request.addActivity('status_changed', accountId, userRole, oldStatus, status, {
+      notes,
+    });
 
     await request.save();
 
     // ✅ إشعار للعميل
     const statusMessages = {
-      'in_progress': { ar: 'طلبك قيد التنفيذ الآن', en: 'Your request is now in progress' },
-      'completed': { ar: 'تم إكمال طلبك', en: 'Your request has been completed' },
-      'cancelled': { ar: 'تم إلغاء طلبك', en: 'Your request has been cancelled' },
-      'closed': { ar: 'تم إغلاق طلبك', en: 'Your request has been closed' },
+      in_progress: {
+        ar: 'طلبك قيد التنفيذ الآن',
+        en: 'Your request is now in progress',
+      },
+      completed: {
+        ar: 'تم إكمال طلبك',
+        en: 'Your request has been completed',
+      },
+      cancelled: {
+        ar: 'تم إلغاء طلبك',
+        en: 'Your request has been cancelled',
+      },
+      closed: {
+        ar: 'تم إغلاق طلبك',
+        en: 'Your request has been closed',
+      },
     };
 
     const msg = statusMessages[status] || {
@@ -619,22 +659,40 @@ export const updateRequestStatus = async (req, res) => {
     });
   } catch (error) {
     console.error('❌ Error in updateRequestStatus:', error);
-    res.status(500).json({
-      success: false,
-      message: error.message,
-    });
+    res.status(500).json({ success: false, message: error.message });
   }
 };
+
+// ============================================================
+// ✅ إسناد مختص
+// ============================================================
 export const assignSpecialist = async (req, res) => {
   try {
     const request = req.request;
     const accountId = req.accountId;
+    const userRole = req.account?.role || 'customer';
     const { specialistId } = req.body;
+
+    // ✅ فحص الصلاحية — فقط admin
+    if (!isAdmin(userRole)) {
+      return res.status(403).json({
+        success: false,
+        message: 'Only admins can assign specialists',
+        code: 'ADMIN_ONLY',
+      });
+    }
 
     if (!specialistId) {
       return res.status(400).json({
         success: false,
         message: 'Specialist ID is required',
+      });
+    }
+
+    if (!mongoose.Types.ObjectId.isValid(specialistId)) {
+      return res.status(400).json({
+        success: false,
+        message: 'Invalid specialist ID',
       });
     }
 
@@ -646,13 +704,13 @@ export const assignSpecialist = async (req, res) => {
       });
     }
 
-    // 🔐 Security: the specialist must belong to the same portal as the request
+    // ✅ فحص المختص
     const specialist = await Account.findOne({
       _id: specialistId,
       portalId: request.portalId,
       role: 'specialist',
       isActive: true,
-    }).select('_id portalId role isActive');
+    }).select('_id portalId role isActive profile.fullName');
 
     if (!specialist) {
       return res.status(403).json({
@@ -670,17 +728,15 @@ export const assignSpecialist = async (req, res) => {
     request.addActivity(
       'specialist_assigned',
       accountId,
-      req.account?.role || 'portal_admin',
+      userRole,
       oldSpecialist,
       specialist._id,
-      {
-        specialistId: specialist._id,
-      }
+      { specialistId: specialist._id }
     );
 
     await request.save();
 
-    // ✅ 1. إشعار للمختص
+    // ✅ إشعار للمختص
     await safeSendNotification(req, {
       portalId: request.portalId,
       accountId: specialist._id,
@@ -693,7 +749,7 @@ export const assignSpecialist = async (req, res) => {
       priority: 'high',
     });
 
-    // ✅ 2. إشعار للعميل (صاحب الطلب)
+    // ✅ إشعار للعميل
     await safeSendNotification(req, {
       portalId: request.portalId,
       accountId: request.accountId,
@@ -701,7 +757,7 @@ export const assignSpecialist = async (req, res) => {
       title: 'Specialist assigned',
       titleAr: 'تم تعيين مختص لطلبك',
       message: `A specialist has been assigned to your request ${request.requestNumber}`,
-      messageAr: `تم تعيين المختص للطلب رقم ${request.requestNumber} إليك`,
+      messageAr: `تم تعيين مختص للطلب رقم ${request.requestNumber}`,
       data: { requestId: request._id },
       priority: 'medium',
     });
@@ -713,13 +769,10 @@ export const assignSpecialist = async (req, res) => {
     });
   } catch (error) {
     console.error('❌ Error in assignSpecialist:', error);
-
-    res.status(500).json({
-      success: false,
-      message: error.message,
-    });
+    res.status(500).json({ success: false, message: error.message });
   }
 };
+
 // ============================================================
 // ✅ حذف الطلب (ناعم)
 // ============================================================
@@ -727,13 +780,22 @@ export const deleteRequest = async (req, res) => {
   try {
     const request = req.request;
     const accountId = req.accountId;
+    const userRole = req.account?.role || 'customer';
+
+    // ✅ فحص الصلاحية
+    if (!checkRequestAccess(request, accountId, userRole)) {
+      return res.status(403).json({
+        success: false,
+        message: 'Access denied',
+      });
+    }
 
     request.isDeleted = true;
     request.deletedAt = new Date();
     request.deletedBy = accountId;
     request.isActive = false;
 
-    request.addActivity('deleted', accountId, req.account?.role || 'customer');
+    request.addActivity('deleted', accountId, userRole);
 
     await request.save();
 
@@ -743,10 +805,7 @@ export const deleteRequest = async (req, res) => {
     });
   } catch (error) {
     console.error('❌ Error in deleteRequest:', error);
-    res.status(500).json({
-      success: false,
-      message: error.message,
-    });
+    res.status(500).json({ success: false, message: error.message });
   }
 };
 
@@ -757,15 +816,23 @@ export const getRequestStats = async (req, res) => {
   try {
     const portalId = req.portalId;
 
-    const stats = await Request.aggregate([
+    // ✅ دمج الطلبين بـ $facet
+    const [stats] = await Request.aggregate([
       { $match: { portalId, isDeleted: { $ne: true } } },
-      { $group: { _id: '$status', count: { $sum: 1 } } },
+      {
+        $facet: {
+          statusCounts: [{ $group: { _id: '$status', count: { $sum: 1 } } }],
+          total: [{ $count: 'count' }],
+        },
+      },
     ]);
 
-    const total = await Request.countDocuments({ portalId, isDeleted: { $ne: true } });
-
     const statusMap = {};
-    stats.forEach(s => { statusMap[s._id] = s.count; });
+    stats.statusCounts.forEach((s) => {
+      statusMap[s._id] = s.count;
+    });
+
+    const total = stats.total[0]?.count || 0;
 
     res.json({
       success: true,
@@ -787,12 +854,10 @@ export const getRequestStats = async (req, res) => {
     });
   } catch (error) {
     console.error('❌ Error in getRequestStats:', error);
-    res.status(500).json({
-      success: false,
-      message: error.message,
-    });
+    res.status(500).json({ success: false, message: error.message });
   }
 };
+
 // ============================================================
 // ✅ إضافة ملف إلى الطلب
 // ============================================================
@@ -808,10 +873,17 @@ export const addRequestFile = async (req, res) => {
       role,
       portalId,
       requestId: request?._id,
-      requestPortalId: request?.portalId,
       category,
       fileIds,
     });
+
+    // ✅ فحص الصلاحية
+    if (!checkRequestAccess(request, accountId, role)) {
+      return res.status(403).json({
+        success: false,
+        message: 'Access denied',
+      });
+    }
 
     if (!portalId) {
       return res.status(400).json({
@@ -829,9 +901,7 @@ export const addRequestFile = async (req, res) => {
       });
     }
 
-    // ========================================================
-    // ✅ تأكيد أن الطلب نفسه ضمن البوابة الحالية
-    // ========================================================
+    // ✅ فحص أن الطلب نفسه ضمن البوابة
     if (request.portalId.toString() !== portalId.toString()) {
       console.warn('🚫 Request portal mismatch:', {
         requestId: request._id,
@@ -853,6 +923,7 @@ export const addRequestFile = async (req, res) => {
       });
     }
 
+    // ✅ فحص الفئات المسموحة
     const allowedCategories = {
       customer: ['request', 'proof'],
       specialist: ['request', 'proof', 'delivery', 'modification'],
@@ -860,9 +931,7 @@ export const addRequestFile = async (req, res) => {
       super_admin: ['request', 'proof', 'delivery', 'modification', 'final'],
     };
 
-    const userAllowed =
-      allowedCategories[role] || allowedCategories.customer;
-
+    const userAllowed = allowedCategories[role] || allowedCategories.customer;
     const finalCategory = category || 'request';
 
     if (!userAllowed.includes(finalCategory)) {
@@ -872,63 +941,41 @@ export const addRequestFile = async (req, res) => {
       });
     }
 
-    // ========================================================
-    // 🔐 SECURITY:
-    // جلب الملفات من نفس البوابة فقط
-    // ========================================================
+    // 🔐 فحص الملفات
     const files = await File.find({
       _id: { $in: fileIds },
       portalId: portalId,
       isDeleted: { $ne: true },
     });
 
-    // ========================================================
-    // 🔐 SECURITY:
-    // يجب أن تكون جميع الملفات المطلوبة موجودة
-    // وفي نفس البوابة
-    // ========================================================
     if (files.length !== fileIds.length) {
-      const foundFileIds = new Set(
-        files.map(file => file._id.toString())
-      );
-
+      const foundFileIds = new Set(files.map((file) => file._id.toString()));
       const invalidFileIds = fileIds.filter(
-        fileId => !foundFileIds.has(fileId.toString())
+        (fileId) => !foundFileIds.has(fileId.toString())
       );
 
       console.warn('🚫 File portal validation failed:', {
         requestId: request._id,
-        requestPortalId: request.portalId,
-        currentPortalId: portalId,
         invalidFileIds,
       });
 
       return res.status(403).json({
         success: false,
-        message: 'One or more files do not belong to this portal or are unavailable.',
+        message:
+          'One or more files do not belong to this portal or are unavailable.',
         code: 'FILE_PORTAL_ACCESS_DENIED',
         invalidFileIds,
       });
     }
 
-    // ========================================================
-    // ✅ إضافة الملفات إلى الطلب
-    // ========================================================
+    // ✅ إضافة الملفات
     for (const fileId of fileIds) {
-      const file = files.find(
-        f => f._id.toString() === fileId.toString()
-      );
+      const file = files.find((f) => f._id.toString() === fileId.toString());
+      if (!file) continue;
 
-      if (!file) {
-        continue;
-      }
-
-      if (
-        finalCategory === 'proof' ||
-        finalCategory === 'payment_proof'
-      ) {
+      if (finalCategory === 'proof' || finalCategory === 'payment_proof') {
         const exists = request.paymentProofs.some(
-          p => p.fileId?.toString() === fileId.toString()
+          (p) => p.fileId?.toString() === fileId.toString()
         );
 
         if (!exists) {
@@ -941,7 +988,7 @@ export const addRequestFile = async (req, res) => {
         }
       } else {
         const exists = request.files.some(
-          f => f.fileId?.toString() === fileId.toString()
+          (f) => f.fileId?.toString() === fileId.toString()
         );
 
         if (!exists) {
@@ -956,49 +1003,26 @@ export const addRequestFile = async (req, res) => {
       }
     }
 
-    // ========================================================
     // ✅ تسجيل النشاط
-    // ========================================================
-    if (
-      finalCategory === 'proof' ||
-      finalCategory === 'payment_proof'
-    ) {
+    if (finalCategory === 'proof' || finalCategory === 'payment_proof') {
       request.paymentStatus = 'submitted';
 
-      request.addActivity(
-        'payment_submitted',
-        accountId,
-        role,
-        null,
-        {
-          count: fileIds.length,
-          category: finalCategory,
-        }
-      );
+      request.addActivity('payment_submitted', accountId, role, null, {
+        count: fileIds.length,
+        category: finalCategory,
+      });
     } else {
-      request.addActivity(
-        'file_uploaded',
-        accountId,
-        role,
-        null,
-        {
-          count: fileIds.length,
-          category: finalCategory,
-        }
-      );
+      request.addActivity('file_uploaded', accountId, role, null, {
+        count: fileIds.length,
+        category: finalCategory,
+      });
     }
 
     await request.save();
 
     const updatedRequest = await Request.findById(request._id)
-      .populate(
-        'files.fileId',
-        'originalName size mimeType'
-      )
-      .populate(
-        'paymentProofs.fileId',
-        'originalName size mimeType'
-      );
+      .populate('files.fileId', 'originalName size mimeType')
+      .populate('paymentProofs.fileId', 'originalName size mimeType');
 
     res.json({
       success: true,
@@ -1010,11 +1034,7 @@ export const addRequestFile = async (req, res) => {
     });
   } catch (error) {
     console.error('❌ Error in addRequestFile:', error);
-
-    res.status(500).json({
-      success: false,
-      message: error.message,
-    });
+    res.status(500).json({ success: false, message: error.message });
   }
 };
 
@@ -1025,8 +1045,11 @@ export const addRequestMessage = async (req, res) => {
   try {
     const request = req.request;
     const accountId = req.accountId;
+    const portalId = req.portalId;
     const { message, attachments } = req.body;
+    const userRole = req.account?.role || 'customer';
 
+    // ✅ فحص الرسالة
     if (!message || !message.trim()) {
       return res.status(400).json({
         success: false,
@@ -1034,17 +1057,65 @@ export const addRequestMessage = async (req, res) => {
       });
     }
 
-    const senderRole = req.account?.role || 'customer';
+    // ✅ فحص الصلاحية
+    if (!checkRequestAccess(request, accountId, userRole)) {
+      return res.status(403).json({
+        success: false,
+        message: 'Access denied',
+      });
+    }
+
+    // ✅ فحص المرفقات (مهم!)
+    let validatedAttachments = [];
+    if (attachments && Array.isArray(attachments) && attachments.length > 0) {
+      const fileIds = attachments
+        .map((a) => (typeof a === 'object' ? a.fileId : a))
+        .filter(Boolean);
+
+      if (fileIds.length > 0) {
+        const invalidFileId = fileIds.find(
+          (fid) => !mongoose.Types.ObjectId.isValid(fid)
+        );
+
+        if (invalidFileId) {
+          return res.status(400).json({
+            success: false,
+            message: 'One or more attachment IDs are invalid',
+          });
+        }
+
+        const validFiles = await File.find({
+          _id: { $in: fileIds },
+          portalId,
+          isDeleted: { $ne: true },
+        }).select('_id originalName');
+
+        if (validFiles.length !== fileIds.length) {
+          return res.status(403).json({
+            success: false,
+            message:
+              'One or more attachments do not belong to this portal.',
+            code: 'ATTACHMENT_ACCESS_DENIED',
+          });
+        }
+
+        // ✅ ربط المرفقات بأسماء الملفات
+        validatedAttachments = validFiles.map((f) => ({
+          fileId: f._id,
+          filename: f.originalName,
+        }));
+      }
+    }
 
     request.messages.push({
       senderId: accountId,
-      senderRole,
+      senderRole: userRole,
       message: message.trim(),
-      attachments: attachments || [],
+      attachments: validatedAttachments,
       createdAt: new Date(),
     });
 
-    request.addActivity('message_sent', accountId, senderRole, null, {
+    request.addActivity('message_sent', accountId, userRole, null, {
       message: message.trim(),
     });
 
@@ -1056,10 +1127,8 @@ export const addRequestMessage = async (req, res) => {
     try {
       const notificationService = getNotificationService(req.app?.get('io'));
 
-      const requestAccountId = request.accountId?._id?.toString() || request.accountId?.toString();
-      const recipientId = senderRole === 'customer'
-        ? request.specialistId
-        : request.accountId;
+      const recipientId =
+        userRole === 'customer' ? request.specialistId : request.accountId;
 
       if (recipientId && recipientId.toString() !== accountId.toString()) {
         await notificationService.sendNotification({
@@ -1085,10 +1154,7 @@ export const addRequestMessage = async (req, res) => {
     });
   } catch (error) {
     console.error('❌ Error in addRequestMessage:', error);
-    res.status(500).json({
-      success: false,
-      message: error.message,
-    });
+    res.status(500).json({ success: false, message: error.message });
   }
 };
 
@@ -1100,6 +1166,13 @@ export const getRequestMessages = async (req, res) => {
     const request = req.request;
     const accountId = req.accountId;
 
+    if (!checkRequestAccess(request, accountId, req.account?.role)) {
+      return res.status(403).json({
+        success: false,
+        message: 'Access denied',
+      });
+    }
+
     request.markAsRead(accountId);
     await request.save();
 
@@ -1109,10 +1182,7 @@ export const getRequestMessages = async (req, res) => {
     });
   } catch (error) {
     console.error('❌ Error in getRequestMessages:', error);
-    res.status(500).json({
-      success: false,
-      message: error.message,
-    });
+    res.status(500).json({ success: false, message: error.message });
   }
 };
 
@@ -1122,9 +1192,23 @@ export const getRequestMessages = async (req, res) => {
 export const getRequestFiles = async (req, res) => {
   try {
     const request = req.request;
+    const accountId = req.accountId;
 
-    await request.populate('files.fileId', 'originalName size mimeType storageKey');
-    await request.populate('paymentProofs.fileId', 'originalName size mimeType storageKey');
+    if (!checkRequestAccess(request, accountId, req.account?.role)) {
+      return res.status(403).json({
+        success: false,
+        message: 'Access denied',
+      });
+    }
+
+    await request.populate(
+      'files.fileId',
+      'originalName size mimeType storageKey'
+    );
+    await request.populate(
+      'paymentProofs.fileId',
+      'originalName size mimeType storageKey'
+    );
 
     res.json({
       success: true,
@@ -1135,10 +1219,7 @@ export const getRequestFiles = async (req, res) => {
     });
   } catch (error) {
     console.error('❌ Error in getRequestFiles:', error);
-    res.status(500).json({
-      success: false,
-      message: error.message,
-    });
+    res.status(500).json({ success: false, message: error.message });
   }
 };
 
@@ -1194,9 +1275,14 @@ export const defineRequestScope = async (req, res) => {
       price,
     });
 
-    request.addActivity('status_changed', accountId, 'specialist', oldStatus, 'awaiting_approval', {
-      reason: 'Scope defined',
-    });
+    request.addActivity(
+      'status_changed',
+      accountId,
+      'specialist',
+      oldStatus,
+      'awaiting_approval',
+      { reason: 'Scope defined' }
+    );
 
     await request.save();
 
@@ -1207,10 +1293,7 @@ export const defineRequestScope = async (req, res) => {
     });
   } catch (error) {
     console.error('❌ Error in defineRequestScope:', error);
-    res.status(500).json({
-      success: false,
-      message: error.message,
-    });
+    res.status(500).json({ success: false, message: error.message });
   }
 };
 
@@ -1238,10 +1321,10 @@ export const adminDefineScope = async (req, res) => {
       });
     }
 
-    const isAdmin = req.account?.role === 'portal_admin' || req.account?.role === 'super_admin';
+    const userIsAdmin = isAdmin(req.account?.role);
     const isSpecialist = request.specialistId?.toString() === accountId;
 
-    if (!isAdmin && !isSpecialist) {
+    if (!userIsAdmin && !isSpecialist) {
       return res.status(403).json({
         success: false,
         message: 'Only the assigned specialist or admin can define the scope',
@@ -1264,14 +1347,21 @@ export const adminDefineScope = async (req, res) => {
     const oldStatus = request.status;
     request.status = 'awaiting_approval';
 
-    request.addActivity('scope_defined', accountId, isAdmin ? 'portal_admin' : 'specialist', null, {
+    const actorRole = userIsAdmin ? 'portal_admin' : 'specialist';
+
+    request.addActivity('scope_defined', accountId, actorRole, null, {
       description,
       price,
     });
 
-    request.addActivity('status_changed', accountId, isAdmin ? 'portal_admin' : 'specialist', oldStatus, 'awaiting_approval', {
-      reason: 'Scope defined',
-    });
+    request.addActivity(
+      'status_changed',
+      accountId,
+      actorRole,
+      oldStatus,
+      'awaiting_approval',
+      { reason: 'Scope defined' }
+    );
 
     await request.save();
 
@@ -1321,9 +1411,14 @@ export const approveRequestScope = async (req, res) => {
       scope: request.scope,
     });
 
-    request.addActivity('status_changed', accountId, 'customer', oldStatus, 'awaiting_payment', {
-      reason: 'Scope approved',
-    });
+    request.addActivity(
+      'status_changed',
+      accountId,
+      'customer',
+      oldStatus,
+      'awaiting_payment',
+      { reason: 'Scope approved' }
+    );
 
     await request.save();
 
@@ -1334,13 +1429,13 @@ export const approveRequestScope = async (req, res) => {
     });
   } catch (error) {
     console.error('❌ Error in approveRequestScope:', error);
-    res.status(500).json({
-      success: false,
-      message: error.message,
-    });
+    res.status(500).json({ success: false, message: error.message });
   }
 };
 
+// ============================================================
+// ✅ تقديم الدفع (العميل)
+// ============================================================
 export const submitPayment = async (req, res) => {
   try {
     const request = req.request;
@@ -1385,7 +1480,7 @@ export const submitPayment = async (req, res) => {
       });
     }
 
-    // 🔐 Security: validate payment proof file
+    // 🔐 فحص ملف إثبات الدفع
     if (proofFileId) {
       if (!mongoose.Types.ObjectId.isValid(proofFileId)) {
         return res.status(400).json({
@@ -1405,7 +1500,7 @@ export const submitPayment = async (req, res) => {
       if (!proofFile) {
         console.warn(
           `🚫 Unauthorized payment proof attempt: ` +
-          `account=${accountId}, portal=${portalId}, file=${proofFileId}`
+            `account=${accountId}, portal=${portalId}, file=${proofFileId}`
         );
 
         return res.status(403).json({
@@ -1417,8 +1512,27 @@ export const submitPayment = async (req, res) => {
       }
     }
 
+    // ✅ حفظ المبلغ المطلوب للتحقق
+    const expectedPrice = request.scope?.price || request.price || 0;
+    const submittedAmount = parseFloat(amount);
+
+    // ✅ منطق الدفع:
+    // - إذا paymentMethod === 'manual' أو 'bank_transfer' → submitted (بانتظار التحقق)
+    // - إزالة التأكيد التلقائي لـ credit_card/mada — يحتاج تكامل بوابة دفع حقيقية
     request.paymentStatus = 'submitted';
-    request.price = parseFloat(amount);
+    request.price = submittedAmount;
+
+    // ⚠️ تحذير: إذا كان المبلغ أقل من المتوقع
+    if (expectedPrice > 0 && submittedAmount < expectedPrice) {
+      console.warn(
+        `⚠️ Partial payment: expected=${expectedPrice}, submitted=${submittedAmount}`
+      );
+      request.metadata = {
+        ...request.metadata,
+        partialPayment: true,
+        expectedAmount: expectedPrice,
+      };
+    }
 
     if (proofFileId) {
       request.paymentProofs.push({
@@ -1429,53 +1543,43 @@ export const submitPayment = async (req, res) => {
       });
     }
 
-    if (paymentMethod === 'credit_card' || paymentMethod === 'mada') {
-      request.paymentStatus = 'verified';
-      request.paymentVerifiedAt = new Date();
-
-      const oldStatus = request.status;
-      request.status = 'in_progress';
-
-      request.addActivity(
-        'status_changed',
-        accountId,
-        'customer',
-        oldStatus,
-        'in_progress',
-        {
-          reason: 'Payment verified',
-        }
-      );
-    }
-
-    request.addActivity(
-      'payment_submitted',
-      accountId,
-      'customer',
-      null,
-      {
-        amount,
-        paymentMethod,
-      }
-    );
+    request.addActivity('payment_submitted', accountId, 'customer', null, {
+      amount: submittedAmount,
+      paymentMethod,
+      expectedPrice,
+    });
 
     await request.save();
 
-    // ✅ إشعار للمدير/المختص المرتبط بالطلب
-    await safeSendNotification(req, {
-      portalId: request.portalId,
-      accountId: request.specialistId || request.accountId,
-      type: 'payment_received',
-      title: 'Payment submitted',
-      titleAr: 'تم تقديم دفعة جديدة',
-      message: `Payment of ${amount} SAR submitted for request ${request.requestNumber}`,
-      messageAr: `تم تقديم دفعة بمبلغ ${amount} ريال للطلب ${request.requestNumber}`,
-      data: {
-        requestId: request._id,
-        paymentId: proofFileId || null,
-      },
-      priority: 'high',
-    });
+    // ✅ إشعار للمدير
+    try {
+      const notificationService = getNotificationService(req.app?.get('io'));
+
+      const admins = await Account.find({
+        portalId: request.portalId,
+        role: { $in: ['portal_admin', 'super_admin'] },
+        isActive: true,
+      }).select('_id role');
+
+      for (const admin of admins) {
+        await notificationService.sendNotification({
+          portalId: request.portalId,
+          accountId: admin._id,
+          type: 'payment_received',
+          title: 'Payment submitted',
+          titleAr: 'تم تقديم دفعة جديدة',
+          message: `Payment of ${submittedAmount} SAR submitted for request ${request.requestNumber}`,
+          messageAr: `تم تقديم دفعة بمبلغ ${submittedAmount} ريال للطلب ${request.requestNumber}`,
+          data: {
+            requestId: request._id,
+            paymentId: proofFileId || null,
+          },
+          priority: 'high',
+        });
+      }
+    } catch (err) {
+      console.error('⚠️ Admin notification error:', err.message);
+    }
 
     res.json({
       success: true,
@@ -1484,20 +1588,14 @@ export const submitPayment = async (req, res) => {
         status: request.status,
         price: request.price,
       },
-      message:
-        request.paymentStatus === 'verified'
-          ? '✅ تم تأكيد الدفع بنجاح'
-          : '📤 تم تقديم طلب الدفع',
+      message: '📤 تم تقديم طلب الدفع — سيتم التحقق منه قريباً',
     });
   } catch (error) {
     console.error('❌ Error in submitPayment:', error);
-
-    res.status(500).json({
-      success: false,
-      message: error.message,
-    });
+    res.status(500).json({ success: false, message: error.message });
   }
 };
+
 // ============================================================
 // ✅ تأكيد الدفع (للمدير)
 // ============================================================
@@ -1505,9 +1603,9 @@ export const verifyPayment = async (req, res) => {
   try {
     const request = req.request;
     const accountId = req.accountId;
+    const userRole = req.account?.role || 'customer';
 
-    const isAdmin = req.account?.role === 'portal_admin' || req.account?.role === 'super_admin';
-    if (!isAdmin) {
+    if (!isAdmin(userRole)) {
       return res.status(403).json({
         success: false,
         message: 'Only admins can verify payments',
@@ -1524,7 +1622,8 @@ export const verifyPayment = async (req, res) => {
     const oldStatus = request.paymentStatus;
     request.paymentStatus = 'verified';
     request.paymentVerifiedAt = new Date();
-    request.paymentProofs.forEach(p => {
+
+    request.paymentProofs.forEach((p) => {
       if (!p.verified) {
         p.verified = true;
         p.verifiedBy = accountId;
@@ -1537,9 +1636,14 @@ export const verifyPayment = async (req, res) => {
       request.startedAt = new Date();
     }
 
-    request.addActivity('payment_verified', accountId, req.account?.role || 'portal_admin', oldStatus, 'verified', {
-      amount: request.price,
-    });
+    request.addActivity(
+      'payment_verified',
+      accountId,
+      userRole,
+      oldStatus,
+      'verified',
+      { amount: request.price }
+    );
 
     await request.save();
 
@@ -1581,10 +1685,10 @@ export const rejectPayment = async (req, res) => {
   try {
     const request = req.request;
     const accountId = req.accountId;
+    const userRole = req.account?.role || 'customer';
     const { reason } = req.body;
 
-    const isAdmin = req.account?.role === 'portal_admin' || req.account?.role === 'super_admin';
-    if (!isAdmin) {
+    if (!isAdmin(userRole)) {
       return res.status(403).json({
         success: false,
         message: 'Only admins can reject payments',
@@ -1607,7 +1711,8 @@ export const rejectPayment = async (req, res) => {
 
     const oldStatus = request.paymentStatus;
     request.paymentStatus = 'rejected';
-    request.paymentProofs.forEach(p => {
+
+    request.paymentProofs.forEach((p) => {
       if (!p.verified) {
         p.rejectionReason = reason.trim();
       }
@@ -1620,9 +1725,14 @@ export const rejectPayment = async (req, res) => {
       paymentRejectedBy: accountId,
     };
 
-    request.addActivity('payment_rejected', accountId, req.account?.role || 'portal_admin', oldStatus, 'rejected', {
-      reason: reason.trim(),
-    });
+    request.addActivity(
+      'payment_rejected',
+      accountId,
+      userRole,
+      oldStatus,
+      'rejected',
+      { reason: reason.trim() }
+    );
 
     await request.save();
 
@@ -1657,12 +1767,13 @@ export const rejectPayment = async (req, res) => {
 };
 
 // ============================================================
-// ✅ إضافة مكالمة إلى الطلب
+// ✅ جدولة مكالمة
 // ============================================================
 export const addRequestCall = async (req, res) => {
   try {
     const request = req.request;
     const accountId = req.accountId;
+    const userRole = req.account?.role || 'customer';
     const { purpose, scheduledAt, duration, notes, type } = req.body;
 
     console.log('📞 Adding call to request:', request._id);
@@ -1671,6 +1782,14 @@ export const addRequestCall = async (req, res) => {
       return res.status(400).json({
         success: false,
         message: 'Purpose and scheduled time are required',
+      });
+    }
+
+    // ✅ فحص الصلاحية
+    if (!checkRequestAccess(request, accountId, userRole)) {
+      return res.status(403).json({
+        success: false,
+        message: 'Access denied',
       });
     }
 
@@ -1685,29 +1804,7 @@ export const addRequestCall = async (req, res) => {
       });
     }
 
-    const isOwner = request.accountId?._id?.toString() === accountId?.toString() ||
-                    request.accountId?.toString() === accountId?.toString();
-
-    const isAdmin = req.account?.role === 'portal_admin' || req.account?.role === 'super_admin';
-
-    const isSpecialist = request.specialistId?._id?.toString() === accountId?.toString() ||
-                         request.specialistId?.toString() === accountId?.toString();
-
-    if (isSpecialist) {
-      return res.status(403).json({
-        success: false,
-        message: 'Specialists cannot schedule calls. Only the client can schedule calls.',
-      });
-    }
-
-    if (!isOwner && !isAdmin) {
-      return res.status(403).json({
-        success: false,
-        message: 'Only the client (request owner) can schedule calls',
-      });
-    }
-
-    const callerRole = isOwner ? 'customer' : 'portal_admin';
+    const callerRole = userRole;
 
     const callData = {
       requestedBy: accountId,
@@ -1738,11 +1835,14 @@ export const addRequestCall = async (req, res) => {
       });
     }
 
-    // ✅ إشعار للمختص
-    if (request.specialistId) {
+    // ✅ إشعار للطرف الآخر
+    const recipientId =
+      userRole === 'customer' ? request.specialistId : request.accountId;
+
+    if (recipientId) {
       await safeSendNotification(req, {
         portalId: request.portalId,
-        accountId: request.specialistId,
+        accountId: recipientId,
         type: 'call_scheduled',
         title: 'New call scheduled',
         titleAr: 'تم جدولة مكالمة جديدة',
@@ -1756,7 +1856,9 @@ export const addRequestCall = async (req, res) => {
     res.status(201).json({
       success: true,
       data: newCall,
-      message: `✅ تم جدولة المكالمة (${callType === 'audio' ? 'صوتية' : 'فيديو'}) بنجاح`,
+      message: `✅ تم جدولة المكالمة (${
+        callType === 'audio' ? 'صوتية' : 'فيديو'
+      }) بنجاح`,
     });
   } catch (error) {
     console.error('❌ Error in addRequestCall:', error);
@@ -1773,7 +1875,14 @@ export const addRequestCall = async (req, res) => {
 export const getRequestCalls = async (req, res) => {
   try {
     const request = req.request;
-    console.log('📤 Fetching calls for request:', request._id);
+    const accountId = req.accountId;
+
+    if (!checkRequestAccess(request, accountId, req.account?.role)) {
+      return res.status(403).json({
+        success: false,
+        message: 'Access denied',
+      });
+    }
 
     const callsWithInfo = await request.getCallsWithSenderInfo();
 
@@ -1792,12 +1901,13 @@ export const getRequestCalls = async (req, res) => {
 };
 
 // ============================================================
-// ✅ بدء مكالمة مجدولة (للمختص)
+// ✅ بدء مكالمة مجدولة
 // ============================================================
 export const startScheduledCall = async (req, res) => {
   try {
     const request = req.request;
     const accountId = req.accountId;
+    const userRole = req.account?.role || 'customer';
     const { callId } = req.params;
 
     console.log('📞 Starting scheduled call:', callId);
@@ -1809,7 +1919,9 @@ export const startScheduledCall = async (req, res) => {
       });
     }
 
-    const callIndex = request.calls.findIndex(c => c._id?.toString() === callId);
+    const callIndex = request.calls.findIndex(
+      (c) => c._id?.toString() === callId
+    );
     if (callIndex === -1) {
       return res.status(404).json({
         success: false,
@@ -1826,25 +1938,11 @@ export const startScheduledCall = async (req, res) => {
       });
     }
 
-    const requestAccountId = request.accountId?._id?.toString() || request.accountId?.toString();
-    const requestSpecialistId = request.specialistId?._id?.toString() || request.specialistId?.toString();
-    const currentAccountId = accountId?.toString();
-
-    const isOwner = requestAccountId === currentAccountId;
-    const isSpecialist = requestSpecialistId === currentAccountId;
-    const isAdmin = req.account?.role === 'portal_admin' || req.account?.role === 'super_admin';
-
-    if (isOwner && !isAdmin) {
+    // ✅ فحص الصلاحية — العميل أو المختص أو admin
+    if (!checkRequestAccess(request, accountId, userRole)) {
       return res.status(403).json({
         success: false,
-        message: 'Only the specialist can start the call',
-      });
-    }
-
-    if (!isSpecialist && !isAdmin) {
-      return res.status(403).json({
-        success: false,
-        message: 'Only the assigned specialist can start this call',
+        message: 'Access denied',
       });
     }
 
@@ -1852,11 +1950,18 @@ export const startScheduledCall = async (req, res) => {
     call.status = 'started';
     call.updatedAt = new Date();
 
-    request.addActivity('call_started', accountId, 'specialist', oldStatus, 'started', {
-      callId,
-      purpose: call.purpose,
-      type: call.type || 'video',
-    });
+    request.addActivity(
+      'call_started',
+      accountId,
+      userRole,
+      oldStatus,
+      'started',
+      {
+        callId,
+        purpose: call.purpose,
+        type: call.type || 'video',
+      }
+    );
 
     await request.save();
 
@@ -1867,7 +1972,8 @@ export const startScheduledCall = async (req, res) => {
         status: call.status,
         type: call.type || 'video',
         startedBy: accountId,
-        startedByName: req.account?.profile?.fullName || req.account?.username,
+        startedByName:
+          req.account?.profile?.fullName || req.account?.username,
         scheduledAt: call.scheduledAt,
       });
     }
@@ -1881,7 +1987,9 @@ export const startScheduledCall = async (req, res) => {
         startedAt: call.updatedAt,
         scheduledAt: call.scheduledAt,
       },
-      message: `✅ تم بدء المكالمة (${call.type === 'audio' ? 'صوتية' : 'فيديو'}) بنجاح`,
+      message: `✅ تم بدء المكالمة (${
+        call.type === 'audio' ? 'صوتية' : 'فيديو'
+      }) بنجاح`,
     });
   } catch (error) {
     console.error('❌ Error in startScheduledCall:', error);
@@ -1899,6 +2007,7 @@ export const updateRequestCall = async (req, res) => {
   try {
     const request = req.request;
     const accountId = req.accountId;
+    const userRole = req.account?.role || 'customer';
     const { callId } = req.params;
     const { status, notes, callUrl, recordingUrl, duration } = req.body;
 
@@ -1918,7 +2027,9 @@ export const updateRequestCall = async (req, res) => {
       });
     }
 
-    const callIndex = request.calls.findIndex(c => c._id?.toString() === callId);
+    const callIndex = request.calls.findIndex(
+      (c) => c._id?.toString() === callId
+    );
     if (callIndex === -1) {
       return res.status(404).json({
         success: false,
@@ -1928,25 +2039,22 @@ export const updateRequestCall = async (req, res) => {
 
     const call = request.calls[callIndex];
 
-    const requestAccountId = request.accountId?._id?.toString() || request.accountId?.toString();
-    const requestSpecialistId = request.specialistId?._id?.toString() || request.specialistId?.toString();
-    const currentAccountId = accountId?.toString();
-    const callRequestedBy = call.requestedBy?._id?.toString() || call.requestedBy?.toString();
-
-    const isOwner = requestAccountId === currentAccountId;
-    const isSpecialist = requestSpecialistId === currentAccountId;
-    const isAdmin = req.account?.role === 'portal_admin' || req.account?.role === 'super_admin';
-    const isCallInitiator = callRequestedBy === currentAccountId;
-
-    if (!isOwner && !isSpecialist && !isAdmin && !isCallInitiator) {
+    // ✅ فحص الصلاحية
+    if (!checkRequestAccess(request, accountId, userRole)) {
       return res.status(403).json({
         success: false,
-        message: 'You are not authorized to update this call',
+        message: 'Access denied',
       });
     }
 
     if (status) {
-      const validStatuses = ['scheduled', 'started', 'completed', 'cancelled', 'missed'];
+      const validStatuses = [
+        'scheduled',
+        'started',
+        'completed',
+        'cancelled',
+        'missed',
+      ];
       if (!validStatuses.includes(status)) {
         return res.status(400).json({
           success: false,
@@ -1973,7 +2081,7 @@ export const updateRequestCall = async (req, res) => {
       request.addActivity(
         status === 'completed' ? 'call_completed' : 'call_updated',
         accountId,
-        req.account?.role || 'customer',
+        userRole,
         oldStatus,
         status,
         { callId, purpose: call.purpose }
@@ -2012,6 +2120,7 @@ export const cancelRequestCall = async (req, res) => {
   try {
     const request = req.request;
     const accountId = req.accountId;
+    const userRole = req.account?.role || 'customer';
     const { callId } = req.params;
 
     console.log('📞 Cancelling call:', callId);
@@ -2023,23 +2132,16 @@ export const cancelRequestCall = async (req, res) => {
       });
     }
 
-    const requestAccountId = request.accountId?._id?.toString() || request.accountId?.toString();
-    const requestSpecialistId = request.specialistId?._id?.toString() || request.specialistId?.toString();
-    const currentAccountId = accountId?.toString();
-
-    const isOwner = requestAccountId === currentAccountId;
-    const isSpecialist = requestSpecialistId === currentAccountId;
-    const isAdmin = req.account?.role === 'portal_admin' || req.account?.role === 'super_admin';
-
-    if (!isOwner && !isSpecialist && !isAdmin) {
+    // ✅ فحص الصلاحية
+    if (!checkRequestAccess(request, accountId, userRole)) {
       return res.status(403).json({
         success: false,
-        message: 'You are not authorized to cancel this call',
+        message: 'Access denied',
       });
     }
 
     try {
-      request.cancelCallById(callId, accountId, req.account?.role || 'customer');
+      request.cancelCallById(callId, accountId, userRole);
     } catch (err) {
       return res.status(400).json({
         success: false,
@@ -2072,11 +2174,20 @@ export const cancelRequestCall = async (req, res) => {
 };
 
 // ============================================================
-// ✅ المكالمات القادمة للطلب
+// ✅ المكالمات القادمة
 // ============================================================
 export const getUpcomingCallsForRequest = async (req, res) => {
   try {
     const request = req.request;
+    const accountId = req.accountId;
+
+    if (!checkRequestAccess(request, accountId, req.account?.role)) {
+      return res.status(403).json({
+        success: false,
+        message: 'Access denied',
+      });
+    }
+
     const upcomingCalls = request.getUpcomingCalls();
 
     res.json({
@@ -2094,11 +2205,20 @@ export const getUpcomingCallsForRequest = async (req, res) => {
 };
 
 // ============================================================
-// ✅ المكالمات السابقة للطلب
+// ✅ المكالمات السابقة
 // ============================================================
 export const getPastCallsForRequest = async (req, res) => {
   try {
     const request = req.request;
+    const accountId = req.accountId;
+
+    if (!checkRequestAccess(request, accountId, req.account?.role)) {
+      return res.status(403).json({
+        success: false,
+        message: 'Access denied',
+      });
+    }
+
     const pastCalls = request.getPastCalls();
 
     res.json({
@@ -2121,6 +2241,14 @@ export const getPastCallsForRequest = async (req, res) => {
 export const getRequestActivity = async (req, res) => {
   try {
     const request = req.request;
+    const accountId = req.accountId;
+
+    if (!checkRequestAccess(request, accountId, req.account?.role)) {
+      return res.status(403).json({
+        success: false,
+        message: 'Access denied',
+      });
+    }
 
     res.json({
       success: true,
@@ -2128,10 +2256,7 @@ export const getRequestActivity = async (req, res) => {
     });
   } catch (error) {
     console.error('❌ Error in getRequestActivity:', error);
-    res.status(500).json({
-      success: false,
-      message: error.message,
-    });
+    res.status(500).json({ success: false, message: error.message });
   }
 };
 

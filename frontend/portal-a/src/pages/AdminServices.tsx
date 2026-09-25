@@ -12,13 +12,40 @@ import {
   FaCog, FaInfoCircle, FaFileAlt, FaUpload,
   FaCheckCircle, FaTimesCircle, FaFolder,
   FaFilePdf, FaFileWord, FaFileImage, FaFile,
-  FaDownload,FaStar
+  FaDownload, FaStar, FaImage,
 } from 'react-icons/fa';
 
 // ============================================================
-// واجهات البيانات
+// ✅ Helper: استخراج portalId ديناميكياً
 // ============================================================
+const resolvePortalId = (): string => {
+  const envId = import.meta.env.VITE_PORTAL_ID;
+  if (envId) return envId;
+  const pathMatch = window.location.pathname.match(/\/portal\/([^/]+)/);
+  if (pathMatch?.[1]) return pathMatch[1];
+  const host = window.location.hostname;
+  if (host !== 'localhost' && host.includes('.')) {
+    const sub = host.split('.')[0];
+    if (sub && sub !== 'www') return sub;
+  }
+  return '';
+};
 
+// ============================================================
+// ✅ Helper: Debounce
+// ============================================================
+const useDebounce = <T,>(value: T, delay: number = 300): T => {
+  const [debounced, setDebounced] = useState(value);
+  useEffect(() => {
+    const timer = setTimeout(() => setDebounced(value), delay);
+    return () => clearTimeout(timer);
+  }, [value, delay]);
+  return debounced;
+};
+
+// ============================================================
+// ✅ Types
+// ============================================================
 interface Section {
   _id: string;
   name: string;
@@ -32,6 +59,7 @@ interface Service {
   description?: string;
   descriptionAr?: string;
   icon: string;
+  image?: string;         // ✅ جديد
   slug: string;
   sectionId: string | Section;
   isPublished: boolean;
@@ -87,12 +115,17 @@ interface ServiceForm {
   createdAt: string;
 }
 
+interface Toast {
+  id: number;
+  type: 'success' | 'error' | 'info';
+  message: string;
+}
+
 type TabType = 'services' | 'details' | 'forms';
 
 // ============================================================
-// ✅ دالة مساعدة لاستخراج المعرف
+// ✅ Helper: استخراج ID
 // ============================================================
-
 const extractId = (value: any): string => {
   if (!value) return '';
   if (typeof value === 'string') return value;
@@ -103,9 +136,39 @@ const extractId = (value: any): string => {
 };
 
 // ============================================================
-// المكون الرئيسي
+// ✅ Toast Container
 // ============================================================
+const ToastContainer: React.FC<{
+  toasts: Toast[];
+  onClose: (id: number) => void;
+}> = ({ toasts, onClose }) => (
+  <div className="fixed top-4 left-4 z-50 space-y-2" dir="rtl">
+    {toasts.map((toast) => (
+      <div
+        key={toast.id}
+        className={`px-4 py-3 rounded-xl shadow-lg flex items-center gap-3 min-w-[280px] ${
+          toast.type === 'success'
+            ? 'bg-green-100 text-green-800 border border-green-200'
+            : toast.type === 'error'
+            ? 'bg-red-100 text-red-800 border border-red-200'
+            : 'bg-blue-100 text-blue-800 border border-blue-200'
+        }`}
+      >
+        {toast.type === 'success' && <FaCheckCircle className="w-5 h-5 flex-shrink-0" />}
+        {toast.type === 'error' && <FaTimesCircle className="w-5 h-5 flex-shrink-0" />}
+        {toast.type === 'info' && <FaExclamationCircle className="w-5 h-5 flex-shrink-0" />}
+        <span className="flex-1 text-sm font-medium">{toast.message}</span>
+        <button onClick={() => onClose(toast.id)} className="text-gray-500 hover:text-gray-800 transition">
+          <FaTimes className="w-4 h-4" />
+        </button>
+      </div>
+    ))}
+  </div>
+);
 
+// ============================================================
+// ✅ المكوّن الرئيسي
+// ============================================================
 const AdminServices: React.FC = () => {
   const { token } = useAuth();
   const [activeTab, setActiveTab] = useState<TabType>('services');
@@ -114,26 +177,59 @@ const AdminServices: React.FC = () => {
   const [searchTerm, setSearchTerm] = useState('');
   const [showForm, setShowForm] = useState(false);
   const [editingId, setEditingId] = useState<string | null>(null);
+  const [toasts, setToasts] = useState<Toast[]>([]);
 
-  // ===== بيانات الجداول =====
+  // ✅ Debounced search
+  const debouncedSearch = useDebounce(searchTerm, 300);
+
+  // ===== بيانات =====
   const [services, setServices] = useState<Service[]>([]);
   const [sections, setSections] = useState<Section[]>([]);
   const [serviceDetails, setServiceDetails] = useState<ServiceDetail[]>([]);
   const [serviceForms, setServiceForms] = useState<ServiceForm[]>([]);
 
-  // ===== بيانات النماذج =====
+  // ===== النماذج =====
   const [formData, setFormData] = useState<any>({});
   const [selectedFile, setSelectedFile] = useState<File | null>(null);
   const [uploadProgress, setUploadProgress] = useState(0);
   const [uploading, setUploading] = useState(false);
+  const [uploadingImage, setUploadingImage] = useState(false);
   const [filePreview, setFilePreview] = useState<string | null>(null);
 
   const fileInputRef = useRef<HTMLInputElement>(null);
+  const imageInputRef = useRef<HTMLInputElement>(null);
 
   const API_URL = import.meta.env.VITE_API_URL || 'http://localhost:5001/api';
-  const PORTAL_ID = import.meta.env.VITE_PORTAL_ID || '';
+  const PORTAL_ID = resolvePortalId();
 
-  // ===== دالة توليد slug =====
+  // ✅ Headers
+  const getHeaders = useCallback(
+    (contentType: boolean = true): Record<string, string> => ({
+      ...(contentType ? { 'Content-Type': 'application/json' } : {}),
+      'X-Portal-Id': PORTAL_ID,
+      ...(token ? { Authorization: `Bearer ${token}` } : {}),
+    }),
+    [PORTAL_ID, token]
+  );
+
+  // ============================================================
+  // ✅ Toast helpers
+  // ============================================================
+  const showToast = useCallback((type: Toast['type'], message: string) => {
+    const id = Date.now();
+    setToasts((prev) => [...prev, { id, type, message }]);
+    setTimeout(() => {
+      setToasts((prev) => prev.filter((t) => t.id !== id));
+    }, 4000);
+  }, []);
+
+  const closeToast = useCallback((id: number) => {
+    setToasts((prev) => prev.filter((t) => t.id !== id));
+  }, []);
+
+  // ============================================================
+  // ✅ slug
+  // ============================================================
   const generateSlug = (text: string): string => {
     if (!text || text.trim() === '') return 'item-' + Date.now();
     return text
@@ -145,25 +241,19 @@ const AdminServices: React.FC = () => {
       .replace(/^-+|-+$/g, '');
   };
 
-  // ===== تحميل البيانات =====
+  // ============================================================
+  // ✅ جلب البيانات
+  // ============================================================
   const fetchData = useCallback(async () => {
     setLoading(true);
     setError(null);
 
     try {
       const [servicesRes, sectionsRes, detailsRes, formsRes] = await Promise.all([
-        fetch(`${API_URL}/services`, {
-          headers: { 'Authorization': `Bearer ${token}`, 'X-Portal-Id': PORTAL_ID }
-        }),
-        fetch(`${API_URL}/sections`, {
-          headers: { 'Authorization': `Bearer ${token}`, 'X-Portal-Id': PORTAL_ID }
-        }),
-        fetch(`${API_URL}/service-details`, {
-          headers: { 'Authorization': `Bearer ${token}`, 'X-Portal-Id': PORTAL_ID }
-        }),
-        fetch(`${API_URL}/service-forms`, {
-          headers: { 'Authorization': `Bearer ${token}`, 'X-Portal-Id': PORTAL_ID }
-        }),
+        fetch(`${API_URL}/services`, { headers: getHeaders(false) }),
+        fetch(`${API_URL}/sections`, { headers: getHeaders(false) }),
+        fetch(`${API_URL}/service-details`, { headers: getHeaders(false) }),
+        fetch(`${API_URL}/service-forms`, { headers: getHeaders(false) }),
       ]);
 
       const servicesData = await servicesRes.json();
@@ -175,28 +265,33 @@ const AdminServices: React.FC = () => {
       if (sectionsData.success) setSections(sectionsData.data || []);
       if (detailsData.success) setServiceDetails(detailsData.data || []);
       if (formsData.success) setServiceForms(formsData.data || []);
-    } catch (err) {
+    } catch (err: any) {
+      console.error('❌ Fetch error:', err);
       setError('حدث خطأ في تحميل البيانات');
     } finally {
       setLoading(false);
     }
-  }, [token, API_URL, PORTAL_ID]);
+  }, [API_URL, getHeaders]);
 
   useEffect(() => {
     AOS.init({ duration: 600, once: true });
     fetchData();
   }, [fetchData]);
 
-  // ===== رفع ملف =====
+  // ============================================================
+  // ✅ رفع ملف عام
+  // ============================================================
   const uploadFile = async (file: File, category: string): Promise<string> => {
     const formDataFile = new FormData();
     formDataFile.append('file', file);
     formDataFile.append('category', category);
-    formDataFile.append('portalId', PORTAL_ID);
 
     const response = await fetch(`${API_URL}/files/upload`, {
       method: 'POST',
-      headers: { 'Authorization': `Bearer ${token}` },
+      headers: {
+        'X-Portal-Id': PORTAL_ID,
+        ...(token ? { Authorization: `Bearer ${token}` } : {}),
+      },
       body: formDataFile,
     });
 
@@ -204,21 +299,56 @@ const AdminServices: React.FC = () => {
     if (!data.success) {
       throw new Error(data.message || 'فشل رفع الملف');
     }
-    return data.data.file._id;
+
+    // ✅ استخراج URL
+    const url =
+      data.data?.file?.url ||
+      data.data?.url ||
+      (data.data?.file?._id
+        ? `${API_URL}/files/thumbnail/${data.data.file._id}?portalId=${PORTAL_ID}`
+        : null);
+
+    if (!url) throw new Error('لم يتم استلام رابط الملف');
+    return url;
   };
 
-  // ===== رفع ملف النموذج =====
+  // ============================================================
+  // ✅ رفع صورة الخدمة
+  // ============================================================
+  const handleServiceImageUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+
+    setUploadingImage(true);
+    try {
+      const url = await uploadFile(file, 'image');
+      setFormData((prev: any) => ({ ...prev, image: url }));
+      showToast('success', 'تم رفع الصورة');
+    } catch (err: any) {
+      console.error('❌ Image upload error:', err);
+      showToast('error', 'فشل رفع الصورة: ' + err.message);
+    } finally {
+      setUploadingImage(false);
+      if (imageInputRef.current) imageInputRef.current.value = '';
+    }
+  };
+
+  // ============================================================
+  // ✅ رفع ملف النموذج
+  // ============================================================
   const uploadFormFile = async (file: File): Promise<any> => {
     setUploading(true);
     setUploadProgress(0);
     try {
       const formDataFile = new FormData();
       formDataFile.append('file', file);
-      formDataFile.append('portalId', PORTAL_ID);
 
       const response = await fetch(`${API_URL}/service-forms/upload`, {
         method: 'POST',
-        headers: { 'Authorization': `Bearer ${token}` },
+        headers: {
+          'X-Portal-Id': PORTAL_ID,
+          ...(token ? { Authorization: `Bearer ${token}` } : {}),
+        },
         body: formDataFile,
       });
 
@@ -233,7 +363,9 @@ const AdminServices: React.FC = () => {
     }
   };
 
-  // ===== حفظ الخدمة =====
+  // ============================================================
+  // ✅ حفظ الخدمة
+  // ============================================================
   const handleSubmitService = async (e: React.FormEvent) => {
     e.preventDefault();
     setUploading(true);
@@ -241,7 +373,9 @@ const AdminServices: React.FC = () => {
 
     try {
       const submitData: any = JSON.parse(JSON.stringify(formData));
-      submitData.portalId = PORTAL_ID;
+
+      // ✅ تحويل parentId "" إلى null
+      if (submitData.sectionId === '') submitData.sectionId = null;
 
       if (!submitData.slug || submitData.slug.trim() === '') {
         submitData.slug = generateSlug(submitData.nameAr || submitData.name || 'service');
@@ -253,11 +387,7 @@ const AdminServices: React.FC = () => {
 
       const response = await fetch(url, {
         method,
-        headers: {
-          'Authorization': `Bearer ${token}`,
-          'Content-Type': 'application/json',
-          'X-Portal-Id': PORTAL_ID,
-        },
+        headers: getHeaders(),
         body: JSON.stringify(submitData),
       });
 
@@ -268,18 +398,21 @@ const AdminServices: React.FC = () => {
         resetForm();
         setShowForm(false);
         setEditingId(null);
-        alert('✅ تم الحفظ بنجاح!');
+        showToast('success', editingId ? 'تم تحديث الخدمة' : 'تم إضافة الخدمة');
       } else {
-        setError(data.message || 'حدث خطأ في الحفظ');
+        showToast('error', data.message || 'حدث خطأ في الحفظ');
       }
     } catch (err: any) {
-      setError(err.message || 'حدث خطأ في الحفظ');
+      console.error('❌ Submit error:', err);
+      showToast('error', err.message || 'حدث خطأ في الحفظ');
     } finally {
       setUploading(false);
     }
   };
 
-  // ===== حفظ تفاصيل الخدمة =====
+  // ============================================================
+  // ✅ حفظ تفاصيل الخدمة
+  // ============================================================
   const handleSubmitDetail = async (e: React.FormEvent) => {
     e.preventDefault();
     setUploading(true);
@@ -287,7 +420,6 @@ const AdminServices: React.FC = () => {
 
     try {
       const submitData: any = JSON.parse(JSON.stringify(formData));
-      submitData.portalId = PORTAL_ID;
 
       const endpoint = `${API_URL}/service-details`;
       const method = editingId ? 'PUT' : 'POST';
@@ -295,11 +427,7 @@ const AdminServices: React.FC = () => {
 
       const response = await fetch(url, {
         method,
-        headers: {
-          'Authorization': `Bearer ${token}`,
-          'Content-Type': 'application/json',
-          'X-Portal-Id': PORTAL_ID,
-        },
+        headers: getHeaders(),
         body: JSON.stringify(submitData),
       });
 
@@ -310,18 +438,21 @@ const AdminServices: React.FC = () => {
         resetForm();
         setShowForm(false);
         setEditingId(null);
-        alert('✅ تم حفظ التفاصيل بنجاح!');
+        showToast('success', 'تم حفظ التفاصيل');
       } else {
-        setError(data.message || 'حدث خطأ في الحفظ');
+        showToast('error', data.message || 'حدث خطأ في الحفظ');
       }
     } catch (err: any) {
-      setError(err.message || 'حدث خطأ في الحفظ');
+      console.error('❌ Submit error:', err);
+      showToast('error', err.message || 'حدث خطأ في الحفظ');
     } finally {
       setUploading(false);
     }
   };
 
-  // ===== حفظ نموذج الخدمة =====
+  // ============================================================
+  // ✅ حفظ نموذج الخدمة
+  // ============================================================
   const handleSubmitForm = async (e: React.FormEvent) => {
     e.preventDefault();
     setUploading(true);
@@ -330,7 +461,6 @@ const AdminServices: React.FC = () => {
     try {
       let fileData = null;
 
-      // ✅ رفع الملف إذا تم اختياره
       if (selectedFile) {
         fileData = await uploadFormFile(selectedFile);
         formData.fileId = fileData.fileId;
@@ -340,7 +470,6 @@ const AdminServices: React.FC = () => {
       }
 
       const submitData: any = JSON.parse(JSON.stringify(formData));
-      submitData.portalId = PORTAL_ID;
 
       const endpoint = `${API_URL}/service-forms`;
       const method = editingId ? 'PUT' : 'POST';
@@ -348,11 +477,7 @@ const AdminServices: React.FC = () => {
 
       const response = await fetch(url, {
         method,
-        headers: {
-          'Authorization': `Bearer ${token}`,
-          'Content-Type': 'application/json',
-          'X-Portal-Id': PORTAL_ID,
-        },
+        headers: getHeaders(),
         body: JSON.stringify(submitData),
       });
 
@@ -364,18 +489,21 @@ const AdminServices: React.FC = () => {
         setShowForm(false);
         setEditingId(null);
         setSelectedFile(null);
-        alert('✅ تم حفظ النموذج بنجاح!');
+        showToast('success', 'تم حفظ النموذج');
       } else {
-        setError(data.message || 'حدث خطأ في الحفظ');
+        showToast('error', data.message || 'حدث خطأ في الحفظ');
       }
     } catch (err: any) {
-      setError(err.message || 'حدث خطأ في الحفظ');
+      console.error('❌ Submit error:', err);
+      showToast('error', err.message || 'حدث خطأ في الحفظ');
     } finally {
       setUploading(false);
     }
   };
 
-  // ===== حذف عنصر =====
+  // ============================================================
+  // ✅ حذف
+  // ============================================================
   const handleDelete = async (id: string) => {
     if (!confirm('هل أنت متأكد من حذف هذا العنصر؟')) return;
 
@@ -387,20 +515,23 @@ const AdminServices: React.FC = () => {
 
       const response = await fetch(endpoint, {
         method: 'DELETE',
-        headers: { 
-          'Authorization': `Bearer ${token}`,
-          'X-Portal-Id': PORTAL_ID,
-        },
+        headers: getHeaders(false),
       });
 
       const data = await response.json();
-      if (data.success) await fetchData();
+      if (data.success) {
+        await fetchData();
+        showToast('success', 'تم الحذف');
+      }
     } catch (err) {
-      setError('حدث خطأ في الحذف');
+      console.error('❌ Delete error:', err);
+      showToast('error', 'حدث خطأ في الحذف');
     }
   };
 
-  // ===== تبديل حالة النشر =====
+  // ============================================================
+  // ✅ تبديل النشر
+  // ============================================================
   const togglePublish = async (id: string, currentStatus: boolean) => {
     try {
       let endpoint = '';
@@ -410,20 +541,23 @@ const AdminServices: React.FC = () => {
 
       const response = await fetch(endpoint, {
         method: 'PATCH',
-        headers: { 
-          'Authorization': `Bearer ${token}`,
-          'X-Portal-Id': PORTAL_ID,
-        },
+        headers: getHeaders(false),
       });
 
       const data = await response.json();
-      if (data.success) await fetchData();
+      if (data.success) {
+        await fetchData();
+        showToast('success', 'تم تحديث الحالة');
+      }
     } catch (err) {
-      setError('حدث خطأ في تغيير الحالة');
+      console.error('❌ Toggle error:', err);
+      showToast('error', 'حدث خطأ في تغيير الحالة');
     }
   };
 
-  // ===== إعادة تعيين النموذج =====
+  // ============================================================
+  // ✅ Helpers
+  // ============================================================
   const resetForm = () => {
     setFormData({});
     setSelectedFile(null);
@@ -433,7 +567,6 @@ const AdminServices: React.FC = () => {
     setError(null);
   };
 
-  // ===== تحرير عنصر =====
   const handleEdit = (item: any) => {
     const editData = {
       ...item,
@@ -445,9 +578,9 @@ const AdminServices: React.FC = () => {
     setShowForm(true);
     setSelectedFile(null);
     setFilePreview(null);
+    window.scrollTo({ top: 0, behavior: 'smooth' });
   };
 
-  // ===== معالجة اختيار الملف =====
   const handleFileChange = (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
     if (file) {
@@ -462,7 +595,6 @@ const AdminServices: React.FC = () => {
     }
   };
 
-  // ===== الحصول على أيقونة الملف =====
   const getFileIcon = (mimeType?: string) => {
     if (!mimeType) return <FaFile className="text-gray-500" />;
     if (mimeType === 'application/pdf') return <FaFilePdf className="text-red-500" />;
@@ -471,7 +603,6 @@ const AdminServices: React.FC = () => {
     return <FaFile className="text-gray-500" />;
   };
 
-  // ===== تنسيق حجم الملف =====
   const formatFileSize = (bytes: number) => {
     if (bytes < 1024) return bytes + ' B';
     if (bytes < 1024 * 1024) return (bytes / 1024).toFixed(1) + ' KB';
@@ -479,18 +610,16 @@ const AdminServices: React.FC = () => {
     return (bytes / (1024 * 1024 * 1024)).toFixed(1) + ' GB';
   };
 
-  // ===== الحصول على اسم القسم =====
   const getSectionName = (id: string) => {
-    const section = sections.find(s => s._id === id);
-    return section ? (section.nameAr || section.name) : 'غير محدد';
+    const section = sections.find((s) => s._id === id);
+    return section ? section.nameAr || section.name : 'غير محدد';
   };
 
   const getServiceName = (id: string) => {
-    const service = services.find(s => s._id === id);
-    return service ? (service.nameAr || service.name) : 'غير محدد';
+    const service = services.find((s) => s._id === id);
+    return service ? service.nameAr || service.name : 'غير محدد';
   };
 
-  // ===== الحصول على حالة النشر =====
   const getPublishBadge = (isPublished: boolean) => {
     return isPublished ? (
       <span className="flex items-center gap-1 px-2 py-1 rounded-full text-xs font-semibold bg-green-100 text-green-700 dark:bg-green-900/30 dark:text-green-400">
@@ -503,7 +632,9 @@ const AdminServices: React.FC = () => {
     );
   };
 
-  // ===== عرض حالة التحميل =====
+  // ============================================================
+  // ✅ Loading
+  // ============================================================
   if (loading) {
     return (
       <div className="min-h-screen flex items-center justify-center bg-gray-50 dark:bg-gray-900">
@@ -515,8 +646,13 @@ const AdminServices: React.FC = () => {
     );
   }
 
+  // ============================================================
+  // ✅ Render
+  // ============================================================
   return (
     <div className="min-h-screen bg-gray-50 dark:bg-gray-900 py-8">
+      <ToastContainer toasts={toasts} onClose={closeToast} />
+
       <div className="container-custom">
         {/* Header */}
         <div className="flex flex-col md:flex-row justify-between items-start md:items-center gap-4 mb-6">
@@ -530,7 +666,10 @@ const AdminServices: React.FC = () => {
             </p>
           </div>
           <button
-            onClick={() => { resetForm(); setShowForm(!showForm); }}
+            onClick={() => {
+              resetForm();
+              setShowForm(!showForm);
+            }}
             className="px-6 py-3 bg-gradient-to-r from-purple-600 to-pink-500 text-white rounded-xl font-bold hover:shadow-lg hover:shadow-purple-500/30 transition-all flex items-center gap-2"
           >
             {showForm ? <FaTimes /> : <FaPlus />}
@@ -547,7 +686,11 @@ const AdminServices: React.FC = () => {
           ].map((tab) => (
             <button
               key={tab.id}
-              onClick={() => { setActiveTab(tab.id as TabType); setShowForm(false); resetForm(); }}
+              onClick={() => {
+                setActiveTab(tab.id as TabType);
+                setShowForm(false);
+                resetForm();
+              }}
               className={`px-4 py-2 rounded-lg text-sm font-semibold transition-all flex items-center gap-2 ${
                 activeTab === tab.id
                   ? 'bg-purple-600 text-white shadow-lg shadow-purple-500/30'
@@ -572,10 +715,16 @@ const AdminServices: React.FC = () => {
         <div className="flex flex-col md:flex-row gap-4 mb-6">
           <div className="flex-1">
             <div className="relative">
-              <FaSearch className="absolute right-3 top-3 text-gray-400" />
+              <FaSearch className="absolute right-3 top-3.5 text-gray-400" />
               <input
                 type="text"
-                placeholder={`بحث عن ${activeTab === 'services' ? 'خدمة' : activeTab === 'details' ? 'تفاصيل' : 'نموذج'}...`}
+                placeholder={`بحث عن ${
+                  activeTab === 'services'
+                    ? 'خدمة'
+                    : activeTab === 'details'
+                    ? 'تفاصيل'
+                    : 'نموذج'
+                }...`}
                 value={searchTerm}
                 onChange={(e) => setSearchTerm(e.target.value)}
                 className="w-full pr-10 pl-4 py-3 rounded-xl border-2 border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-800 focus:border-purple-500 focus:ring-2 focus:ring-purple-500/20 outline-none transition"
@@ -589,7 +738,7 @@ const AdminServices: React.FC = () => {
           </div>
         </div>
 
-        {/* ===== Form ===== */}
+        {/* Form */}
         {showForm && (
           <ServiceFormManager
             activeTab={activeTab}
@@ -599,8 +748,17 @@ const AdminServices: React.FC = () => {
             services={services}
             serviceDetails={serviceDetails}
             serviceForms={serviceForms}
-            onSubmit={activeTab === 'services' ? handleSubmitService : activeTab === 'details' ? handleSubmitDetail : handleSubmitForm}
-            onCancel={() => { setShowForm(false); resetForm(); }}
+            onSubmit={
+              activeTab === 'services'
+                ? handleSubmitService
+                : activeTab === 'details'
+                ? handleSubmitDetail
+                : handleSubmitForm
+            }
+            onCancel={() => {
+              setShowForm(false);
+              resetForm();
+            }}
             loading={uploading}
             editingId={editingId}
             selectedFile={selectedFile}
@@ -608,7 +766,10 @@ const AdminServices: React.FC = () => {
             filePreview={filePreview}
             uploadProgress={uploadProgress}
             fileInputRef={fileInputRef}
+            imageInputRef={imageInputRef}
             handleFileChange={handleFileChange}
+            handleServiceImageUpload={handleServiceImageUpload}
+            uploadingImage={uploadingImage}
             getSectionName={getSectionName}
             getServiceName={getServiceName}
             getFileIcon={getFileIcon}
@@ -617,14 +778,14 @@ const AdminServices: React.FC = () => {
           />
         )}
 
-        {/* ===== Data Tables ===== */}
+        {/* Tables */}
         <div className="bg-white dark:bg-gray-800 rounded-xl shadow-sm border border-gray-200 dark:border-gray-700 overflow-hidden">
           <div className="overflow-x-auto">
             {activeTab === 'services' && (
               <ServiceTable
                 data={services}
                 sections={sections}
-                searchTerm={searchTerm}
+                searchTerm={debouncedSearch}
                 onEdit={handleEdit}
                 onDelete={handleDelete}
                 onTogglePublish={togglePublish}
@@ -637,7 +798,7 @@ const AdminServices: React.FC = () => {
                 data={serviceDetails}
                 sections={sections}
                 services={services}
-                searchTerm={searchTerm}
+                searchTerm={debouncedSearch}
                 onEdit={handleEdit}
                 onDelete={handleDelete}
                 onTogglePublish={togglePublish}
@@ -651,7 +812,7 @@ const AdminServices: React.FC = () => {
                 data={serviceForms}
                 sections={sections}
                 services={services}
-                searchTerm={searchTerm}
+                searchTerm={debouncedSearch}
                 onEdit={handleEdit}
                 onDelete={handleDelete}
                 onTogglePublish={togglePublish}
@@ -670,17 +831,14 @@ const AdminServices: React.FC = () => {
 };
 
 // ============================================================
-// ===== مكون إدارة النموذج =====
+// ✅ Service Form Manager
 // ============================================================
-
 const ServiceFormManager: React.FC<any> = ({
   activeTab,
   formData,
   setFormData,
   sections,
   services,
-  serviceDetails,
-  serviceForms,
   onSubmit,
   onCancel,
   loading,
@@ -690,15 +848,19 @@ const ServiceFormManager: React.FC<any> = ({
   filePreview,
   uploadProgress,
   fileInputRef,
+  imageInputRef,
   handleFileChange,
-  getSectionName,
-  getServiceName,
+  handleServiceImageUpload,
+  uploadingImage,
   getFileIcon,
   formatFileSize,
   generateSlug,
 }) => {
-  const handleChange = (e: React.ChangeEvent<HTMLInputElement | HTMLTextAreaElement | HTMLSelectElement>) => {
+  const handleChange = (
+    e: React.ChangeEvent<HTMLInputElement | HTMLTextAreaElement | HTMLSelectElement>
+  ) => {
     const { name, value, type } = e.target;
+
     if (type === 'checkbox') {
       const checked = (e.target as HTMLInputElement).checked;
       setFormData({ ...formData, [name]: checked });
@@ -712,12 +874,6 @@ const ServiceFormManager: React.FC<any> = ({
     }
   };
 
-  const handleArrayChange = (name: string, value: string) => {
-    const array = value.split(',').map(item => item.trim()).filter(Boolean);
-    setFormData({ ...formData, [name]: array });
-  };
-
-  // إضافة FAQ
   const addFAQ = () => {
     const faqs = formData.faqs || [];
     setFormData({
@@ -737,18 +893,23 @@ const ServiceFormManager: React.FC<any> = ({
     setFormData({ ...formData, faqs });
   };
 
-  // إضافة نوع طلب
   const addRequestType = () => {
     const requestTypes = formData.requestTypes || [];
     setFormData({
       ...formData,
-      requestTypes: [...requestTypes, { type: 'email', label: 'Email', labelAr: 'بريد إلكتروني', isActive: true }],
+      requestTypes: [
+        ...requestTypes,
+        { type: 'email', label: 'Email', labelAr: 'بريد إلكتروني', isActive: true },
+      ],
     });
   };
 
   const removeRequestType = (index: number) => {
     const requestTypes = formData.requestTypes || [];
-    setFormData({ ...formData, requestTypes: requestTypes.filter((_: any, i: number) => i !== index) });
+    setFormData({
+      ...formData,
+      requestTypes: requestTypes.filter((_: any, i: number) => i !== index),
+    });
   };
 
   const updateRequestType = (index: number, field: string, value: any) => {
@@ -757,7 +918,6 @@ const ServiceFormManager: React.FC<any> = ({
     setFormData({ ...formData, requestTypes });
   };
 
-  // ===== عرض النموذج حسب التبويب =====
   const renderForm = () => {
     switch (activeTab) {
       case 'services':
@@ -766,9 +926,10 @@ const ServiceFormManager: React.FC<any> = ({
             formData={formData}
             setFormData={setFormData}
             handleChange={handleChange}
-            handleArrayChange={handleArrayChange}
             sections={sections}
-            generateSlug={generateSlug}
+            imageInputRef={imageInputRef}
+            handleServiceImageUpload={handleServiceImageUpload}
+            uploadingImage={uploadingImage}
           />
         );
       case 'details':
@@ -791,7 +952,6 @@ const ServiceFormManager: React.FC<any> = ({
         return (
           <ServiceFormForm
             formData={formData}
-            setFormData={setFormData}
             handleChange={handleChange}
             sections={sections}
             services={services}
@@ -813,10 +973,12 @@ const ServiceFormManager: React.FC<any> = ({
   return (
     <div className="bg-white dark:bg-gray-800 rounded-xl p-6 shadow-sm border border-gray-200 dark:border-gray-700 mb-6">
       <h3 className="text-xl font-bold text-gray-900 dark:text-white mb-4">
-        {editingId ? 'تعديل' : 'إضافة'} {
-          activeTab === 'services' ? 'خدمة' :
-          activeTab === 'details' ? 'تفاصيل خدمة' : 'نموذج خدمة'
-        }
+        {editingId ? 'تعديل' : 'إضافة'}{' '}
+        {activeTab === 'services'
+          ? 'خدمة'
+          : activeTab === 'details'
+          ? 'تفاصيل خدمة'
+          : 'نموذج خدمة'}
       </h3>
       <form onSubmit={onSubmit}>
         {renderForm()}
@@ -843,52 +1005,115 @@ const ServiceFormManager: React.FC<any> = ({
 };
 
 // ============================================================
-// ===== نماذج الإضافة =====
+// ✅ Service Form — مع رفع الصورة
 // ============================================================
-
-// ===== نموذج الخدمة =====
-const ServiceForm: React.FC<any> = ({ formData, setFormData, handleChange, handleArrayChange, sections, generateSlug }) => (
+const ServiceForm: React.FC<any> = ({
+  formData,
+  setFormData,
+  handleChange,
+  sections,
+  imageInputRef,
+  handleServiceImageUpload,
+  uploadingImage,
+}) => (
   <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
     <div>
-      <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">القسم *</label>
-      <select name="sectionId" value={formData.sectionId || ''} onChange={handleChange}
-        className="w-full px-4 py-2 rounded-lg border-2 border-gray-200 dark:border-gray-700 bg-gray-50 dark:bg-gray-700 focus:border-purple-500 focus:ring-2 focus:ring-purple-500/20 outline-none transition" required>
+      <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">
+        القسم *
+      </label>
+      <select
+        name="sectionId"
+        value={formData.sectionId || ''}
+        onChange={handleChange}
+        className="w-full px-4 py-2 rounded-lg border-2 border-gray-200 dark:border-gray-700 bg-gray-50 dark:bg-gray-700 focus:border-purple-500 outline-none transition"
+        required
+      >
         <option value="">اختر القسم</option>
         {sections.map((s: any) => (
-          <option key={s._id} value={s._id}>{s.nameAr || s.name}</option>
+          <option key={s._id} value={s._id}>
+            {s.nameAr || s.name}
+          </option>
         ))}
       </select>
     </div>
+
     <div>
-      <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">الاسم (عربي) *</label>
-      <input type="text" name="nameAr" value={formData.nameAr || ''} onChange={handleChange}
-        className="w-full px-4 py-2 rounded-lg border-2 border-gray-200 dark:border-gray-700 bg-gray-50 dark:bg-gray-700 focus:border-purple-500 focus:ring-2 focus:ring-purple-500/20 outline-none transition" required />
+      <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">
+        الاسم (عربي) *
+      </label>
+      <input
+        type="text"
+        name="nameAr"
+        value={formData.nameAr || ''}
+        onChange={handleChange}
+        className="w-full px-4 py-2 rounded-lg border-2 border-gray-200 dark:border-gray-700 bg-gray-50 dark:bg-gray-700 focus:border-purple-500 outline-none transition"
+        required
+      />
     </div>
+
     <div>
-      <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">الاسم (إنجليزي)</label>
-      <input type="text" name="name" value={formData.name || ''} onChange={handleChange}
-        className="w-full px-4 py-2 rounded-lg border-2 border-gray-200 dark:border-gray-700 bg-gray-50 dark:bg-gray-700 focus:border-purple-500 focus:ring-2 focus:ring-purple-500/20 outline-none transition" />
+      <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">
+        الاسم (إنجليزي)
+      </label>
+      <input
+        type="text"
+        name="name"
+        value={formData.name || ''}
+        onChange={handleChange}
+        className="w-full px-4 py-2 rounded-lg border-2 border-gray-200 dark:border-gray-700 bg-gray-50 dark:bg-gray-700 focus:border-purple-500 outline-none transition"
+      />
     </div>
+
     <div>
-      <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">المعرف (Slug)</label>
-      <input type="text" name="slug" value={formData.slug || ''} onChange={(e) => setFormData({ ...formData, slug: e.target.value })}
-        className="w-full px-4 py-2 rounded-lg border-2 border-gray-200 dark:border-gray-700 bg-gray-50 dark:bg-gray-700 focus:border-purple-500 focus:ring-2 focus:ring-purple-500/20 outline-none transition"
-        placeholder="سيتم توليده تلقائياً" />
+      <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">
+        المعرف (Slug)
+      </label>
+      <input
+        type="text"
+        name="slug"
+        value={formData.slug || ''}
+        onChange={(e) => setFormData({ ...formData, slug: e.target.value })}
+        className="w-full px-4 py-2 rounded-lg border-2 border-gray-200 dark:border-gray-700 bg-gray-50 dark:bg-gray-700 focus:border-purple-500 outline-none transition"
+        placeholder="سيتم توليده تلقائياً"
+      />
     </div>
+
     <div className="md:col-span-2">
-      <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">الوصف (عربي)</label>
-      <textarea name="descriptionAr" value={formData.descriptionAr || ''} onChange={handleChange} rows={3}
-        className="w-full px-4 py-2 rounded-lg border-2 border-gray-200 dark:border-gray-700 bg-gray-50 dark:bg-gray-700 focus:border-purple-500 focus:ring-2 focus:ring-purple-500/20 outline-none transition" />
+      <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">
+        الوصف (عربي)
+      </label>
+      <textarea
+        name="descriptionAr"
+        value={formData.descriptionAr || ''}
+        onChange={handleChange}
+        rows={3}
+        className="w-full px-4 py-2 rounded-lg border-2 border-gray-200 dark:border-gray-700 bg-gray-50 dark:bg-gray-700 focus:border-purple-500 outline-none transition"
+      />
     </div>
+
     <div className="md:col-span-2">
-      <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">الوصف (إنجليزي)</label>
-      <textarea name="description" value={formData.description || ''} onChange={handleChange} rows={3}
-        className="w-full px-4 py-2 rounded-lg border-2 border-gray-200 dark:border-gray-700 bg-gray-50 dark:bg-gray-700 focus:border-purple-500 focus:ring-2 focus:ring-purple-500/20 outline-none transition" />
+      <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">
+        الوصف (إنجليزي)
+      </label>
+      <textarea
+        name="description"
+        value={formData.description || ''}
+        onChange={handleChange}
+        rows={3}
+        className="w-full px-4 py-2 rounded-lg border-2 border-gray-200 dark:border-gray-700 bg-gray-50 dark:bg-gray-700 focus:border-purple-500 outline-none transition"
+      />
     </div>
+
     <div>
-      <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">الأيقونة</label>
-      <select name="icon" value={formData.icon || 'fa-cog'} onChange={handleChange}
-        className="w-full px-4 py-2 rounded-lg border-2 border-gray-200 dark:border-gray-700 bg-gray-50 dark:bg-gray-700 focus:border-purple-500 focus:ring-2 focus:ring-purple-500/20 outline-none transition">
+      <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">
+        الأيقونة
+      </label>
+      <select
+        name="icon"
+        value={formData.icon || 'fa-cog'}
+        onChange={handleChange}
+        className="w-full px-4 py-2 rounded-lg border-2 border-gray-200 dark:border-gray-700 bg-gray-50 dark:bg-gray-700 focus:border-purple-500 outline-none transition"
+      >
         <option value="fa-cog">⚙️ إعدادات</option>
         <option value="fa-book">📚 كتاب</option>
         <option value="fa-graduation-cap">🎓 قبعة التخرج</option>
@@ -899,35 +1124,135 @@ const ServiceForm: React.FC<any> = ({ formData, setFormData, handleChange, handl
         <option value="fa-code">💻 برمجة</option>
         <option value="fa-heart">❤️ قلب</option>
         <option value="fa-star">⭐ نجمة</option>
+        <option value="fa-flask">🧪 مختبر</option>
+        <option value="fa-language">🌐 لغة</option>
       </select>
     </div>
+
     <div>
-      <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">السعر الافتراضي</label>
-      <input type="number" name="pricing.defaultPrice" value={formData.pricing?.defaultPrice || 0}
-        onChange={(e) => setFormData({ ...formData, pricing: { ...formData.pricing, defaultPrice: parseFloat(e.target.value) || 0 } })}
-        className="w-full px-4 py-2 rounded-lg border-2 border-gray-200 dark:border-gray-700 bg-gray-50 dark:bg-gray-700 focus:border-purple-500 focus:ring-2 focus:ring-purple-500/20 outline-none transition" min="0" />
+      <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">
+        السعر الافتراضي
+      </label>
+      <input
+        type="number"
+        name="pricing.defaultPrice"
+        value={formData.pricing?.defaultPrice || 0}
+        onChange={(e) =>
+          setFormData({
+            ...formData,
+            pricing: { ...formData.pricing, defaultPrice: parseFloat(e.target.value) || 0 },
+          })
+        }
+        className="w-full px-4 py-2 rounded-lg border-2 border-gray-200 dark:border-gray-700 bg-gray-50 dark:bg-gray-700 focus:border-purple-500 outline-none transition"
+        min="0"
+      />
     </div>
+
     <div>
-      <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">الترتيب</label>
-      <input type="number" name="order" value={formData.order || 0} onChange={handleChange}
-        className="w-full px-4 py-2 rounded-lg border-2 border-gray-200 dark:border-gray-700 bg-gray-50 dark:bg-gray-700 focus:border-purple-500 focus:ring-2 focus:ring-purple-500/20 outline-none transition" min="0" />
+      <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">
+        الترتيب
+      </label>
+      <input
+        type="number"
+        name="order"
+        value={formData.order || 0}
+        onChange={handleChange}
+        className="w-full px-4 py-2 rounded-lg border-2 border-gray-200 dark:border-gray-700 bg-gray-50 dark:bg-gray-700 focus:border-purple-500 outline-none transition"
+        min="0"
+      />
     </div>
-    <div className="flex items-center gap-4">
+
+    {/* ✅ رفع صورة الخدمة */}
+    <div className="md:col-span-2">
+      <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-2">
+        <FaImage className="inline ml-2" />
+        صورة الخدمة (اختياري)
+      </label>
+
+      <input
+        ref={imageInputRef}
+        type="file"
+        accept="image/*"
+        onChange={handleServiceImageUpload}
+        className="hidden"
+      />
+
+      <div className="border-2 border-dashed border-gray-300 dark:border-gray-600 rounded-xl p-4 text-center">
+        {formData.image ? (
+          <div className="space-y-3">
+            <img
+              src={formData.image}
+              alt="Service"
+              className="max-h-40 mx-auto rounded-lg shadow"
+              onError={(e) => console.error('Image load error:', formData.image)}
+            />
+            <div className="flex gap-2 justify-center">
+              <button
+                type="button"
+                onClick={() => imageInputRef.current?.click()}
+                disabled={uploadingImage}
+                className="px-4 py-2 bg-purple-600 text-white rounded-lg flex items-center gap-2 text-sm disabled:opacity-50"
+              >
+                {uploadingImage ? <FaSpinner className="animate-spin" /> : <FaUpload />}
+                تغيير
+              </button>
+              <button
+                type="button"
+                onClick={() => setFormData({ ...formData, image: '' })}
+                className="px-4 py-2 bg-red-100 text-red-600 rounded-lg flex items-center gap-2 text-sm"
+              >
+                <FaTrash /> حذف
+              </button>
+            </div>
+          </div>
+        ) : (
+          <button
+            type="button"
+            onClick={() => imageInputRef.current?.click()}
+            disabled={uploadingImage}
+            className="py-4 w-full"
+          >
+            {uploadingImage ? (
+              <FaSpinner className="w-8 h-8 text-purple-600 animate-spin mx-auto" />
+            ) : (
+              <>
+                <FaUpload className="w-8 h-8 text-gray-400 mx-auto mb-2" />
+                <p className="text-sm text-gray-500">اضغط لرفع صورة من جهازك</p>
+              </>
+            )}
+          </button>
+        )}
+      </div>
+    </div>
+
+    <div className="flex items-center gap-4 md:col-span-2">
       <label className="flex items-center gap-2">
-        <input type="checkbox" name="isPublished" checked={formData.isPublished !== false} onChange={handleChange}
-          className="w-4 h-4 text-purple-600" />
+        <input
+          type="checkbox"
+          name="isPublished"
+          checked={formData.isPublished !== false}
+          onChange={handleChange}
+          className="w-4 h-4 text-purple-600"
+        />
         <span className="text-sm text-gray-700 dark:text-gray-300">منشور</span>
       </label>
       <label className="flex items-center gap-2">
-        <input type="checkbox" name="isFeatured" checked={formData.isFeatured || false} onChange={handleChange}
-          className="w-4 h-4 text-purple-600" />
+        <input
+          type="checkbox"
+          name="isFeatured"
+          checked={formData.isFeatured || false}
+          onChange={handleChange}
+          className="w-4 h-4 text-purple-600"
+        />
         <span className="text-sm text-gray-700 dark:text-gray-300">مميز</span>
       </label>
     </div>
   </div>
 );
 
-// ===== نموذج تفاصيل الخدمة =====
+// ============================================================
+// ✅ Service Detail Form (كما هو)
+// ============================================================
 const ServiceDetailForm: React.FC<any> = ({
   formData, setFormData, handleChange,
   sections, services,
@@ -939,7 +1264,7 @@ const ServiceDetailForm: React.FC<any> = ({
       <div>
         <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">القسم *</label>
         <select name="sectionId" value={formData.sectionId || ''} onChange={handleChange}
-          className="w-full px-4 py-2 rounded-lg border-2 border-gray-200 dark:border-gray-700 bg-gray-50 dark:bg-gray-700 focus:border-purple-500 focus:ring-2 focus:ring-purple-500/20 outline-none transition" required>
+          className="w-full px-4 py-2 rounded-lg border-2 border-gray-200 dark:border-gray-700 bg-gray-50 dark:bg-gray-700 focus:border-purple-500 outline-none transition" required>
           <option value="">اختر القسم</option>
           {sections.map((s: any) => (
             <option key={s._id} value={s._id}>{s.nameAr || s.name}</option>
@@ -949,7 +1274,7 @@ const ServiceDetailForm: React.FC<any> = ({
       <div>
         <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">الخدمة *</label>
         <select name="serviceId" value={formData.serviceId || ''} onChange={handleChange}
-          className="w-full px-4 py-2 rounded-lg border-2 border-gray-200 dark:border-gray-700 bg-gray-50 dark:bg-gray-700 focus:border-purple-500 focus:ring-2 focus:ring-purple-500/20 outline-none transition" required>
+          className="w-full px-4 py-2 rounded-lg border-2 border-gray-200 dark:border-gray-700 bg-gray-50 dark:bg-gray-700 focus:border-purple-500 outline-none transition" required>
           <option value="">اختر الخدمة</option>
           {services.filter((s: any) => {
             const sSectionId = typeof s.sectionId === 'object' ? s.sectionId?._id : s.sectionId;
@@ -963,14 +1288,14 @@ const ServiceDetailForm: React.FC<any> = ({
 
     <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
       <div>
-        <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">نبذة الخدمة (عربي)</label>
+        <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">نبذة (عربي)</label>
         <textarea name="overviewAr" value={formData.overviewAr || ''} onChange={handleChange} rows={3}
-          className="w-full px-4 py-2 rounded-lg border-2 border-gray-200 dark:border-gray-700 bg-gray-50 dark:bg-gray-700 focus:border-purple-500 focus:ring-2 focus:ring-purple-500/20 outline-none transition" />
+          className="w-full px-4 py-2 rounded-lg border-2 border-gray-200 dark:border-gray-700 bg-gray-50 dark:bg-gray-700 focus:border-purple-500 outline-none transition" />
       </div>
       <div>
-        <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">نبذة الخدمة (إنجليزي)</label>
+        <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">نبذة (إنجليزي)</label>
         <textarea name="overview" value={formData.overview || ''} onChange={handleChange} rows={3}
-          className="w-full px-4 py-2 rounded-lg border-2 border-gray-200 dark:border-gray-700 bg-gray-50 dark:bg-gray-700 focus:border-purple-500 focus:ring-2 focus:ring-purple-500/20 outline-none transition" />
+          className="w-full px-4 py-2 rounded-lg border-2 border-gray-200 dark:border-gray-700 bg-gray-50 dark:bg-gray-700 focus:border-purple-500 outline-none transition" />
       </div>
     </div>
 
@@ -978,12 +1303,12 @@ const ServiceDetailForm: React.FC<any> = ({
       <div>
         <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">ما هي الخدمة؟ (عربي)</label>
         <textarea name="whatIsServiceAr" value={formData.whatIsServiceAr || ''} onChange={handleChange} rows={3}
-          className="w-full px-4 py-2 rounded-lg border-2 border-gray-200 dark:border-gray-700 bg-gray-50 dark:bg-gray-700 focus:border-purple-500 focus:ring-2 focus:ring-purple-500/20 outline-none transition" />
+          className="w-full px-4 py-2 rounded-lg border-2 border-gray-200 dark:border-gray-700 bg-gray-50 dark:bg-gray-700 focus:border-purple-500 outline-none transition" />
       </div>
       <div>
         <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">ما هي الخدمة؟ (إنجليزي)</label>
         <textarea name="whatIsService" value={formData.whatIsService || ''} onChange={handleChange} rows={3}
-          className="w-full px-4 py-2 rounded-lg border-2 border-gray-200 dark:border-gray-700 bg-gray-50 dark:bg-gray-700 focus:border-purple-500 focus:ring-2 focus:ring-purple-500/20 outline-none transition" />
+          className="w-full px-4 py-2 rounded-lg border-2 border-gray-200 dark:border-gray-700 bg-gray-50 dark:bg-gray-700 focus:border-purple-500 outline-none transition" />
       </div>
     </div>
 
@@ -991,12 +1316,12 @@ const ServiceDetailForm: React.FC<any> = ({
       <div>
         <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">من يستفيد؟ (عربي)</label>
         <textarea name="whoBenefitsAr" value={formData.whoBenefitsAr || ''} onChange={handleChange} rows={3}
-          className="w-full px-4 py-2 rounded-lg border-2 border-gray-200 dark:border-gray-700 bg-gray-50 dark:bg-gray-700 focus:border-purple-500 focus:ring-2 focus:ring-purple-500/20 outline-none transition" />
+          className="w-full px-4 py-2 rounded-lg border-2 border-gray-200 dark:border-gray-700 bg-gray-50 dark:bg-gray-700 focus:border-purple-500 outline-none transition" />
       </div>
       <div>
         <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">من يستفيد؟ (إنجليزي)</label>
         <textarea name="whoBenefits" value={formData.whoBenefits || ''} onChange={handleChange} rows={3}
-          className="w-full px-4 py-2 rounded-lg border-2 border-gray-200 dark:border-gray-700 bg-gray-50 dark:bg-gray-700 focus:border-purple-500 focus:ring-2 focus:ring-purple-500/20 outline-none transition" />
+          className="w-full px-4 py-2 rounded-lg border-2 border-gray-200 dark:border-gray-700 bg-gray-50 dark:bg-gray-700 focus:border-purple-500 outline-none transition" />
       </div>
     </div>
 
@@ -1004,21 +1329,21 @@ const ServiceDetailForm: React.FC<any> = ({
       <div>
         <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">المنهجيات (عربي)</label>
         <textarea name="methodologiesAr" value={formData.methodologiesAr || ''} onChange={handleChange} rows={3}
-          className="w-full px-4 py-2 rounded-lg border-2 border-gray-200 dark:border-gray-700 bg-gray-50 dark:bg-gray-700 focus:border-purple-500 focus:ring-2 focus:ring-purple-500/20 outline-none transition" />
+          className="w-full px-4 py-2 rounded-lg border-2 border-gray-200 dark:border-gray-700 bg-gray-50 dark:bg-gray-700 focus:border-purple-500 outline-none transition" />
       </div>
       <div>
         <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">المنهجيات (إنجليزي)</label>
         <textarea name="methodologies" value={formData.methodologies || ''} onChange={handleChange} rows={3}
-          className="w-full px-4 py-2 rounded-lg border-2 border-gray-200 dark:border-gray-700 bg-gray-50 dark:bg-gray-700 focus:border-purple-500 focus:ring-2 focus:ring-purple-500/20 outline-none transition" />
+          className="w-full px-4 py-2 rounded-lg border-2 border-gray-200 dark:border-gray-700 bg-gray-50 dark:bg-gray-700 focus:border-purple-500 outline-none transition" />
       </div>
     </div>
 
-    {/* أنواع الطلبات */}
     <div>
       <div className="flex justify-between items-center mb-2">
         <label className="text-sm font-medium text-gray-700 dark:text-gray-300">أنواع الطلبات</label>
-        <button type="button" onClick={addRequestType} className="px-3 py-1 bg-purple-100 text-purple-600 dark:bg-purple-900/30 dark:text-purple-400 rounded-lg hover:bg-purple-200 dark:hover:bg-purple-900/50 transition text-sm">
-          <FaPlus className="inline ml-1" /> إضافة نوع
+        <button type="button" onClick={addRequestType}
+          className="px-3 py-1 bg-purple-100 text-purple-600 dark:bg-purple-900/30 dark:text-purple-400 rounded-lg hover:bg-purple-200 transition text-sm">
+          <FaPlus className="inline ml-1" /> إضافة
         </button>
       </div>
       <div className="space-y-2">
@@ -1040,7 +1365,7 @@ const ServiceDetailForm: React.FC<any> = ({
                 className="w-4 h-4 text-purple-600 rounded" />
               نشط
             </label>
-            <button type="button" onClick={() => removeRequestType(index)} className="text-red-500 hover:text-red-700 transition">
+            <button type="button" onClick={() => removeRequestType(index)} className="text-red-500 hover:text-red-700">
               <FaTimes />
             </button>
           </div>
@@ -1048,11 +1373,11 @@ const ServiceDetailForm: React.FC<any> = ({
       </div>
     </div>
 
-    {/* الأسئلة الشائعة */}
     <div>
       <div className="flex justify-between items-center mb-2">
         <label className="text-sm font-medium text-gray-700 dark:text-gray-300">الأسئلة الشائعة</label>
-        <button type="button" onClick={addFAQ} className="px-3 py-1 bg-green-100 text-green-600 dark:bg-green-900/30 dark:text-green-400 rounded-lg hover:bg-green-200 dark:hover:bg-green-900/50 transition text-sm">
+        <button type="button" onClick={addFAQ}
+          className="px-3 py-1 bg-green-100 text-green-600 dark:bg-green-900/30 dark:text-green-400 rounded-lg hover:bg-green-200 transition text-sm">
           <FaPlus className="inline ml-1" /> إضافة سؤال
         </button>
       </div>
@@ -1061,7 +1386,7 @@ const ServiceDetailForm: React.FC<any> = ({
           <div key={index} className="p-3 bg-gray-50 dark:bg-gray-700/30 rounded-lg border border-gray-200 dark:border-gray-700">
             <div className="flex justify-between items-start mb-2">
               <span className="font-medium text-gray-900 dark:text-white">سؤال {index + 1}</span>
-              <button type="button" onClick={() => removeFAQ(index)} className="text-red-500 hover:text-red-700 transition">
+              <button type="button" onClick={() => removeFAQ(index)} className="text-red-500 hover:text-red-700">
                 <FaTrash />
               </button>
             </div>
@@ -1090,9 +1415,11 @@ const ServiceDetailForm: React.FC<any> = ({
   </div>
 );
 
-// ===== نموذج النموذج السابق =====
+// ============================================================
+// ✅ Service Form Form (النموذج)
+// ============================================================
 const ServiceFormForm: React.FC<any> = ({
-  formData, setFormData, handleChange,
+  formData, handleChange,
   sections, services,
   selectedFile, setSelectedFile, filePreview, uploadProgress,
   fileInputRef, handleFileChange,
@@ -1103,7 +1430,7 @@ const ServiceFormForm: React.FC<any> = ({
       <div>
         <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">القسم *</label>
         <select name="sectionId" value={formData.sectionId || ''} onChange={handleChange}
-          className="w-full px-4 py-2 rounded-lg border-2 border-gray-200 dark:border-gray-700 bg-gray-50 dark:bg-gray-700 focus:border-purple-500 focus:ring-2 focus:ring-purple-500/20 outline-none transition" required>
+          className="w-full px-4 py-2 rounded-lg border-2 border-gray-200 dark:border-gray-700 bg-gray-50 dark:bg-gray-700 focus:border-purple-500 outline-none transition" required>
           <option value="">اختر القسم</option>
           {sections.map((s: any) => (
             <option key={s._id} value={s._id}>{s.nameAr || s.name}</option>
@@ -1113,7 +1440,7 @@ const ServiceFormForm: React.FC<any> = ({
       <div>
         <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">الخدمة *</label>
         <select name="serviceId" value={formData.serviceId || ''} onChange={handleChange}
-          className="w-full px-4 py-2 rounded-lg border-2 border-gray-200 dark:border-gray-700 bg-gray-50 dark:bg-gray-700 focus:border-purple-500 focus:ring-2 focus:ring-purple-500/20 outline-none transition" required>
+          className="w-full px-4 py-2 rounded-lg border-2 border-gray-200 dark:border-gray-700 bg-gray-50 dark:bg-gray-700 focus:border-purple-500 outline-none transition" required>
           <option value="">اختر الخدمة</option>
           {services.filter((s: any) => {
             const sSectionId = typeof s.sectionId === 'object' ? s.sectionId?._id : s.sectionId;
@@ -1129,12 +1456,12 @@ const ServiceFormForm: React.FC<any> = ({
       <div>
         <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">اسم النموذج (عربي) *</label>
         <input type="text" name="nameAr" value={formData.nameAr || ''} onChange={handleChange}
-          className="w-full px-4 py-2 rounded-lg border-2 border-gray-200 dark:border-gray-700 bg-gray-50 dark:bg-gray-700 focus:border-purple-500 focus:ring-2 focus:ring-purple-500/20 outline-none transition" required />
+          className="w-full px-4 py-2 rounded-lg border-2 border-gray-200 dark:border-gray-700 bg-gray-50 dark:bg-gray-700 focus:border-purple-500 outline-none transition" required />
       </div>
       <div>
         <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">اسم النموذج (إنجليزي)</label>
         <input type="text" name="name" value={formData.name || ''} onChange={handleChange}
-          className="w-full px-4 py-2 rounded-lg border-2 border-gray-200 dark:border-gray-700 bg-gray-50 dark:bg-gray-700 focus:border-purple-500 focus:ring-2 focus:ring-purple-500/20 outline-none transition" />
+          className="w-full px-4 py-2 rounded-lg border-2 border-gray-200 dark:border-gray-700 bg-gray-50 dark:bg-gray-700 focus:border-purple-500 outline-none transition" />
       </div>
     </div>
 
@@ -1142,20 +1469,20 @@ const ServiceFormForm: React.FC<any> = ({
       <div>
         <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">الوصف (عربي)</label>
         <textarea name="descriptionAr" value={formData.descriptionAr || ''} onChange={handleChange} rows={2}
-          className="w-full px-4 py-2 rounded-lg border-2 border-gray-200 dark:border-gray-700 bg-gray-50 dark:bg-gray-700 focus:border-purple-500 focus:ring-2 focus:ring-purple-500/20 outline-none transition" />
+          className="w-full px-4 py-2 rounded-lg border-2 border-gray-200 dark:border-gray-700 bg-gray-50 dark:bg-gray-700 focus:border-purple-500 outline-none transition" />
       </div>
       <div>
         <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">الوصف (إنجليزي)</label>
         <textarea name="description" value={formData.description || ''} onChange={handleChange} rows={2}
-          className="w-full px-4 py-2 rounded-lg border-2 border-gray-200 dark:border-gray-700 bg-gray-50 dark:bg-gray-700 focus:border-purple-500 focus:ring-2 focus:ring-purple-500/20 outline-none transition" />
+          className="w-full px-4 py-2 rounded-lg border-2 border-gray-200 dark:border-gray-700 bg-gray-50 dark:bg-gray-700 focus:border-purple-500 outline-none transition" />
       </div>
     </div>
 
-    {/* رفع الملف */}
     <div>
       <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">ملف النموذج *</label>
       <div className="border-2 border-dashed border-gray-300 dark:border-gray-600 rounded-xl p-6 text-center">
-        <input type="file" ref={fileInputRef} onChange={handleFileChange} accept=".pdf,.doc,.docx,.xls,.xlsx,.ppt,.pptx,.jpg,.jpeg,.png,.gif,.txt" className="hidden" />
+        <input type="file" ref={fileInputRef} onChange={handleFileChange}
+          accept=".pdf,.doc,.docx,.xls,.xlsx,.ppt,.pptx,.jpg,.jpeg,.png,.gif,.txt" className="hidden" />
         {selectedFile ? (
           <div className="space-y-2">
             <div className="flex items-center justify-center gap-3">
@@ -1163,12 +1490,12 @@ const ServiceFormForm: React.FC<any> = ({
               <span className="font-medium text-gray-900 dark:text-white">{selectedFile.name}</span>
               <span className="text-sm text-gray-500">({formatFileSize(selectedFile.size)})</span>
             </div>
-            <button type="button" onClick={() => { setSelectedFile(null); }} className="text-red-500 text-sm hover:text-red-700 transition">
+            <button type="button" onClick={() => setSelectedFile(null)} className="text-red-500 text-sm hover:text-red-700">
               إزالة الملف
             </button>
             {uploadProgress > 0 && uploadProgress < 100 && (
               <div className="w-full bg-gray-200 dark:bg-gray-700 rounded-full h-2">
-                <div className="bg-purple-600 h-2 rounded-full transition-all duration-300" style={{ width: `${uploadProgress}%` }} />
+                <div className="bg-purple-600 h-2 rounded-full transition-all" style={{ width: `${uploadProgress}%` }} />
               </div>
             )}
           </div>
@@ -1177,7 +1504,8 @@ const ServiceFormForm: React.FC<any> = ({
             <FaUpload className="w-10 h-10 text-gray-400 mx-auto mb-2" />
             <p className="text-gray-500 dark:text-gray-400">اضغط لرفع ملف النموذج</p>
             <p className="text-xs text-gray-400 mt-1">PDF, Word, Excel, PowerPoint, Images - الحد الأقصى 10MB</p>
-            <button type="button" onClick={() => fileInputRef.current?.click()} className="mt-3 px-4 py-2 bg-purple-100 text-purple-600 dark:bg-purple-900/30 dark:text-purple-400 rounded-lg hover:bg-purple-200 dark:hover:bg-purple-900/50 transition">
+            <button type="button" onClick={() => fileInputRef.current?.click()}
+              className="mt-3 px-4 py-2 bg-purple-100 text-purple-600 dark:bg-purple-900/30 dark:text-purple-400 rounded-lg hover:bg-purple-200 transition">
               اختيار ملف
             </button>
           </div>
@@ -1194,21 +1522,22 @@ const ServiceFormForm: React.FC<any> = ({
       <div>
         <label className="text-sm text-gray-700 dark:text-gray-300 mr-2">الترتيب</label>
         <input type="number" name="order" value={formData.order || 0} onChange={handleChange}
-          className="w-20 px-2 py-1 rounded border-2 border-gray-200 dark:border-gray-700 bg-gray-50 dark:bg-gray-700 focus:border-purple-500 focus:ring-2 focus:ring-purple-500/20 outline-none transition" min="0" />
+          className="w-20 px-2 py-1 rounded border-2 border-gray-200 dark:border-gray-700 bg-gray-50 dark:bg-gray-700 focus:border-purple-500 outline-none transition" min="0" />
       </div>
     </div>
   </div>
 );
 
 // ============================================================
-// ===== جداول العرض =====
+// ✅ Service Table — مع صورة مصغرة
 // ============================================================
-
-// ===== جدول الخدمات =====
-const ServiceTable: React.FC<any> = ({ data, sections, searchTerm, onEdit, onDelete, onTogglePublish, getPublishBadge, getSectionName }) => {
-  const filtered = data.filter((item: any) =>
-    (item.nameAr || item.name).includes(searchTerm) ||
-    getSectionName(typeof item.sectionId === 'object' ? item.sectionId?._id : item.sectionId).includes(searchTerm)
+const ServiceTable: React.FC<any> = ({
+  data, sections, searchTerm, onEdit, onDelete, onTogglePublish, getPublishBadge, getSectionName,
+}) => {
+  const filtered = data.filter(
+    (item: any) =>
+      (item.nameAr || item.name).includes(searchTerm) ||
+      getSectionName(typeof item.sectionId === 'object' ? item.sectionId?._id : item.sectionId).includes(searchTerm)
   );
 
   return (
@@ -1230,9 +1559,33 @@ const ServiceTable: React.FC<any> = ({ data, sections, searchTerm, onEdit, onDel
           return (
             <tr key={item._id} className="hover:bg-gray-50 dark:hover:bg-gray-700/30 transition">
               <td className="px-4 py-3 text-gray-600 dark:text-gray-400">{index + 1}</td>
+
+              {/* ✅ الخدمة مع الصورة */}
               <td className="px-4 py-3">
-                <div className="font-medium text-gray-900 dark:text-white">{item.nameAr || item.name}</div>
+                <div className="flex items-center gap-3">
+                  {/* ✅ الصورة أو الأيقونة */}
+                  <div className="w-10 h-10 rounded-lg overflow-hidden flex-shrink-0 border border-gray-200 dark:border-gray-700">
+                    {item.image ? (
+                      <img
+                        src={item.image}
+                        alt={item.nameAr || item.name}
+                        className="w-full h-full object-cover"
+                        onError={(e) => {
+                          e.currentTarget.style.display = 'none';
+                        }}
+                      />
+                    ) : (
+                      <div className="w-full h-full bg-purple-100 dark:bg-purple-900/20 flex items-center justify-center text-lg">
+                        {item.icon?.replace('fa-', '') || '⚙️'}
+                      </div>
+                    )}
+                  </div>
+                  <div className="font-medium text-gray-900 dark:text-white">
+                    {item.nameAr || item.name}
+                  </div>
+                </div>
               </td>
+
               <td className="px-4 py-3 text-gray-600 dark:text-gray-400">{getSectionName(sectionId)}</td>
               <td className="px-4 py-3">
                 <span className="px-2 py-1 rounded bg-gray-100 dark:bg-gray-700 text-xs font-mono">{item.slug}</span>
@@ -1251,22 +1604,34 @@ const ServiceTable: React.FC<any> = ({ data, sections, searchTerm, onEdit, onDel
                 </div>
               </td>
               <td className="px-4 py-3">
-                <ActionButtons onEdit={() => onEdit(item)} onDelete={() => onDelete(item._id)} 
-                  onToggle={() => onTogglePublish(item._id, item.isPublished)} isActive={item.isPublished} />
+                <ActionButtons
+                  onEdit={() => onEdit(item)}
+                  onDelete={() => onDelete(item._id)}
+                  onToggle={() => onTogglePublish(item._id, item.isPublished)}
+                  isActive={item.isPublished}
+                />
               </td>
             </tr>
           );
         })}
         {filtered.length === 0 && (
-          <tr><td colSpan={7} className="px-4 py-8 text-center text-gray-500 dark:text-gray-400">لا توجد خدمات</td></tr>
+          <tr>
+            <td colSpan={7} className="px-4 py-8 text-center text-gray-500 dark:text-gray-400">
+              لا توجد خدمات
+            </td>
+          </tr>
         )}
       </tbody>
     </table>
   );
 };
 
-// ===== جدول تفاصيل الخدمات =====
-const ServiceDetailTable: React.FC<any> = ({ data, sections, services, searchTerm, onEdit, onDelete, onTogglePublish, getPublishBadge, getSectionName, getServiceName }) => {
+// ============================================================
+// ✅ Service Detail Table
+// ============================================================
+const ServiceDetailTable: React.FC<any> = ({
+  data, sections, services, searchTerm, onEdit, onDelete, onTogglePublish, getPublishBadge, getSectionName, getServiceName,
+}) => {
   const filtered = data.filter((item: any) => {
     const serviceId = typeof item.serviceId === 'object' ? item.serviceId?._id : item.serviceId;
     const sectionId = typeof item.sectionId === 'object' ? item.sectionId?._id : item.sectionId;
@@ -1297,28 +1662,42 @@ const ServiceDetailTable: React.FC<any> = ({ data, sections, services, searchTer
               <td className="px-4 py-3 text-gray-600 dark:text-gray-400">{item.faqs?.length || 0}</td>
               <td className="px-4 py-3">{getPublishBadge(item.isPublished)}</td>
               <td className="px-4 py-3">
-                <ActionButtons onEdit={() => onEdit(item)} onDelete={() => onDelete(item._id)} 
-                  onToggle={() => onTogglePublish(item._id, item.isPublished)} isActive={item.isPublished} />
+                <ActionButtons
+                  onEdit={() => onEdit(item)}
+                  onDelete={() => onDelete(item._id)}
+                  onToggle={() => onTogglePublish(item._id, item.isPublished)}
+                  isActive={item.isPublished}
+                />
               </td>
             </tr>
           );
         })}
         {filtered.length === 0 && (
-          <tr><td colSpan={6} className="px-4 py-8 text-center text-gray-500 dark:text-gray-400">لا توجد تفاصيل</td></tr>
+          <tr>
+            <td colSpan={6} className="px-4 py-8 text-center text-gray-500 dark:text-gray-400">
+              لا توجد تفاصيل
+            </td>
+          </tr>
         )}
       </tbody>
     </table>
   );
 };
 
-// ===== جدول نماذج الخدمات =====
-const ServiceFormTable: React.FC<any> = ({ data, sections, services, searchTerm, onEdit, onDelete, onTogglePublish, getPublishBadge, getSectionName, getServiceName, getFileIcon, formatFileSize }) => {
+// ============================================================
+// ✅ Service Form Table
+// ============================================================
+const ServiceFormTable: React.FC<any> = ({
+  data, sections, services, searchTerm, onEdit, onDelete, onTogglePublish, getPublishBadge, getSectionName, getServiceName, getFileIcon, formatFileSize,
+}) => {
   const filtered = data.filter((item: any) => {
     const serviceId = typeof item.serviceId === 'object' ? item.serviceId?._id : item.serviceId;
     const sectionId = typeof item.sectionId === 'object' ? item.sectionId?._id : item.sectionId;
-    return getServiceName(serviceId).includes(searchTerm) || 
-           getSectionName(sectionId).includes(searchTerm) ||
-           (item.nameAr || item.name).includes(searchTerm);
+    return (
+      getServiceName(serviceId).includes(searchTerm) ||
+      getSectionName(sectionId).includes(searchTerm) ||
+      (item.nameAr || item.name).includes(searchTerm)
+    );
   });
 
   return (
@@ -1359,14 +1738,22 @@ const ServiceFormTable: React.FC<any> = ({ data, sections, services, searchTerm,
               </td>
               <td className="px-4 py-3">{getPublishBadge(item.isPublished)}</td>
               <td className="px-4 py-3">
-                <ActionButtons onEdit={() => onEdit(item)} onDelete={() => onDelete(item._id)} 
-                  onToggle={() => onTogglePublish(item._id, item.isPublished)} isActive={item.isPublished} />
+                <ActionButtons
+                  onEdit={() => onEdit(item)}
+                  onDelete={() => onDelete(item._id)}
+                  onToggle={() => onTogglePublish(item._id, item.isPublished)}
+                  isActive={item.isPublished}
+                />
               </td>
             </tr>
           );
         })}
         {filtered.length === 0 && (
-          <tr><td colSpan={7} className="px-4 py-8 text-center text-gray-500 dark:text-gray-400">لا توجد نماذج</td></tr>
+          <tr>
+            <td colSpan={7} className="px-4 py-8 text-center text-gray-500 dark:text-gray-400">
+              لا توجد نماذج
+            </td>
+          </tr>
         )}
       </tbody>
     </table>
@@ -1374,9 +1761,8 @@ const ServiceFormTable: React.FC<any> = ({ data, sections, services, searchTerm,
 };
 
 // ============================================================
-// ===== مكون الأزرار الإجرائية =====
+// ✅ Action Buttons
 // ============================================================
-
 const ActionButtons: React.FC<{
   onEdit: () => void;
   onDelete: () => void;
@@ -1386,16 +1772,29 @@ const ActionButtons: React.FC<{
 }> = ({ onEdit, onDelete, onToggle, isActive, editLabel = 'تعديل' }) => {
   return (
     <div className="flex gap-2">
-      <button onClick={onToggle} className={`p-2 rounded-lg transition ${
-        isActive ? 'bg-red-100 text-red-600 hover:bg-red-200 dark:bg-red-900/20 dark:text-red-400' :
-        'bg-green-100 text-green-600 hover:bg-green-200 dark:bg-green-900/20 dark:text-green-400'
-      }`} title={isActive ? 'إخفاء' : 'نشر'}>
+      <button
+        onClick={onToggle}
+        className={`p-2 rounded-lg transition ${
+          isActive
+            ? 'bg-red-100 text-red-600 hover:bg-red-200 dark:bg-red-900/20 dark:text-red-400'
+            : 'bg-green-100 text-green-600 hover:bg-green-200 dark:bg-green-900/20 dark:text-green-400'
+        }`}
+        title={isActive ? 'إخفاء' : 'نشر'}
+      >
         {isActive ? <FaEyeSlash /> : <FaEye />}
       </button>
-      <button onClick={onEdit} className="p-2 rounded-lg bg-blue-100 text-blue-600 hover:bg-blue-200 dark:bg-blue-900/20 dark:text-blue-400 transition" title={editLabel}>
+      <button
+        onClick={onEdit}
+        className="p-2 rounded-lg bg-blue-100 text-blue-600 hover:bg-blue-200 dark:bg-blue-900/20 dark:text-blue-400 transition"
+        title={editLabel}
+      >
         <FaEdit />
       </button>
-      <button onClick={onDelete} className="p-2 rounded-lg bg-red-100 text-red-600 hover:bg-red-200 dark:bg-red-900/20 dark:text-red-400 transition" title="حذف">
+      <button
+        onClick={onDelete}
+        className="p-2 rounded-lg bg-red-100 text-red-600 hover:bg-red-200 dark:bg-red-900/20 dark:text-red-400 transition"
+        title="حذف"
+      >
         <FaTrash />
       </button>
     </div>

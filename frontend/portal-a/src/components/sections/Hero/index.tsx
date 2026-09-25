@@ -1,4 +1,3 @@
-// src/components/sections/Hero/index.tsx
 import React from 'react';
 import HeroCinematic from './HeroCinematic';
 import HeroSplit from './HeroSplit';
@@ -10,25 +9,27 @@ import './Hero.css';
 
 interface HeroProps {
   config?: any;
+  liveStats?: any;
 }
 
-const Hero: React.FC<HeroProps> = ({ config }) => {
+const Hero: React.FC<HeroProps> = ({ config, liveStats }) => {
   const layout = config?.layout || 'cinematic';
+  const commonProps = { config, liveStats };
 
   switch (layout) {
     case 'split':
-      return <HeroSplit config={config} />;
+      return <HeroSplit {...commonProps} />;
     case 'carousel':
-      return <HeroCarousel config={config} />;
+      return <HeroCarousel {...commonProps} />;
     case 'magazine':
-      return <HeroMagazine config={config} />;
+      return <HeroMagazine {...commonProps} />;
     case 'interactive':
-      return <HeroInteractive config={config} />;
+      return <HeroInteractive {...commonProps} />;
     case 'minimal':
-      return <HeroMinimal config={config} />;
+      return <HeroMinimal {...commonProps} />;
     case 'cinematic':
     default:
-      return <HeroCinematic config={config} />;
+      return <HeroCinematic {...commonProps} />;
   }
 };
 

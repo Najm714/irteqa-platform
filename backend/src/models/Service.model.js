@@ -38,6 +38,12 @@ const ServiceSchema = new mongoose.Schema({
     type: String,
     default: 'fa-cog',
   },
+  // ✅ حقل الصورة
+  image: {
+    type: String,
+    default: '',
+    trim: true,
+  },
   slug: {
     type: String,
     required: [true, 'Slug is required'],
@@ -97,7 +103,7 @@ ServiceSchema.index({ portalId: 1, isPublished: 1, order: 1 });
 // ✅ Pre-save middleware
 ServiceSchema.pre('save', function(next) {
   this.updatedAt = new Date();
-  
+
   if (!this.slug || this.slug.trim() === '') {
     const baseName = this.nameAr || this.name || 'service';
     this.slug = baseName
@@ -108,9 +114,9 @@ ServiceSchema.pre('save', function(next) {
       .replace(/-+/g, '-')
       .replace(/^-+|-+$/g, '');
   }
-  
+
   next();
 });
 
-export const Service = mongoose.models.Service || 
-  mongoose.model('Service', ServiceSchema);
+export const Service =
+  mongoose.models.Service || mongoose.model('Service', ServiceSchema);

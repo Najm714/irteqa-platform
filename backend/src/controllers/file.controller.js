@@ -222,6 +222,10 @@ export const uploadFile = async (req, res) => {
       });
     }
 
+    // ✅ تعريف المتغيرات في الأعلى (قبل أي شرط)
+    let thumbnailFile = null;
+    let videoDuration = 0;
+
     const allowedCategories = [
       'payment_proof',
       'user',
@@ -253,14 +257,13 @@ export const uploadFile = async (req, res) => {
       'slide',
       'cover',
       'logo',
+      'sections-bg',
+      'sections-pattern',
     ];
 
     const finalCategory = category || 'user';
 
-    if (
-      role === 'customer' &&
-      !allowedCategories.includes(finalCategory)
-    ) {
+    if (role === 'customer' && !allowedCategories.includes(finalCategory)) {
       return res.status(403).json({
         success: false,
         message: `Category "${finalCategory}" is not allowed for customers.`,
@@ -268,17 +271,9 @@ export const uploadFile = async (req, res) => {
       });
     }
 
-    const specialistAllowed = [
-      ...allowedCategories,
-      'work',
-      'final',
-      'delivery',
-    ];
+    const specialistAllowed = [...allowedCategories, 'work', 'final', 'delivery'];
 
-    if (
-      role === 'specialist' &&
-      !specialistAllowed.includes(finalCategory)
-    ) {
+    if (role === 'specialist' && !specialistAllowed.includes(finalCategory)) {
       return res.status(403).json({
         success: false,
         message: `Category "${finalCategory}" is not allowed for specialists.`,
@@ -312,8 +307,6 @@ export const uploadFile = async (req, res) => {
     // ============================================================
     // ✅ استخراج صورة مصغرة إذا كان فيديو
     // ============================================================
-    let thumbnailFile = null;
-
     if (
       req.file.mimetype.startsWith('video/') &&
       finalCategory === 'video'
@@ -322,43 +315,58 @@ export const uploadFile = async (req, res) => {
         console.log('🎬 Extracting thumbnail for video...');
 
         const thumbnailResult = await thumbnailService.extractAndUpload(
-  req.file.buffer,
-  portalId,
-  accountId,
-  { width: 640, height: 360 }
-);
+          req.file.buffer,
+          portalId,
+          accountId,
+          { width: 640, height: 360 }
+        );
 
-thumbnailFile = thumbnailResult;
-
-// ✅ احفظ المدة في Response
-const videoDuration = thumbnailResult.duration || 0;
-console.log('📊 Video duration:', videoDuration, 'seconds');
-
+        thumbnailFile = thumbnailResult;
+        videoDuration = thumbnailResult.duration || 0;
+        console.log('📊 Video duration:', videoDuration, 'seconds');
         console.log('✅ Thumbnail created:', thumbnailFile._id);
       } catch (thumbError) {
         console.warn('⚠️ Thumbnail failed:', thumbError.message);
-        // ✅ لا نوقف العملية
       }
     }
 
     // ============================================================
-    // ✅ رد واحد فقط
+    // ✅ ✅ ✅ بناء URL العام للملف
+    // ============================================================
+    const protocol =
+      req.get('x-forwarded-proto')?.split(',')[0]?.trim() ||
+      req.protocol ||
+      'https';
+    const host = req.get('host');
+    const baseUrl = `${protocol}://${host}`;
+
+    // ✅ URL يستخدم حسب نوع الملف
+    const isVideo = req.file.mimetype.startsWith('video/');
+    const endpoint = isVideo ? 'stream' : 'thumbnail';
+    const fileUrl = `${baseUrl}/api/files/${endpoint}/${file._id}?portalId=${portalId}`;
+
+    console.log('🔗 Generated URL:', fileUrl);
+
+    // ============================================================
+    // ✅ Response
     // ============================================================
     return res.status(201).json({
       success: true,
       data: {
-        file,
+        file: {
+          ...file.toObject(),
+          url: fileUrl,  // ✅ URL داخل file
+        },
+        url: fileUrl,    // ✅ URL في الجذر
         thumbnail: thumbnailFile,
         thumbnailId: thumbnailFile?._id,
-        duration: videoDuration,  // ← ✅ أضف
-
+        duration: videoDuration,
       },
       message: 'File uploaded successfully',
     });
   } catch (error) {
     console.error('❌ Upload file error:', error);
 
-    // ✅ تأكد من عدم إرسال رد مزدوج
     if (res.headersSent) {
       console.warn('⚠️ Headers already sent, cannot send error response');
       return;
@@ -1198,9 +1206,20 @@ export const getThumbnailPublic = async (req, res) => {
       'hero-video',
       'popup-image',
       'side-banner-image',
+      'mid-banner-image',      // ✅ جديد
+      'slide-image',           // ✅ جديد
+      'splash-logo',           // ✅ جديد
+      'sections-bg',           // ✅ ← الأهم
+      'sections-pattern',      // ✅ جديد
       'library',
       'image',
     ];
+
+    console.log('🔍 getThumbnailPublic:', {
+      id,
+      portalId,
+      publicCategories,
+    });
 
     const file = await File.findOne({
       _id: id,
@@ -1208,6 +1227,14 @@ export const getThumbnailPublic = async (req, res) => {
       isDeleted: { $ne: true },
       category: { $in: publicCategories },
     });
+
+    console.log('📄 File lookup result:', file ? {
+      _id: file._id,
+      category: file.category,
+      portalId: file.portalId,
+      mimeType: file.mimeType,
+      size: file.size,
+    } : 'NOT FOUND');
 
     if (!file) {
       return res.status(404).json({
