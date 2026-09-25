@@ -1590,9 +1590,11 @@ const ServiceTable: React.FC<any> = ({
               <td className="px-4 py-3">
                 <span className="px-2 py-1 rounded bg-gray-100 dark:bg-gray-700 text-xs font-mono">{item.slug}</span>
               </td>
-              <td className="px-4 py-3 text-gray-600 dark:text-gray-400">
-                {item.pricing?.defaultPrice > 0 ? `${item.pricing.defaultPrice} ريال` : 'مجاني'}
-              </td>
+<td className="px-4 py-3 text-gray-600 dark:text-gray-400">
+  {item.pricing?.defaultPrice > 0
+    ? `${item.pricing.defaultPrice} ريال`
+    : 'حسب الطلب'}
+</td>
               <td className="px-4 py-3">
                 <div className="flex flex-col gap-1">
                   {getPublishBadge(item.isPublished)}

@@ -183,10 +183,6 @@ const Services: React.FC = () => {
   const getSectionDescription = (section: Section) =>
     section.descriptionAr || section.description || '';
 
-  const formatPrice = (price: number) => {
-    if (price === 0) return 'مجاني';
-    return `${price} ريال`;
-  };
 
   // ============================================================
   // ✅ تصفية الخدمات
@@ -504,10 +500,6 @@ const Services: React.FC = () => {
                     {service.isFeatured && (
                       <FaStar className="text-amber-500 mx-auto mt-1" />
                     )}
-
-                    <div className="mt-2 text-xs text-gray-500 dark:text-gray-400">
-                      {formatPrice(service.pricing?.defaultPrice || 0)}
-                    </div>
 
                     <div className="mt-3">
                       <span className="text-purple-600 dark:text-purple-400 text-sm font-semibold flex items-center justify-center gap-1 opacity-0 group-hover:opacity-100 transition">
