@@ -30,6 +30,7 @@ interface Section {
   description?: string;
   descriptionAr?: string;
   icon: string;
+  image?: string;
   slug: string;
   category?: string;
   order: number;
@@ -43,6 +44,7 @@ interface MainSectionConfig {
   title: string;
   description: string;
   icon: string;
+  image?: string;
   stats: string;
   link: string;
   category: string;
@@ -59,10 +61,22 @@ const MAIN_SECTIONS: MainSectionConfig[] = [
     title: 'الشروحات والملخصات',
     description: 'شروحات خصوصية وملخصات منظمة للمقررات الجامعية',
     icon: '📚',
+    image: '',
     stats: 'مقررات جامعية',
     link: '/explanations',
     category: 'explanations',
-    matchSlugs: ['explanations', 'sharh', 'shurooh', 'ملخصات', 'شروحات'],
+    // ✅ إضافة كل الأسماء الفعلية في قاعدة البيانات
+    matchSlugs: [
+      'explanations',
+      'sharh',
+      'shurooh',
+      'ملخصات',
+      'شروحات',
+      'explanation',
+      'قسم-الابحاث',        // ← ✅ القسم الفعلي
+      'بحث-علمي',            // ← ✅
+      'خدمات-اكاديمية',      // ← ✅
+    ],
   },
 ];
 
@@ -98,7 +112,7 @@ const SECTION_ICONS: Record<string, string> = {
 };
 
 // ============================================================
-// ✅ نمط افتراضي (يُستبدل من الأدمن)
+// ✅ نمط افتراضي
 // ============================================================
 const DEFAULT_STYLE = {
   header: {
@@ -155,7 +169,7 @@ const DEFAULT_STYLE = {
 };
 
 // ============================================================
-// ✅ Helper: بناء style الخلفية
+// ✅ Helpers
 // ============================================================
 const buildBackgroundStyle = (background: any): React.CSSProperties => {
   const style: React.CSSProperties = {};
@@ -187,9 +201,6 @@ const buildBackgroundStyle = (background: any): React.CSSProperties => {
   return style;
 };
 
-// ============================================================
-// ✅ Helper: تحويل Shadow
-// ============================================================
 const getShadowValue = (shadow: string): string => {
   const shadows: Record<string, string> = {
     none: 'none',
@@ -201,11 +212,38 @@ const getShadowValue = (shadow: string): string => {
   return shadows[shadow] || shadows.lg;
 };
 
-// ============================================================
-// ✅ Helper: تحويل Icon Size
-// ============================================================
 const getIconSize = (size: string): string => {
   return { sm: '48px', md: '58px', lg: '68px', xl: '80px' }[size] || '58px';
+};
+
+// ============================================================
+// ✅ Helper: ابحث عن صورة القسم الرئيسي من البيانات
+// ============================================================
+const findMainSectionImage = (
+  mainSection: MainSectionConfig,
+  allSections: Section[]
+): string => {
+  // ✅ 1. ابحث عن قسم في DB له slug مطابق
+  const matchingSection = allSections.find((s) => {
+    // قسم رئيسي فقط (لا يحتوي على parentId)
+    if (s.parentId) return false;
+
+    // slugه يطابق matchSlugs
+    if (mainSection.matchSlugs?.includes(s.slug)) return true;
+
+    // أو _id في matchParentIds
+    if (mainSection.matchParentIds?.includes(s._id)) return true;
+
+    return false;
+  });
+
+  // ✅ 2. إذا وُجد ومعه صورة → استخدمها
+  if (matchingSection?.image) {
+    return matchingSection.image;
+  }
+
+  // ✅ 3. وإلا → استخدم الصورة الثابتة (إن وُجدت)
+  return mainSection.image || '';
 };
 
 // ============================================================
@@ -225,7 +263,7 @@ const MainSections: React.FC = () => {
   const PORTAL_ID = resolvePortalId();
 
   // ============================================================
-  // ✅ جلب الأقسام + النمط بالتوازي
+  // ✅ جلب الأقسام + النمط
   // ============================================================
   const fetchAll = useCallback(async () => {
     if (isFetchingRef.current) return;
@@ -262,6 +300,17 @@ const MainSections: React.FC = () => {
           .filter((s: Section) => s.isPublished)
           .sort((a: Section, b: Section) => a.order - b.order);
         setDynamicSections(sortedSections);
+
+        // ✅ للتشخيص — طباعة الأقسام مع صورها
+        console.log(
+          '📸 Sections with images:',
+          sortedSections.map((s: Section) => ({
+            name: s.nameAr,
+            slug: s.slug,
+            image: s.image ? '✅ ' + s.image.substring(0, 50) : '❌ EMPTY',
+          }))
+        );
+
         setError(null);
       } else {
         setError(sectionsData.message || 'حدث خطأ في تحميل الأقسام');
@@ -326,7 +375,7 @@ const MainSections: React.FC = () => {
   );
 
   // ============================================================
-  // ✅ CSS Variables محسوبة
+  // ✅ CSS Variables
   // ============================================================
   const cssVars = useMemo(() => {
     const c = styleConfig.colors || {};
@@ -336,7 +385,6 @@ const MainSections: React.FC = () => {
     const i = styleConfig.icons || {};
 
     return {
-      // Colors
       '--ms-primary': c.primary,
       '--ms-secondary': c.secondary,
       '--ms-accent': c.accent,
@@ -350,36 +398,23 @@ const MainSections: React.FC = () => {
       '--ms-border-color-dark': c.borderColorDark,
       '--ms-gradient-start': c.gradientStart,
       '--ms-gradient-end': c.gradientEnd,
-
-      // Card
       '--ms-card-radius': `${cd.borderRadius}px`,
       '--ms-card-shadow': getShadowValue(cd.shadow),
       '--ms-card-border-width': `${cd.borderWidth}px`,
       '--ms-card-padding': `${cd.padding}px`,
-
-      // Layout
       '--ms-grid-cols': l.gridColumns,
       '--ms-gap': `${l.gap}px`,
       '--ms-max-width': `${l.maxWidth}px`,
       '--ms-padding-v': `${l.paddingVertical}px`,
-
-      // Icons
       '--ms-icon-size': getIconSize(i.size),
-
-      // Typography
       '--ms-title-size': `${t.titleSize}px`,
       '--ms-desc-size': `${t.descriptionSize}px`,
       '--ms-title-weight': t.titleWeight,
       '--ms-font-family': t.fontFamily,
-
-      // Animations
       '--ms-anim-duration': `${styleConfig.animations?.duration || 500}ms`,
     } as React.CSSProperties;
   }, [styleConfig]);
 
-  // ============================================================
-  // ✅ Helper: تصنيف hover
-  // ============================================================
   const hoverClass = `ms-hover-${styleConfig.card?.hoverEffect || 'lift'}`;
   const cardStyle = `ms-card-${styleConfig.card?.style || 'elevated'}`;
   const bgStyle = buildBackgroundStyle(styleConfig.background);
@@ -435,7 +470,6 @@ const MainSections: React.FC = () => {
       data-card-style={cardStyle}
       data-hover={hoverClass}
     >
-      {/* ✅ دوائر زخرفية */}
       {styleConfig.layout?.showDecorCircles && (
         <>
           <div className="ms-decor ms-decor-1" aria-hidden="true" />
@@ -447,9 +481,7 @@ const MainSections: React.FC = () => {
         className="container-custom"
         style={{ maxWidth: cssVars['--ms-max-width'] }}
       >
-        {/* ====================================================
-            Header
-        ==================================================== */}
+        {/* Header */}
         {styleConfig.header?.enabled !== false && (
           <div className={`section-header enhanced-section-header ms-align-${alignment}`}>
             <span className="section-eyebrow">
@@ -474,9 +506,7 @@ const MainSections: React.FC = () => {
           </div>
         )}
 
-        {/* ====================================================
-            Error
-        ==================================================== */}
+        {/* Error */}
         {error ? (
           <div className="section-error-card">
             <div className="error-icon">!</div>
@@ -490,11 +520,30 @@ const MainSections: React.FC = () => {
             </button>
           </div>
         ) : (
-          <div className="sections-grid">
+          <div
+  className="sections-grid"
+  style={{
+    display: 'grid',
+    gridTemplateColumns: 'repeat(auto-fit, minmax(340px, 1fr))',
+    gap: 'var(--ms-gap)',
+  }}
+>
             {MAIN_SECTIONS.map((mainSection, index) => {
               const subSections = getDynamicSectionsByCategory(
                 mainSection.category
               );
+
+              // ✅ ✅ ✅ ابحث عن صورة القسم الرئيسي من البيانات الفعلية
+              const mainSectionImage = findMainSectionImage(
+                mainSection,
+                dynamicSections
+              );
+
+              // ✅ للتشخيص
+              console.log('🖼️ Main section image:', {
+                section: mainSection.title,
+                image: mainSectionImage || '❌ EMPTY',
+              });
 
               return (
                 <div
@@ -509,10 +558,46 @@ const MainSections: React.FC = () => {
                   <div className="card-top-line"></div>
 
                   <Link to={mainSection.link} className="main-section-link">
-                    <div className="main-card-header">
-                      <div className="card-icon main-card-icon">
-                        <span>{mainSection.icon}</span>
+                    {/* ✅ صورة القسم الرئيسي */}
+                    <div className="main-card-image">
+                      {mainSectionImage ? (
+                        <img
+                          src={mainSectionImage}
+                          alt={mainSection.title}
+                          className="main-card-image-img"
+                          onError={(e) => {
+                            console.error(
+                              '❌ Failed to load image:',
+                              mainSectionImage
+                            );
+                            e.currentTarget.style.display = 'none';
+                            const fallback = e.currentTarget
+                              .nextElementSibling as HTMLElement;
+                            if (fallback) fallback.style.display = 'flex';
+                          }}
+                          onLoad={() => {
+                            console.log(
+                              '✅ Image loaded:',
+                              mainSectionImage
+                            );
+                          }}
+                        />
+                      ) : null}
+
+                      {/* Fallback: أيقونة */}
+                      <div
+                        className="main-card-image-fallback"
+                        style={{
+                          display: mainSectionImage ? 'none' : 'flex',
+                        }}
+                      >
+                        {mainSection.icon}
                       </div>
+
+                      {/* Gradient overlay */}
+                      <div className="main-card-image-overlay" />
+
+                      {/* Badge: أكاديمي */}
                       <div className="main-card-badge">أكاديمي</div>
                     </div>
 
@@ -529,7 +614,7 @@ const MainSections: React.FC = () => {
                         {subSections.length > 0 && (
                           <span className="stat-item stat-primary">
                             <span className="stat-icon">▦</span>
-                            {subSections.length} أقسام الخدمات الأكاديمية
+                            {subSections.length} أقسام فرعية
                           </span>
                         )}
                       </div>
@@ -551,6 +636,7 @@ const MainSections: React.FC = () => {
                     </div>
                   </Link>
 
+                  {/* الأقسام الفرعية */}
                   {subSections.length > 0 && (
                     <div className="sub-sections">
                       <div className="sub-section-heading">
@@ -572,8 +658,26 @@ const MainSections: React.FC = () => {
                             to={`/services?section=${subSection._id}`}
                             className="sub-section-item"
                           >
+                            {/* ✅ صورة القسم الفرعي */}
                             <span className="sub-section-icon">
-                              {getSectionIcon(subSection.icon)}
+                              {subSection.image ? (
+                                <img
+                                  src={subSection.image}
+                                  alt={getSectionName(subSection)}
+                                  className="sub-section-img"
+                                  onError={(e) => {
+                                    e.currentTarget.style.display = 'none';
+                                    const parent = e.currentTarget
+                                      .parentElement;
+                                    if (parent) {
+                                      parent.textContent =
+                                        getSectionIcon(subSection.icon);
+                                    }
+                                  }}
+                                />
+                              ) : (
+                                getSectionIcon(subSection.icon)
+                              )}
                             </span>
                             <span className="sub-section-name">
                               {getSectionName(subSection)}
@@ -590,9 +694,7 @@ const MainSections: React.FC = () => {
           </div>
         )}
 
-        {/* ====================================================
-            Extra Sections
-        ==================================================== */}
+        {/* Extra Sections */}
         {extraSections.length > 0 && (
           <div className="extra-sections">
             <div className="extra-section-heading">
@@ -612,14 +714,36 @@ const MainSections: React.FC = () => {
                   to={`/services?section=${section._id}`}
                   className={`extra-section-card ${cardStyle} ${hoverClass}`}
                 >
-                  <div className="extra-card-icon">
-                    {getSectionIcon(section.icon)}
+                  {/* ✅ صورة القسم الإضافي */}
+                  <div className="extra-card-image">
+                    {section.image ? (
+                      <img
+                        src={section.image}
+                        alt={getSectionName(section)}
+                        className="extra-card-image-img"
+                        onError={(e) => {
+                          e.currentTarget.style.display = 'none';
+                          const fallback = e.currentTarget
+                            .nextElementSibling as HTMLElement;
+                          if (fallback) fallback.style.display = 'flex';
+                        }}
+                      />
+                    ) : null}
+
+                    <div
+                      className="extra-card-image-fallback"
+                      style={{ display: section.image ? 'none' : 'flex' }}
+                    >
+                      {getSectionIcon(section.icon)}
+                    </div>
+
+                    <div className="extra-card-image-overlay" />
                   </div>
+
                   <div className="extra-card-content">
                     <h4>{getSectionName(section)}</h4>
                     <p>{getSectionDescription(section)}</p>
                   </div>
-                  <span className="extra-card-arrow">←</span>
                 </Link>
               ))}
             </div>

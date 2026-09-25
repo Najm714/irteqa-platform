@@ -14,7 +14,7 @@
   opacity: 0.6;
 }
 
-/* ✅ دوائر زخرفية */
+/* دوائر زخرفية */
 .ms-decor {
   position: absolute;
   border-radius: 50%;
@@ -134,8 +134,41 @@
   position: relative;
   z-index: 1;
   display: grid;
-  grid-template-columns: repeat(var(--ms-grid-cols, 3), minmax(0, 1fr));
+  grid-template-columns: repeat(auto-fit, minmax(340px, 1fr));
   gap: var(--ms-gap, 16px);
+  max-width: 100%;
+}
+
+/* ✅ إذا كانت بطاقة واحدة فقط → عرض محدود متمركز */
+.sections-grid > :only-child {
+  max-width: 720px;
+  margin: 0 auto;
+  grid-column: 1 / -1;
+}
+
+/* ✅ إذا كانت بطاقتان → 2 أعمدة متساوية */
+.sections-grid > :nth-child(2):last-child {
+  grid-column: span 1;
+}
+
+/* ✅ إذا كانت 3 → 3 أعمدة */
+@media (min-width: 968px) {
+  .sections-grid:has(> :nth-child(3)) {
+    grid-template-columns: repeat(3, minmax(0, 1fr));
+  }
+}
+
+/* ✅ على الشاشات الصغيرة */
+@media (max-width: 768px) {
+  .sections-grid {
+    grid-template-columns: 1fr;
+  }
+}
+
+@media (max-width: 1024px) and (min-width: 768px) {
+  .sections-grid:has(> :nth-child(2)) {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
 }
 
 /* ============================================================
@@ -244,20 +277,66 @@
 }
 
 /* ============================================================
+   ✅ Main Card Image (خارج Media Query)
+   ============================================================ */
+.main-card-image {
+  position: relative;
+  width: 100%;
+  height: 200px;
+  overflow: hidden;
+  background: linear-gradient(
+    135deg,
+    var(--ms-gradient-start, #7c3aed),
+    var(--ms-gradient-end, #ec4899)
+  );
+}
+
+.main-card-image-img {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+  transition: transform 0.4s ease;
+  display: block;
+}
+
+.main-section-card:hover .main-card-image-img {
+  transform: scale(1.08);
+}
+
+.main-card-image-fallback {
+  position: absolute;
+  inset: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 4rem;
+  color: white;
+}
+
+.main-card-image-overlay {
+  position: absolute;
+  inset: 0;
+  background: linear-gradient(
+    to bottom,
+    rgba(0, 0, 0, 0.05) 0%,
+    rgba(0, 0, 0, 0.35) 100%
+  );
+  pointer-events: none;
+}
+
+/* ============================================================
    Card Content
    ============================================================ */
 .main-section-link {
   display: block;
   text-decoration: none;
   color: inherit;
-  padding: var(--ms-card-padding, 28px);
+  padding: 0;              /* ✅ تم التعديل */
 }
 
+/* ✅ إخفاء الرأس القديم */
 .main-card-header {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  gap: 1rem;
+  display: none;
 }
 
 .card-icon {
@@ -279,26 +358,29 @@
   transition: transform 0.3s ease;
 }
 
-.main-section-card:hover .main-card-icon {
-  transform: scale(1.06) rotate(-2deg);
-}
-
 .main-card-icon span {
   font-size: calc(var(--ms-icon-size, 68px) * 0.45);
 }
 
+/* ✅ Badge فوق الصورة */
 .main-card-badge {
+  position: absolute;
+  top: 1rem;
+  left: 1rem;
   padding: 0.4rem 0.75rem;
   border-radius: 9999px;
-  background: rgba(124, 58, 237, 0.08);
+  background: rgba(255, 255, 255, 0.95);
   color: var(--ms-primary, #7c3aed);
-  border: 1px solid rgba(124, 58, 237, 0.15);
   font-size: 0.72rem;
   font-weight: 700;
+  backdrop-filter: blur(10px);
+  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.1);
+  z-index: 2;
 }
 
+/* ✅ محتوى البطاقة (بدون الرأس) */
 .main-card-content {
-  margin-top: 1.4rem;
+  padding: 1.5rem 1.75rem 0;
 }
 
 .main-card-content h3 {
@@ -370,7 +452,7 @@
   display: flex;
   align-items: center;
   justify-content: space-between;
-  margin-top: 1.4rem;
+  margin: 1rem 1.75rem 1.5rem;   /* ✅ تم التعديل */
   padding-top: 1rem;
   border-top: 1px solid rgba(0, 0, 0, 0.05);
   color: var(--ms-primary, #7c3aed);
@@ -503,20 +585,30 @@
   transform: translateY(-2px);
 }
 
+/* ✅ صورة القسم الفرعي */
 .sub-section-icon {
-  width: 30px;
-  height: 30px;
-  flex: 0 0 30px;
+  width: 32px;
+  height: 32px;
+  flex: 0 0 32px;
   display: flex;
   align-items: center;
   justify-content: center;
   border-radius: 0.55rem;
-  background: rgba(255, 255, 255, 0.6);
+  background: white;
   font-size: 0.9rem;
+  overflow: hidden;
+  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.04);
 }
 
 .dark .sub-section-icon {
-  background: rgba(0, 0, 0, 0.3);
+  background: #111827;
+}
+
+.sub-section-img {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+  border-radius: 0.55rem;
 }
 
 .sub-section-name {
@@ -592,18 +684,20 @@
   gap: 0.8rem;
 }
 
+/* ✅ البطاقة الإضافية (عمودية مع صورة) */
 .extra-section-card {
   display: flex;
-  align-items: center;
-  gap: 0.8rem;
+  flex-direction: column;
+  align-items: stretch;
   min-width: 0;
-  padding: 1rem;
+  padding: 0;
   border-radius: 1rem;
   background: var(--ms-card-bg, #ffffff);
   border: 1px solid var(--ms-border-color, #e5e7eb);
   text-decoration: none;
   color: inherit;
   transition: all 0.25s ease;
+  overflow: hidden;
 }
 
 .dark .extra-section-card {
@@ -611,27 +705,65 @@
   border-color: var(--ms-border-color-dark, #374151);
 }
 
-.extra-card-icon {
-  width: 42px;
-  height: 42px;
-  flex: 0 0 42px;
+/* ✅ صورة القسم الإضافي */
+.extra-card-image {
+  position: relative;
+  width: 100%;
+  height: 140px;
+  overflow: hidden;
+  background: linear-gradient(
+    135deg,
+    var(--ms-gradient-start, #7c3aed),
+    var(--ms-gradient-end, #ec4899)
+  );
+}
+
+.extra-card-image-img {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+  transition: transform 0.4s ease;
+  display: block;
+}
+
+.extra-section-card:hover .extra-card-image-img {
+  transform: scale(1.08);
+}
+
+.extra-card-image-fallback {
+  position: absolute;
+  inset: 0;
   display: flex;
   align-items: center;
   justify-content: center;
-  border-radius: 0.8rem;
-  background: rgba(124, 58, 237, 0.08);
-  font-size: 1.25rem;
+  font-size: 3rem;
+  color: white;
 }
 
+.extra-card-image-overlay {
+  position: absolute;
+  inset: 0;
+  background: linear-gradient(
+    to bottom,
+    rgba(0, 0, 0, 0.05) 0%,
+    rgba(0, 0, 0, 0.3) 100%
+  );
+  pointer-events: none;
+}
+
+/* ✅ محتوى القسم الإضافي */
 .extra-card-content {
+  padding: 1rem 1.25rem;
   flex: 1;
-  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 0.35rem;
 }
 
 .extra-card-content h4 {
   margin: 0;
   color: var(--ms-title-color, #111827);
-  font-size: 0.88rem;
+  font-size: 0.95rem;
   font-weight: 750;
 }
 
@@ -640,22 +772,19 @@
 }
 
 .extra-card-content p {
-  margin: 0.25rem 0 0;
+  margin: 0;
   color: var(--ms-desc-color, #9ca3af);
-  font-size: 0.72rem;
+  font-size: 0.75rem;
   overflow: hidden;
   text-overflow: ellipsis;
-  white-space: nowrap;
+  display: -webkit-box;
+  -webkit-line-clamp: 2;
+  -webkit-box-orient: vertical;
 }
 
+/* ✅ إخفاء السهم القديم */
 .extra-card-arrow {
-  color: rgba(0, 0, 0, 0.3);
-  transition: transform 0.2s ease;
-}
-
-.extra-section-card:hover .extra-card-arrow {
-  transform: translateX(-4px);
-  color: var(--ms-accent, #8b5cf6);
+  display: none;
 }
 
 /* ============================================================
@@ -783,7 +912,7 @@
 }
 
 /* ============================================================
-   Responsive
+   ✅ Responsive
    ============================================================ */
 @media (max-width: 1024px) {
   .extra-sections-grid {
@@ -795,7 +924,12 @@
   }
 
   .sections-grid {
-    grid-template-columns: repeat(min(var(--ms-grid-cols, 3), 2), minmax(0, 1fr));
+    grid-template-columns:
+      repeat(min(var(--ms-grid-cols, 3), 2), minmax(0, 1fr));
+  }
+
+  .main-card-image {
+    height: 180px;
   }
 }
 
@@ -816,16 +950,35 @@
     align-items: flex-start;
     flex-direction: column;
   }
+
+  .main-card-image {
+    height: 160px;
+  }
+
+  .extra-card-image {
+    height: 120px;
+  }
+
+  .main-card-content {
+    padding: 1.25rem 1.5rem 0;
+  }
+
+  .main-card-action {
+    margin: 1rem 1.5rem 1.25rem;
+  }
+
+  .sub-sections {
+    margin: 0 1.5rem 1.5rem;
+  }
 }
 
 @media (max-width: 480px) {
-  .main-card-header {
-    align-items: flex-start;
+  .main-card-image {
+    height: 140px;
   }
 
-  .main-card-icon {
-    width: 58px;
-    height: 58px;
+  .extra-card-image {
+    height: 100px;
   }
 
   .card-stats {
@@ -836,4 +989,17 @@
   .stat-item {
     width: fit-content;
   }
+}
+/* ✅ فرض قيمة الـ border-radius */
+.main-section-card {
+  border-radius: 24px !important;
+  aspect-ratio: auto !important;
+  width: auto !important;
+  height: auto !important;
+  min-height: 400px;
+  max-width: 100% !important;
+}
+
+.main-card-image {
+  border-radius: 0 !important;
 }
