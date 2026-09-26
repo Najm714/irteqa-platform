@@ -21,7 +21,7 @@ const PORTAL_ID = process.env.SEED_PORTAL_ID || '6aa45ad70a89ed89eeb18e41';
 // ✅ الصورة التي تريد إضافتها (عدّلها حسب رغبتك)
 const SECTION_SLUG = 'explanations';
 const IMAGE_URL =
-'https://images.unsplash.com/photo-1481627834876-b7833e8f5570?w=800&h=600&fit=crop&q=80'
+'https://images.unsplash.com/photo-1507842217343-583bb7270b66?w=800&h=600&fit=crop&q=80'
 
 // ============================================================
 // 🚀 التنفيذ
