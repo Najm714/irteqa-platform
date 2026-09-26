@@ -1,6 +1,6 @@
 // backend/scripts/seedAcademicServices.js
 // ============================================================
-// 🚀 Script لإدراج الخدمات الأكاديمية تلقائياً
+// 🚀 Script لإدراج / تحديث الخدمات الأكاديمية تلقائياً (3 أقسام)
 // ============================================================
 // الاستخدام:
 //   cd backend
@@ -19,85 +19,54 @@ dotenv.config();
 // ✅ إعدادات
 // ============================================================
 const PORTAL_ID = process.env.SEED_PORTAL_ID || '6aa45ad70a89ed89eeb18e41';
-const ADMIN_EMAIL =
-  process.env.SEED_ADMIN_EMAIL || 'admin@irteqa.com';
+const ADMIN_EMAIL = process.env.SEED_ADMIN_EMAIL || 'admin@irteqa.com';
 
 // ============================================================
-// 📚 البيانات: الأقسام الرئيسية والفرعية
+// 📚 البيانات: 3 أقسام رئيسية فقط
 // ============================================================
 const SECTIONS_DATA = [
   {
-    name: 'Research & Academic Guidance',
-    nameAr: 'البحث العلمي والتوجيه الأكاديمي',
-    slug: 'research',
-    description: 'Research & academic guidance services',
-    descriptionAr: 'خدمات التوجيه البحثي والاستشارات الأكاديمية',
+    name: 'Research & Academic Services',
+    nameAr: 'البحث والخدمات الأكاديمية',
+    slug: 'research-academic',
+    description: 'Research, consulting and academic output services',
+    descriptionAr:
+      'خدمات البحث العلمي والاستشارات والإخراج الأكاديمي (سيرة ذاتية، عروض، بوسترات)',
     icon: 'fa-microscope',
     order: 1,
   },
   {
-    name: 'Statistical Analysis',
-    nameAr: 'التحليل الإحصائي',
-    slug: 'statistics',
-    description: 'Statistical analysis services',
-    descriptionAr: 'خدمات التحليل الإحصائي بمختلف البرامج',
+    name: 'Statistical Analysis & Data',
+    nameAr: 'التحليل الإحصائي والبيانات',
+    slug: 'statistics-data',
+    description: 'Statistical analysis services using all major software',
+    descriptionAr:
+      'خدمات التحليل الإحصائي بمختلف البرامج (SPSS, AMOS, Smart PLS, SAS, STATA, ...)',
     icon: 'fa-chart-line',
     order: 2,
   },
   {
-    name: 'Translation & Languages',
-    nameAr: 'الترجمة واللغات',
-    slug: 'translation',
-    description: 'Academic translation services',
-    descriptionAr: 'خدمات الترجمة الأكاديمية واللغات',
+    name: 'Language, Editing & Publication',
+    nameAr: 'اللغة والتحرير والنشر',
+    slug: 'language-publication',
+    description:
+      'Translation, editing, proofreading, references and publication services',
+    descriptionAr:
+      'خدمات الترجمة والتدقيق اللغوي والمراجع والدعم الأكاديمي للنشر العلمي',
     icon: 'fa-language',
     order: 3,
-  },
-  {
-    name: 'Editing & Proofreading',
-    nameAr: 'التحرير والتدقيق اللغوي',
-    slug: 'editing',
-    description: 'Editing & proofreading services',
-    descriptionAr: 'خدمات التدقيق اللغوي والتحرير الأكاديمي',
-    icon: 'fa-pen',
-    order: 4,
-  },
-  {
-    name: 'Design & Academic Output',
-    nameAr: 'التصميم والإخراج الأكاديمي',
-    slug: 'design',
-    description: 'Academic design services',
-    descriptionAr: 'خدمات التصميم والإخراج الأكاديمي',
-    icon: 'fa-palette',
-    order: 5,
-  },
-  {
-    name: 'Scientific Publication',
-    nameAr: 'النشر العلمي',
-    slug: 'publication',
-    description: 'Scientific publication support',
-    descriptionAr: 'الدعم الأكاديمي للنشر العلمي',
-    icon: 'fa-newspaper',
-    order: 6,
-  },
-  {
-    name: 'References & Sources',
-    nameAr: 'المراجع والمصادر',
-    slug: 'references',
-    description: 'References & sources services',
-    descriptionAr: 'خدمات توفير وتلخيص المراجع',
-    icon: 'fa-book',
-    order: 7,
   },
 ];
 
 // ============================================================
-// 📋 البيانات: الخدمات (36 خدمة)
+// 📋 البيانات: الخدمات (36 خدمة) موزعة على 3 أقسام
 // ============================================================
 const SERVICES_DATA = [
-  // 🔬 القسم 1: بحث علمي
+  // ========================================================
+  // 🔬 القسم 1: البحث والخدمات الأكاديمية (15 خدمة)
+  // ========================================================
   {
-    section: 'research',
+    section: 'research-academic',
     name: 'Academic Consulting',
     nameAr: 'الاستشارات الأكاديمية',
     description: 'Specialized academic consulting for research stages',
@@ -108,7 +77,7 @@ const SERVICES_DATA = [
     order: 1,
   },
   {
-    section: 'research',
+    section: 'research-academic',
     name: 'Thesis Titles Suggestion',
     nameAr: 'اقتراح عناوين رسائل علمية',
     description: 'Innovative research titles in your academic field',
@@ -119,7 +88,7 @@ const SERVICES_DATA = [
     order: 2,
   },
   {
-    section: 'research',
+    section: 'research-academic',
     name: 'Research Proposal Preparation',
     nameAr: 'إعداد المقترح البحثي',
     description: 'Academic guidance for research proposals',
@@ -130,7 +99,7 @@ const SERVICES_DATA = [
     order: 3,
   },
   {
-    section: 'research',
+    section: 'research-academic',
     name: 'Previous Studies Collection & Analysis',
     nameAr: 'جمع وتحليل الدراسات السابقة',
     description: 'Collection and analysis of previous studies',
@@ -141,7 +110,7 @@ const SERVICES_DATA = [
     order: 4,
   },
   {
-    section: 'research',
+    section: 'research-academic',
     name: 'Scientific Material Collection & Documentation',
     nameAr: 'جمع وتوثيق المادة العلمية',
     description: 'Collection and documentation of scientific material',
@@ -152,7 +121,7 @@ const SERVICES_DATA = [
     order: 5,
   },
   {
-    section: 'research',
+    section: 'research-academic',
     name: 'Academic Critique',
     nameAr: 'النقد الأكاديمي',
     description: 'Constructive academic critique from experts',
@@ -163,7 +132,7 @@ const SERVICES_DATA = [
     order: 6,
   },
   {
-    section: 'research',
+    section: 'research-academic',
     name: 'Thesis Formatting',
     nameAr: 'تنسيق الرسائل العلمية',
     description: 'Professional formatting of academic theses',
@@ -174,7 +143,7 @@ const SERVICES_DATA = [
     order: 7,
   },
   {
-    section: 'research',
+    section: 'research-academic',
     name: 'Results Discussion',
     nameAr: 'مناقشة النتائج',
     description: 'Scientific interpretation and linking to literature',
@@ -185,7 +154,7 @@ const SERVICES_DATA = [
     order: 8,
   },
   {
-    section: 'research',
+    section: 'research-academic',
     name: 'Conceptual Framework Development',
     nameAr: 'بناء التصور المقترح',
     description: 'Building conceptual and research frameworks',
@@ -196,7 +165,7 @@ const SERVICES_DATA = [
     order: 9,
   },
   {
-    section: 'research',
+    section: 'research-academic',
     name: 'Science Mapping Analysis',
     nameAr: 'تحليل الخرائط العلمية',
     description: 'Science mapping and network analysis',
@@ -207,7 +176,7 @@ const SERVICES_DATA = [
     order: 10,
   },
   {
-    section: 'research',
+    section: 'research-academic',
     name: 'Quick Consulting Sessions',
     nameAr: 'جلسات استشارية سريعة',
     description: 'Fast consulting sessions with experts',
@@ -218,7 +187,7 @@ const SERVICES_DATA = [
     order: 11,
   },
   {
-    section: 'research',
+    section: 'research-academic',
     name: 'Research Grants Preparation',
     nameAr: 'الإعداد للتمويل البحثي والمنح',
     description: 'Guidance for research grants and funding',
@@ -228,10 +197,45 @@ const SERVICES_DATA = [
     pricing: { type: 'custom', defaultPrice: 0 },
     order: 12,
   },
-
-  // 📊 القسم 2: التحليل الإحصائي
   {
-    section: 'statistics',
+    section: 'research-academic',
+    name: 'Academic CV Design',
+    nameAr: 'تصميم السيرة الذاتية الأكاديمية',
+    description: 'Professional academic CV design',
+    descriptionAr: 'تصميم سيرة ذاتية احترافية للمجال الأكاديمي',
+    icon: 'fa-id-card',
+    slug: 'academic-cv-design',
+    pricing: { type: 'custom', defaultPrice: 0 },
+    order: 13,
+  },
+  {
+    section: 'research-academic',
+    name: 'Academic Presentation Design',
+    nameAr: 'تصميم العروض التقديمية الأكاديمية',
+    description: 'Professional academic presentation design',
+    descriptionAr: 'تصميم عروض تقديمية أكاديمية احترافية',
+    icon: 'fa-desktop',
+    slug: 'academic-presentation-design',
+    pricing: { type: 'custom', defaultPrice: 0 },
+    order: 14,
+  },
+  {
+    section: 'research-academic',
+    name: 'Research Poster Design',
+    nameAr: 'تصميم البوسترات البحثية',
+    description: 'Professional research poster design',
+    descriptionAr: 'تصميم بوسترات بحثية احترافية للمؤتمرات',
+    icon: 'fa-paint-brush',
+    slug: 'research-poster-design',
+    pricing: { type: 'custom', defaultPrice: 0 },
+    order: 15,
+  },
+
+  // ========================================================
+  // 📊 القسم 2: التحليل الإحصائي والبيانات (9 خدمات)
+  // ========================================================
+  {
+    section: 'statistics-data',
     name: 'SPSS Statistical Analysis',
     nameAr: 'التحليل الإحصائي SPSS',
     description: 'Professional SPSS statistical analysis',
@@ -242,7 +246,7 @@ const SERVICES_DATA = [
     order: 1,
   },
   {
-    section: 'statistics',
+    section: 'statistics-data',
     name: 'Meta-analysis',
     nameAr: 'التحليل التلوي Meta-analysis',
     description: 'Advanced meta-analysis with statistical software',
@@ -253,7 +257,7 @@ const SERVICES_DATA = [
     order: 2,
   },
   {
-    section: 'statistics',
+    section: 'statistics-data',
     name: 'Medical Research Statistics',
     nameAr: 'التحليل الإحصائي للبحوث الطبية',
     description: 'Specialized medical and clinical research statistics',
@@ -264,7 +268,7 @@ const SERVICES_DATA = [
     order: 3,
   },
   {
-    section: 'statistics',
+    section: 'statistics-data',
     name: 'AMOS Statistical Analysis',
     nameAr: 'التحليل الإحصائي AMOS',
     description: 'Path analysis and SEM using AMOS',
@@ -275,7 +279,7 @@ const SERVICES_DATA = [
     order: 4,
   },
   {
-    section: 'statistics',
+    section: 'statistics-data',
     name: 'Qualitative Statistical Analysis',
     nameAr: 'التحليل الإحصائي النوعي',
     description: 'Qualitative analysis using NVivo and other tools',
@@ -286,7 +290,7 @@ const SERVICES_DATA = [
     order: 5,
   },
   {
-    section: 'statistics',
+    section: 'statistics-data',
     name: 'E-Views Statistical Analysis',
     nameAr: 'التحليل الإحصائي E-Views',
     description: 'Econometric analysis using E-Views',
@@ -297,7 +301,7 @@ const SERVICES_DATA = [
     order: 6,
   },
   {
-    section: 'statistics',
+    section: 'statistics-data',
     name: 'SAS Statistical Analysis',
     nameAr: 'التحليل الإحصائي SAS',
     description: 'Advanced statistical analysis using SAS',
@@ -308,7 +312,7 @@ const SERVICES_DATA = [
     order: 7,
   },
   {
-    section: 'statistics',
+    section: 'statistics-data',
     name: 'Smart PLS Statistical Analysis',
     nameAr: 'التحليل الإحصائي Smart PLS',
     description: 'PLS-SEM analysis using Smart PLS',
@@ -319,7 +323,7 @@ const SERVICES_DATA = [
     order: 8,
   },
   {
-    section: 'statistics',
+    section: 'statistics-data',
     name: 'STATA Statistical Analysis',
     nameAr: 'التحليل الإحصائي STATA',
     description: 'Advanced statistical analysis using STATA',
@@ -330,9 +334,11 @@ const SERVICES_DATA = [
     order: 9,
   },
 
-  // 🌐 القسم 3: الترجمة
+  // ========================================================
+  // 🌐 القسم 3: اللغة والتحرير والنشر (12 خدمة)
+  // ========================================================
   {
-    section: 'translation',
+    section: 'language-publication',
     name: 'Academic Translation',
     nameAr: 'الترجمة الأكاديمية',
     description: 'Professional academic translation',
@@ -343,7 +349,7 @@ const SERVICES_DATA = [
     order: 1,
   },
   {
-    section: 'translation',
+    section: 'language-publication',
     name: 'Statement of Purpose (SOP)',
     nameAr: 'خطاب الغرض من الدراسة (SOP)',
     description: 'Review and enhancement of SOP',
@@ -353,10 +359,8 @@ const SERVICES_DATA = [
     pricing: { type: 'custom', defaultPrice: 0 },
     order: 2,
   },
-
-  // ✍️ القسم 4: التحرير والتدقيق
   {
-    section: 'editing',
+    section: 'language-publication',
     name: 'Proofreading',
     nameAr: 'التدقيق اللغوي',
     description: 'Professional linguistic and spelling proofreading',
@@ -364,10 +368,10 @@ const SERVICES_DATA = [
     icon: 'fa-spell-check',
     slug: 'proofreading',
     pricing: { type: 'custom', defaultPrice: 0 },
-    order: 1,
+    order: 3,
   },
   {
-    section: 'editing',
+    section: 'language-publication',
     name: 'Academic Style Enhancement',
     nameAr: 'تحسين الأسلوب الأكاديمي',
     description: 'Enhancement of academic style while preserving content',
@@ -375,10 +379,10 @@ const SERVICES_DATA = [
     icon: 'fa-pen-fancy',
     slug: 'academic-style-enhancement',
     pricing: { type: 'custom', defaultPrice: 0 },
-    order: 2,
+    order: 4,
   },
   {
-    section: 'editing',
+    section: 'language-publication',
     name: 'Comprehensive Academic Review',
     nameAr: 'المراجعة العلمية الشاملة',
     description: 'Comprehensive review of research before final evaluation',
@@ -386,23 +390,10 @@ const SERVICES_DATA = [
     icon: 'fa-search',
     slug: 'comprehensive-academic-review',
     pricing: { type: 'custom', defaultPrice: 0 },
-    order: 3,
-  },
-
-  // 🎨 القسم 5: التصميم
-  {
-    section: 'design',
-    name: 'Academic CV Design',
-    nameAr: 'تصميم السيرة الذاتية الأكاديمية',
-    description: 'Professional academic CV design',
-    descriptionAr: 'تصميم سيرة ذاتية احترافية للمجال الأكاديمي',
-    icon: 'fa-id-card',
-    slug: 'academic-cv-design',
-    pricing: { type: 'custom', defaultPrice: 0 },
-    order: 1,
+    order: 5,
   },
   {
-    section: 'design',
+    section: 'language-publication',
     name: 'Training Packages Preparation',
     nameAr: 'إعداد الحقائب التدريبية',
     description: 'Comprehensive training packages preparation',
@@ -410,34 +401,10 @@ const SERVICES_DATA = [
     icon: 'fa-briefcase',
     slug: 'training-packages-preparation',
     pricing: { type: 'custom', defaultPrice: 0 },
-    order: 2,
+    order: 6,
   },
   {
-    section: 'design',
-    name: 'Academic Presentation Design',
-    nameAr: 'تصميم العروض التقديمية الأكاديمية',
-    description: 'Professional academic presentation design',
-    descriptionAr: 'تصميم عروض تقديمية أكاديمية احترافية',
-    icon: 'fa-desktop',
-    slug: 'academic-presentation-design',
-    pricing: { type: 'custom', defaultPrice: 0 },
-    order: 3,
-  },
-  {
-    section: 'design',
-    name: 'Research Poster Design',
-    nameAr: 'تصميم البوسترات البحثية',
-    description: 'Professional research poster design',
-    descriptionAr: 'تصميم بوسترات بحثية احترافية للمؤتمرات',
-    icon: 'fa-paint-brush',
-    slug: 'research-poster-design',
-    pricing: { type: 'custom', defaultPrice: 0 },
-    order: 4,
-  },
-
-  // 📰 القسم 6: النشر
-  {
-    section: 'publication',
+    section: 'language-publication',
     name: 'Academic Support for Publication',
     nameAr: 'الدعم الأكاديمي للنشر العلمي',
     description: 'Academic support for publishing in peer-reviewed journals',
@@ -445,10 +412,10 @@ const SERVICES_DATA = [
     icon: 'fa-newspaper',
     slug: 'academic-support-publication',
     pricing: { type: 'custom', defaultPrice: 0 },
-    order: 1,
+    order: 7,
   },
   {
-    section: 'publication',
+    section: 'language-publication',
     name: 'Journal Recommendation',
     nameAr: 'ترشيح المجلات العلمية',
     description: 'Recommendation of suitable scientific journals',
@@ -456,10 +423,10 @@ const SERVICES_DATA = [
     icon: 'fa-search-location',
     slug: 'journal-recommendation',
     pricing: { type: 'custom', defaultPrice: 0 },
-    order: 2,
+    order: 8,
   },
   {
-    section: 'publication',
+    section: 'language-publication',
     name: 'Academic E-book',
     nameAr: 'كتاب إلكتروني أكاديمي',
     description: 'Professional academic e-book design and publishing',
@@ -467,12 +434,10 @@ const SERVICES_DATA = [
     icon: 'fa-book-open',
     slug: 'academic-ebook',
     pricing: { type: 'custom', defaultPrice: 0 },
-    order: 3,
+    order: 9,
   },
-
-  // 📚 القسم 7: المراجع
   {
-    section: 'references',
+    section: 'language-publication',
     name: 'Scientific References Provision',
     nameAr: 'توفير المراجع العلمية',
     description: 'Provision of documented scientific references',
@@ -480,10 +445,10 @@ const SERVICES_DATA = [
     icon: 'fa-book',
     slug: 'scientific-references-provision',
     pricing: { type: 'custom', defaultPrice: 0 },
-    order: 1,
+    order: 10,
   },
   {
-    section: 'references',
+    section: 'language-publication',
     name: 'References Romanization',
     nameAr: 'رومنة المراجع العربية',
     description: 'Romanization of Arabic references',
@@ -491,10 +456,10 @@ const SERVICES_DATA = [
     icon: 'fa-font',
     slug: 'references-romanization',
     pricing: { type: 'custom', defaultPrice: 0 },
-    order: 2,
+    order: 11,
   },
   {
-    section: 'references',
+    section: 'language-publication',
     name: 'Books & References Summarization',
     nameAr: 'تلخيص الكتب والمراجع العلمية',
     description: 'Summarization of scientific books and references',
@@ -502,7 +467,7 @@ const SERVICES_DATA = [
     icon: 'fa-file-alt',
     slug: 'books-references-summarization',
     pricing: { type: 'custom', defaultPrice: 0 },
-    order: 3,
+    order: 12,
   },
 ];
 
@@ -532,12 +497,10 @@ const seedAcademicServices = async () => {
       process.exit(1);
     }
 
-    console.log(
-      `✅ Using admin: ${admin.profile?.fullName || admin._id}\n`
-    );
+    console.log(`✅ Using admin: ${admin.profile?.fullName || admin._id}\n`);
 
-    // 3. إنشاء الأقسام
-    console.log('📂 Creating sections...');
+    // 3. إنشاء / تحديث الأقسام
+    console.log('📂 Creating/Updating sections...');
     const sectionMap = new Map();
 
     for (const sectionData of SECTIONS_DATA) {
@@ -548,8 +511,19 @@ const seedAcademicServices = async () => {
       });
 
       if (section) {
-        console.log(`  ⏭️  Section exists: ${sectionData.nameAr}`);
+        // تحديث بيانات القسم الموجود
+        section.name = sectionData.name;
+        section.nameAr = sectionData.nameAr;
+        section.description = sectionData.description;
+        section.descriptionAr = sectionData.descriptionAr;
+        section.icon = sectionData.icon;
+        section.order = sectionData.order;
+        section.isPublished = true;
+
+        await section.save();
+        console.log(`  🔄 Updated section: ${sectionData.nameAr}`);
       } else {
+        // إنشاء قسم جديد
         section = new Section({
           portalId: PORTAL_ID,
           ...sectionData,
@@ -557,7 +531,7 @@ const seedAcademicServices = async () => {
           createdBy: admin._id,
         });
         await section.save();
-        console.log(`  ✅ Created: ${sectionData.nameAr}`);
+        console.log(`  ✅ Created section: ${sectionData.nameAr}`);
       }
 
       sectionMap.set(sectionData.slug, section._id);
@@ -565,10 +539,10 @@ const seedAcademicServices = async () => {
 
     console.log(`\n✅ ${sectionMap.size} sections ready\n`);
 
-    // 4. إنشاء الخدمات
-    console.log('📋 Creating services...');
+    // 4. إنشاء / تحديث الخدمات
+    console.log('📋 Creating/Updating services...');
     let created = 0;
-    let skipped = 0;
+    let updated = 0;
 
     for (const serviceData of SERVICES_DATA) {
       const { section: sectionSlug, ...serviceFields } = serviceData;
@@ -587,32 +561,46 @@ const seedAcademicServices = async () => {
       });
 
       if (existing) {
-        skipped++;
-        continue;
-      }
+        // 🔄 تحديث الخدمة الموجودة (نحافظ على _id والبيانات المرتبطة)
+        existing.sectionId = sectionId;
+        existing.name = serviceFields.name;
+        existing.nameAr = serviceFields.nameAr;
+        existing.description = serviceFields.description;
+        existing.descriptionAr = serviceFields.descriptionAr;
+        existing.icon = serviceFields.icon;
+        existing.order = serviceFields.order;
+        existing.isPublished = true;
 
-      // إنشاء الخدمة
-      const service = new Service({
-        portalId: PORTAL_ID,
-        sectionId,
-        ...serviceFields,
-        isPublished: true,
-        isFeatured: false,
-        createdBy: admin._id,
-      });
+        await existing.save();
+        updated++;
 
-      await service.save();
-      created++;
+        if (updated % 10 === 0) {
+          console.log(`  🔄 Updated ${updated} services...`);
+        }
+      } else {
+        // ✅ إنشاء خدمة جديدة
+        const service = new Service({
+          portalId: PORTAL_ID,
+          sectionId,
+          ...serviceFields,
+          isPublished: true,
+          isFeatured: false,
+          createdBy: admin._id,
+        });
 
-      if (created % 10 === 0) {
-        console.log(`  ✅ Created ${created} services...`);
+        await service.save();
+        created++;
+
+        if (created % 10 === 0) {
+          console.log(`  ✅ Created ${created} services...`);
+        }
       }
     }
 
     console.log(`\n📊 Summary:`);
+    console.log(`  📁 Sections ready: ${sectionMap.size}`);
     console.log(`  ✅ Created: ${created} services`);
-    console.log(`  ⏭️  Skipped: ${skipped} services (already exist)`);
-    console.log(`  📁 Sections: ${sectionMap.size}`);
+    console.log(`  🔄 Updated: ${updated} services`);
     console.log(`\n🎉 Seed completed successfully!`);
   } catch (error) {
     console.error('❌ Seed error:', error);

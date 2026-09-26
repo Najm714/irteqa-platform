@@ -182,6 +182,69 @@ const DEFAULT_CONFIG: SectionsStyleConfig = {
 };
 
 // ============================================================
+// ✅ Helper: Shadow
+// ============================================================
+const getShadowValue = (shadow: string): string => {
+  const shadows: Record<string, string> = {
+    none: 'none',
+    sm: '0 1px 3px rgba(0,0,0,0.08)',
+    md: '0 4px 12px rgba(0,0,0,0.08)',
+    lg: '0 10px 35px rgba(17,24,39,0.06), 0 2px 8px rgba(17,24,39,0.03)',
+    xl: '0 20px 50px rgba(17,24,39,0.12), 0 5px 15px rgba(17,24,39,0.05)',
+  };
+  return shadows[shadow] || shadows.lg;
+};
+
+// ============================================================
+// ✅ Helper: Border Style
+// ============================================================
+const getCardBorder = (
+  cardStyle: string,
+  borderWidth: number,
+  borderColor: string
+): string => {
+  if (cardStyle === 'outlined') return `${Math.max(borderWidth, 2)}px solid ${borderColor}`;
+  if (cardStyle === 'flat') return 'none';
+  if (cardStyle === 'gradient') return 'none';
+  return `${borderWidth}px solid ${borderColor}`;
+};
+
+// ============================================================
+// ✅ Helper: Card Background
+// ============================================================
+const getCardBackground = (
+  cardStyle: string,
+  cardBg: string,
+  gradientStart: string,
+  gradientEnd: string
+): string => {
+  if (cardStyle === 'gradient') {
+    return `linear-gradient(135deg, ${gradientStart}, ${gradientEnd})`;
+  }
+  if (cardStyle === 'glass') {
+    return 'rgba(255,255,255,0.1)';
+  }
+  if (cardStyle === 'flat') {
+    return 'transparent';
+  }
+  return cardBg;
+};
+
+// ============================================================
+// ✅ Helper: Hover Transform
+// ============================================================
+const getHoverTransform = (hoverEffect: string): string => {
+  const transforms: Record<string, string> = {
+    lift: 'translateY(-6px)',
+    scale: 'scale(1.03)',
+    glow: 'translateY(-2px)',
+    border: 'none',
+    none: 'none',
+  };
+  return transforms[hoverEffect] || 'none';
+};
+
+// ============================================================
 // ✅ المكوّن الرئيسي
 // ============================================================
 const AdminSectionsStyle: React.FC = () => {
@@ -219,7 +282,6 @@ const AdminSectionsStyle: React.FC = () => {
 
       const data = await res.json();
       if (data.success) {
-        // ✅ Merge عميق مع DEFAULT_CONFIG لضمان اكتمال الحقول
         const merged: SectionsStyleConfig = {
           ...DEFAULT_CONFIG,
           ...data.data,
@@ -370,7 +432,6 @@ const AdminSectionsStyle: React.FC = () => {
 
       if (!data.success) throw new Error(data.message);
 
-      // ✅ استخدم setConfig مع spread — أضمن من updateField
       setConfig((prev) => ({
         ...prev,
         background: {
@@ -391,12 +452,11 @@ const AdminSectionsStyle: React.FC = () => {
   };
 
   // ============================================================
-  // ✅ تحديث حقل — مع setConfig((prev) => ...) (أضمن)
+  // ✅ تحديث حقل
   // ============================================================
   const updateField = (path: string, value: any) => {
     setConfig((prev) => {
       const keys = path.split('.');
-      // ✅ Deep clone ذكي
       const newConfig: any = JSON.parse(JSON.stringify(prev));
       let current = newConfig;
       for (let i = 0; i < keys.length - 1; i++) {
@@ -860,7 +920,6 @@ const AdminSectionsStyle: React.FC = () => {
               </div>
             </div>
 
-            {/* Solid */}
             {config.background.type === 'solid' && (
               <div>
                 <label className="block text-sm font-medium mb-2">اللون</label>
@@ -881,7 +940,6 @@ const AdminSectionsStyle: React.FC = () => {
               </div>
             )}
 
-            {/* Gradient */}
             {config.background.type === 'gradient' && (
               <div>
                 <label className="block text-sm font-medium mb-2">
@@ -913,7 +971,6 @@ const AdminSectionsStyle: React.FC = () => {
               </div>
             )}
 
-            {/* Image */}
             {config.background.type === 'image' && (
               <div>
                 <label className="block text-sm font-medium mb-2">صورة الخلفية</label>
@@ -983,7 +1040,6 @@ const AdminSectionsStyle: React.FC = () => {
               </div>
             )}
 
-            {/* Pattern */}
             {config.background.type === 'pattern' && (
               <div>
                 <label className="block text-sm font-medium mb-2">النمط</label>
@@ -1007,7 +1063,6 @@ const AdminSectionsStyle: React.FC = () => {
               </div>
             )}
 
-            {/* Opacity */}
             <div>
               <label className="block text-sm font-medium mb-2">
                 الشفافية: {Math.round(config.background.opacity * 100)}%
@@ -1457,7 +1512,9 @@ const AdminSectionsStyle: React.FC = () => {
         )}
       </div>
 
-      {/* Live Preview */}
+      {/* ============================================================
+          ✅ Live Preview — محدث
+      ============================================================ */}
       <div className="mt-6 bg-white dark:bg-gray-800 rounded-2xl p-6 shadow-sm">
         <h3 className="font-bold text-lg mb-4 flex items-center gap-2">
           <FaEye className="text-purple-600" /> معاينة مباشرة
@@ -1478,6 +1535,7 @@ const AdminSectionsStyle: React.FC = () => {
             maxWidth: config.layout.maxWidth,
             margin: '0 auto',
             padding: `${config.layout.paddingVertical * 0.3}px 20px`,
+            opacity: config.background.opacity,
           }}
         >
           {/* Header Preview */}
@@ -1510,6 +1568,7 @@ const AdminSectionsStyle: React.FC = () => {
                     background: `linear-gradient(135deg, ${config.colors.gradientStart}, ${config.colors.gradientEnd})`,
                     WebkitBackgroundClip: 'text',
                     WebkitTextFillColor: 'transparent',
+                    backgroundClip: 'text',
                   }}
                 >
                   {config.header.titleHighlight}
@@ -1535,65 +1594,76 @@ const AdminSectionsStyle: React.FC = () => {
             {[1, 2, 3].slice(0, config.layout.gridColumns).map((i) => (
               <div
                 key={i}
-                className={
-                  config.card.style === 'gradient' ? 'ms-card-gradient' : ''
-                }
+                className={`ms-preview-card ms-preview-card-${config.card.style}`}
                 style={{
-                  background:
-                    config.card.style === 'gradient'
-                      ? `linear-gradient(135deg, ${config.colors.gradientStart}, ${config.colors.gradientEnd})`
-                      : config.card.style === 'glass'
-                      ? 'rgba(255,255,255,0.1)'
-                      : config.colors.cardBg,
+                  background: getCardBackground(
+                    config.card.style,
+                    config.colors.cardBg,
+                    config.colors.gradientStart,
+                    config.colors.gradientEnd
+                  ),
                   borderRadius: config.card.borderRadius,
-                  border: `${config.card.borderWidth}px solid ${config.colors.borderColor}`,
-                  padding: config.card.padding,
-                  boxShadow:
-                    config.card.shadow === 'none'
-                      ? 'none'
-                      : config.card.shadow === 'lg'
-                      ? '0 10px 35px rgba(17,24,39,0.06)'
-                      : '0 2px 8px rgba(0,0,0,0.05)',
-                  color: config.colors.titleColor,
+                  border: getCardBorder(
+                    config.card.style,
+                    config.card.borderWidth,
+                    config.colors.borderColor
+                  ),
+                  boxShadow: getShadowValue(config.card.shadow),
+                  color:
+                    config.card.style === 'gradient'
+                      ? 'white'
+                      : config.colors.titleColor,
+                  overflow: 'hidden',
+                  display: 'flex',
+                  flexDirection: 'column',
                 }}
               >
+                {/* ✅ صورة البطاقة */}
                 <div
                   style={{
-                    width: 58,
-                    height: 58,
-                    borderRadius: 16,
-                    background: `linear-gradient(135deg, ${config.colors.primary}20, ${config.colors.secondary}20)`,
+                    width: '100%',
+                    height: 100,
+                    background: `linear-gradient(135deg, ${config.colors.gradientStart}, ${config.colors.gradientEnd})`,
                     display: 'flex',
                     alignItems: 'center',
                     justifyContent: 'center',
-                    fontSize: 28,
-                    marginBottom: 16,
+                    fontSize: 40,
+                    color: 'white',
+                    flexShrink: 0,
                   }}
                 >
-                  📚
+                  🖼️
                 </div>
-                <h4
-                  style={{
-                    fontSize: config.typography.titleSize * 0.75,
-                    fontWeight: config.typography.titleWeight,
-                    color:
-                      config.card.style === 'gradient' ? 'white' : config.colors.titleColor,
-                  }}
-                >
-                  بطاقة {i}
-                </h4>
-                <p
-                  style={{
-                    fontSize: config.typography.descriptionSize,
-                    color:
-                      config.card.style === 'gradient'
-                        ? 'rgba(255,255,255,0.85)'
-                        : config.colors.descriptionColor,
-                    marginTop: 8,
-                  }}
-                >
-                  وصف تجريبي للبطاقة
-                </p>
+
+                {/* ✅ محتوى البطاقة */}
+                <div style={{ padding: config.card.padding }}>
+                  <h4
+                    style={{
+                      fontSize: config.typography.titleSize * 0.75,
+                      fontWeight: config.typography.titleWeight,
+                      color:
+                        config.card.style === 'gradient'
+                          ? 'white'
+                          : config.colors.titleColor,
+                      margin: 0,
+                    }}
+                  >
+                    بطاقة {i}
+                  </h4>
+                  <p
+                    style={{
+                      fontSize: config.typography.descriptionSize,
+                      color:
+                        config.card.style === 'gradient'
+                          ? 'rgba(255,255,255,0.85)'
+                          : config.colors.descriptionColor,
+                      marginTop: 8,
+                      margin: '8px 0 0',
+                    }}
+                  >
+                    وصف تجريبي للبطاقة
+                  </p>
+                </div>
               </div>
             ))}
           </div>

@@ -1,6 +1,6 @@
 // backend/scripts/addImagesToServices.js
 // ============================================================
-// 🎨 إضافة صور جاهزة لكل قسم وكل خدمة
+// 🎨 إضافة صور جاهزة لكل قسم وكل خدمة أكاديمية (3 أقسام)
 // ============================================================
 // الاستخدام:
 //   cd backend
@@ -17,36 +17,31 @@ dotenv.config();
 const PORTAL_ID = process.env.SEED_PORTAL_ID || '6aa45ad70a89ed89eeb18e41';
 
 // ============================================================
-// 🖼️ Helper: توليد URL لصورة من Unsplash
+// 🖼️ Helper: صورة افتراضية عند عدم توفر صورة مخصصة
+// (بديل source.unsplash.com الذي توقف)
 // ============================================================
-const unsplash = (keyword, width = 800, height = 600) =>
-  `https://source.unsplash.com/featured/${width}x${height}/?${keyword}`;
+const DEFAULT_SECTION_IMAGE =
+  'https://images.unsplash.com/photo-1456513080510-7bf3a84b82f8?w=600&h=400&fit=crop&q=80';
 
 // ============================================================
-// 📂 صور الأقسام الرئيسية
+// 📂 صور الأقسام الرئيسية (3 أقسام)
 // ============================================================
 const SECTION_IMAGES = {
-  research:
+  'research-academic':
     'https://images.unsplash.com/photo-1532012197267-da84d127e765?w=800&h=600&fit=crop&q=80',
-  statistics:
+  'statistics-data':
     'https://images.unsplash.com/photo-1551288049-bebda4e38f71?w=800&h=600&fit=crop&q=80',
-  translation:
+  'language-publication':
     'https://images.unsplash.com/photo-1546410531-bb4caa6b424d?w=800&h=600&fit=crop&q=80',
-  editing:
-    'https://images.unsplash.com/photo-1455390582262-044cdead277a?w=800&h=600&fit=crop&q=80',
-  design:
-    'https://images.unsplash.com/photo-1561070791-2526d30994b5?w=800&h=600&fit=crop&q=80',
-  publication:
-    'https://images.unsplash.com/photo-1507842217343-583bb7270b66?w=800&h=600&fit=crop&q=80',
-  references:
-    'https://images.unsplash.com/photo-1481627834876-b7833e8f5570?w=800&h=600&fit=crop&q=80',
 };
 
 // ============================================================
-// 📋 صور الخدمات (حسب slug)
+// 📋 صور الخدمات (حسب slug) - 36 خدمة أكاديمية
 // ============================================================
 const SERVICE_IMAGES = {
-  // 🔬 بحث علمي
+  // ========================================================
+  // 🔬 القسم 1: البحث والخدمات الأكاديمية (15 خدمة)
+  // ========================================================
   'academic-consulting':
     'https://images.unsplash.com/photo-1552664730-d307ca884978?w=600&h=400&fit=crop&q=80',
   'thesis-titles-suggestion':
@@ -71,8 +66,16 @@ const SERVICE_IMAGES = {
     'https://images.unsplash.com/photo-1516321318423-f06f85e504b3?w=600&h=400&fit=crop&q=80',
   'research-grants-preparation':
     'https://images.unsplash.com/photo-1554224155-6726b3ff858f?w=600&h=400&fit=crop&q=80',
+  'academic-cv-design':
+    'https://images.unsplash.com/photo-1586281380349-632531db7ed4?w=600&h=400&fit=crop&q=80',
+  'academic-presentation-design':
+    'https://images.unsplash.com/photo-1542744173-8e7e53415bb0?w=600&h=400&fit=crop&q=80',
+  'research-poster-design':
+    'https://images.unsplash.com/photo-1561070791-2526d30994b5?w=600&h=400&fit=crop&q=80',
 
-  // 📊 تحليل إحصائي
+  // ========================================================
+  // 📊 القسم 2: التحليل الإحصائي والبيانات (9 خدمات)
+  // ========================================================
   'spss-statistical-analysis':
     'https://images.unsplash.com/photo-1551288049-bebda4e38f71?w=600&h=400&fit=crop&q=80',
   'meta-analysis':
@@ -92,39 +95,27 @@ const SERVICE_IMAGES = {
   'stata-statistical-analysis':
     'https://images.unsplash.com/photo-1551288049-bebda4e38f71?w=600&h=400&fit=crop&q=80',
 
-  // 🌐 ترجمة
+  // ========================================================
+  // 🌐 القسم 3: اللغة والتحرير والنشر (12 خدمة)
+  // ========================================================
   'academic-translation':
     'https://images.unsplash.com/photo-1546410531-bb4caa6b424d?w=600&h=400&fit=crop&q=80',
   'statement-of-purpose':
     'https://images.unsplash.com/photo-1517842645767-c639042777db?w=600&h=400&fit=crop&q=80',
-
-  // ✍️ تحرير
   'proofreading':
     'https://images.unsplash.com/photo-1455390582262-044cdead277a?w=600&h=400&fit=crop&q=80',
   'academic-style-enhancement':
     'https://images.unsplash.com/photo-1455390582262-044cdead277a?w=600&h=400&fit=crop&q=80',
   'comprehensive-academic-review':
     'https://images.unsplash.com/photo-1454165804606-c3d57bc86b40?w=600&h=400&fit=crop&q=80',
-
-  // 🎨 تصميم
-  'academic-cv-design':
-    'https://images.unsplash.com/photo-1586281380349-632531db7ed4?w=600&h=400&fit=crop&q=80',
   'training-packages-preparation':
     'https://images.unsplash.com/photo-1524178232363-1fb2b075b655?w=600&h=400&fit=crop&q=80',
-  'academic-presentation-design':
-    'https://images.unsplash.com/photo-1542744173-8e7e53415bb0?w=600&h=400&fit=crop&q=80',
-  'research-poster-design':
-    'https://images.unsplash.com/photo-1561070791-2526d30994b5?w=600&h=400&fit=crop&q=80',
-
-  // 📰 نشر
   'academic-support-publication':
     'https://images.unsplash.com/photo-1507842217343-583bb7270b66?w=600&h=400&fit=crop&q=80',
   'journal-recommendation':
     'https://images.unsplash.com/photo-1524995997946-a1c2e315a42f?w=600&h=400&fit=crop&q=80',
   'academic-ebook':
     'https://images.unsplash.com/photo-1512820790803-83ca734da794?w=600&h=400&fit=crop&q=80',
-
-  // 📚 مراجع
   'scientific-references-provision':
     'https://images.unsplash.com/photo-1481627834876-b7833e8f5570?w=600&h=400&fit=crop&q=80',
   'references-romanization':
@@ -140,7 +131,6 @@ const addImagesToServices = async () => {
   try {
     console.log('🎨 Starting image addition process...\n');
 
-    // الاتصال
     const mongoUri =
       process.env.MONGODB_URI || 'mongodb://localhost:27017/irteqa';
     await mongoose.connect(mongoUri);
@@ -189,7 +179,7 @@ const addImagesToServices = async () => {
     console.log(`\n✅ ${servicesUpdated} services updated\n`);
 
     // ============================================================
-    // 3. الخدمات التي لم تُحدَّث
+    // 3. الخدمات التي لم تُحدَّث - صورة افتراضية
     // ============================================================
     console.log('🔍 Checking for services without images...');
 
@@ -197,36 +187,19 @@ const addImagesToServices = async () => {
       portalId: PORTAL_ID,
       isDeleted: { $ne: true },
       $or: [{ image: '' }, { image: null }, { image: { $exists: false } }],
-    }).select('slug nameAr');
+    }).select('slug nameAr sectionId');
 
     if (servicesWithoutImages.length > 0) {
       console.log(
         `\n⚠️  ${servicesWithoutImages.length} services still without images:`
       );
-      servicesWithoutImages.forEach((s) => {
-        console.log(`  - ${s.nameAr} (${s.slug})`);
-      });
-
-      console.log('\n💡 Adding default images using section-based keyword...');
 
       for (const service of servicesWithoutImages) {
-        const section = await Section.findOne({
-          _id: service.sectionId,
-          portalId: PORTAL_ID,
-        });
-
-        if (section) {
-          // استخدام slug القسم ككلمة مفتاحية
-          const keyword = section.slug || 'education';
-          const defaultImage = unsplash(keyword, 600, 400);
-
-          await Service.updateOne(
-            { _id: service._id },
-            { $set: { image: defaultImage } }
-          );
-
-          console.log(`  ✅ Added default image to: ${service.nameAr}`);
-        }
+        await Service.updateOne(
+          { _id: service._id },
+          { $set: { image: DEFAULT_SECTION_IMAGE } }
+        );
+        console.log(`  ✅ Added default image to: ${service.nameAr}`);
       }
     } else {
       console.log('✅ All services have images!\n');
