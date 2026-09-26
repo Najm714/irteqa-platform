@@ -2213,7 +2213,7 @@ const QuickActions: React.FC = () => {
         'from-orange-500 to-amber-500',
     },
 {
-      to: '/sections-style',
+      to: '/admin/sections-style',
       title: 'تخصيص الأقسام',
       description: 'تخصيص الأقسام',
       icon: <FaChartBar />,
