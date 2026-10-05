@@ -5,10 +5,7 @@ import { useParams, Link } from 'react-router-dom';
 import { useAuth } from '../../context/AuthContext';
 import AOS from 'aos';
 import 'aos/dist/aos.css';
-import {
-  FaSpinner,
-  FaExclamationTriangle,
-} from 'react-icons/fa';
+import { FaSpinner, FaExclamationTriangle } from 'react-icons/fa';
 
 import type { TabId, TabConfig, Toast, CallType } from './types';
 import { ALL_TABS } from './utils/constants';
@@ -41,6 +38,11 @@ const RequestWorkspace: React.FC = () => {
 
   const [activeTab, setActiveTab] = useState<TabId>('overview');
   const [toasts, setToasts] = useState<Toast[]>([]);
+
+  // ============================================================
+  // ✅ Shared Socket Ref — يُنشأ هنا ويُمرَّر للـ hooks
+  // ============================================================
+  const sharedSocketRef = useRef<Socket | null>(null);
 
   // ============================================================
   // ✅ Data Hook
@@ -81,11 +83,10 @@ const RequestWorkspace: React.FC = () => {
   const isAdmin =
     user?.role === 'portal_admin' || user?.role === 'super_admin';
   const canEdit = isCustomer || isSpecialist || isAdmin;
-  const sharedSocketRef = useRef<Socket | null>(null);
   const userRole = user?.role || 'customer';
 
   // ============================================================
-  // ✅ WebRTC Hook
+  // ✅ WebRTC Hook — يستقبل sharedSocketRef
   // ============================================================
   const {
     callState,
@@ -104,19 +105,22 @@ const RequestWorkspace: React.FC = () => {
     handleCallAccepted,
     handleCallTarget,
     handleIceCandidate,
- } = useWebRTC(id, sharedSocketRef);  
+  } = useWebRTC(id, sharedSocketRef);
 
   // ============================================================
-  // ✅ Socket Hook
+  // ✅ Socket Hook — يملأ sharedSocketRef
   // ============================================================
   const { isConnected, emit } = useSocket({
-
     requestId: id,
     token,
     socketRef: sharedSocketRef,
     onIncomingCall: (data) => {
+      console.log('📞 Setting incoming call:', data);
       playRingtone();
-      setIncomingCall(data);
+      setIncomingCall({
+        ...data,
+        show: true,   // ✅ إضافة show يدوياً
+      });
     },
     onCallAccepted: handleCallAccepted,
     onCallRejected: (data) => {
@@ -172,7 +176,7 @@ const RequestWorkspace: React.FC = () => {
     AOS.init({ duration: 600, once: true });
   }, []);
 
-  // Cleanup on unmount
+  // ✅ Cleanup on unmount
   useEffect(() => {
     return () => {
       stopRingtone();
@@ -379,8 +383,8 @@ const RequestWorkspace: React.FC = () => {
         <video ref={remoteVideoRef} autoPlay playsInline />
       </div>
 
-      {/* ✅ Incoming Call Modal */}
-      {incomingCall?.show && (
+      {/* ✅ Incoming Call Modal — بدون show */}
+      {incomingCall && (
         <IncomingCallModal
           incomingCall={incomingCall}
           onAccept={() => acceptCall(incomingCall)}
