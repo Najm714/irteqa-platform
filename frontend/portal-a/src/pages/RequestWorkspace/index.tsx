@@ -376,31 +376,98 @@ const RequestWorkspace: React.FC = () => {
 
         {activeTab === 'activity' && <ActivityTab request={request} />}
       </div>
-{/* ✅ Video Elements — معروضة أثناء المكالمة */}
+      
+{/* ✅ Call UI — Overlay أثناء المكالمة */}
 {callState.callStatus === 'in-progress' && (
-  <div className="fixed inset-0 z-[998] bg-black">
-    {/* Remote Video (كامل الشاشة) */}
-    <video
-      ref={remoteVideoRef}
-      autoPlay
-      playsInline
-      className="w-full h-full object-cover"
-    />
+  <div className="fixed inset-0 z-[998] bg-gradient-to-br from-gray-900 via-gray-800 to-black">
+    {/* ============================================ */}
+    {/* مكالمة فيديو */}
+    {/* ============================================ */}
+    {callState.callType === 'video' && (
+      <>
+        {/* Remote Video */}
+        <video
+          ref={remoteVideoRef}
+          autoPlay
+          playsInline
+          className="w-full h-full object-cover"
+        />
 
-    {/* Local Video (PiP - صغير في الزاوية) */}
-    <video
-      ref={localVideoRef}
-      autoPlay
-      muted
-      playsInline
-      className="absolute bottom-24 right-4 w-40 h-32 md:w-48 md:h-36 object-cover rounded-xl border-2 border-white shadow-2xl"
-    />
+        {/* Local Video PiP */}
+        <video
+          ref={localVideoRef}
+          autoPlay
+          muted
+          playsInline
+          className="absolute bottom-24 right-4 w-32 h-24 md:w-48 md:h-36 object-cover rounded-xl border-2 border-white shadow-2xl bg-black"
+        />
+      </>
+    )}
 
-    {/* Controls */}
-    <div className="absolute bottom-6 left-1/2 -translate-x-1/2 flex gap-3 bg-black/60 backdrop-blur-md rounded-full px-4 py-3">
+    {/* ============================================ */}
+    {/* مكالمة صوتية */}
+    {/* ============================================ */}
+    {callState.callType === 'audio' && (
+      <div className="w-full h-full flex flex-col items-center justify-center">
+        {/* Avatar Circle */}
+        <div className="w-32 h-32 md:w-40 md:h-40 rounded-full bg-gradient-to-br from-purple-600 to-pink-500 flex items-center justify-center mb-6 shadow-2xl shadow-purple-500/30 relative">
+          <span className="text-6xl md:text-8xl">🎤</span>
+
+          {/* Pulsing rings */}
+          <span className="absolute inset-0 rounded-full border-4 border-purple-400/50 animate-ping" />
+        </div>
+
+        {/* Name & Status */}
+        <h2 className="text-2xl md:text-3xl font-bold text-white mb-2">
+          {isSpecialist
+            ? request?.accountId?.profile?.fullName || 'العميل'
+            : request?.specialistId?.profile?.fullName || 'المختص'}
+        </h2>
+
+        <p className="text-white/60 text-lg mb-8">
+          {callState.isMuted ? '🔇 الصوت مكتوم' : '🔊 المكالمة جارية'}
+        </p>
+
+        {/* Audio indicators */}
+        <div className="flex gap-2 mb-8">
+          <span
+            className="w-3 h-3 rounded-full bg-green-500 animate-pulse"
+            style={{ animationDelay: '0ms' }}
+          />
+          <span
+            className="w-3 h-3 rounded-full bg-green-500 animate-pulse"
+            style={{ animationDelay: '200ms' }}
+          />
+          <span
+            className="w-3 h-3 rounded-full bg-green-500 animate-pulse"
+            style={{ animationDelay: '400ms' }}
+          />
+        </div>
+
+        {/* Hidden videos — لتشغيل المسار الصوتي */}
+        <video
+          ref={remoteVideoRef}
+          autoPlay
+          playsInline
+          className="hidden"
+        />
+        <video
+          ref={localVideoRef}
+          autoPlay
+          muted
+          playsInline
+          className="hidden"
+        />
+      </div>
+    )}
+
+    {/* ============================================ */}
+    {/* Controls (مشتركة) */}
+    {/* ============================================ */}
+    <div className="absolute bottom-6 left-1/2 -translate-x-1/2 flex gap-3 bg-black/60 backdrop-blur-md rounded-full px-5 py-3 border border-white/10 shadow-xl">
       <button
         onClick={toggleMute}
-        className={`p-3 rounded-full transition ${
+        className={`p-3 md:p-4 rounded-full transition-all ${
           callState.isMuted
             ? 'bg-yellow-600 hover:bg-yellow-700 text-white'
             : 'bg-white/20 hover:bg-white/30 text-white'
@@ -412,30 +479,34 @@ const RequestWorkspace: React.FC = () => {
 
       <button
         onClick={endCall}
-        className="p-3 rounded-full bg-red-600 hover:bg-red-700 text-white transition"
+        className="p-3 md:p-4 rounded-full bg-red-600 hover:bg-red-700 text-white transition-all shadow-lg shadow-red-600/30"
         title="إنهاء المكالمة"
       >
         📞
       </button>
 
-      <button
-        onClick={toggleVideo}
-        className={`p-3 rounded-full transition ${
-          !callState.isVideoOn
-            ? 'bg-red-600 hover:bg-red-700 text-white'
-            : 'bg-white/20 hover:bg-white/30 text-white'
-        }`}
-        title={callState.isVideoOn ? 'إيقاف الفيديو' : 'تشغيل الفيديو'}
-      >
-        {callState.isVideoOn ? '📹' : '📷'}
-      </button>
+      {callState.callType === 'video' && (
+        <button
+          onClick={toggleVideo}
+          className={`p-3 md:p-4 rounded-full transition-all ${
+            !callState.isVideoOn
+              ? 'bg-red-600 hover:bg-red-700 text-white'
+              : 'bg-white/20 hover:bg-white/30 text-white'
+          }`}
+          title={callState.isVideoOn ? 'إيقاف الفيديو' : 'تشغيل الفيديو'}
+        >
+          {callState.isVideoOn ? '📹' : '📷'}
+        </button>
+      )}
     </div>
 
+    {/* ============================================ */}
     {/* Info Overlay */}
-    <div className="absolute top-4 left-4 bg-black/60 backdrop-blur-md rounded-lg px-3 py-2 text-white text-sm">
+    {/* ============================================ */}
+    <div className="absolute top-4 left-4 bg-black/60 backdrop-blur-md rounded-lg px-3 py-2 text-white text-sm border border-white/10">
       <span className="flex items-center gap-2">
         <span className="w-2 h-2 rounded-full bg-green-500 animate-pulse" />
-        قيد المكالمة
+        {callState.callType === 'audio' ? '🎤 مكالمة صوتية' : '📹 مكالمة فيديو'}
       </span>
     </div>
   </div>
