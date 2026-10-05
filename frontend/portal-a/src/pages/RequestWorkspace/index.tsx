@@ -376,13 +376,70 @@ const RequestWorkspace: React.FC = () => {
 
         {activeTab === 'activity' && <ActivityTab request={request} />}
       </div>
+{/* ✅ Video Elements — معروضة أثناء المكالمة */}
+{callState.callStatus === 'in-progress' && (
+  <div className="fixed inset-0 z-[998] bg-black">
+    {/* Remote Video (كامل الشاشة) */}
+    <video
+      ref={remoteVideoRef}
+      autoPlay
+      playsInline
+      className="w-full h-full object-cover"
+    />
 
-      {/* ✅ Video Elements (hidden containers) */}
-      <div className="hidden">
-        <video ref={localVideoRef} autoPlay muted playsInline />
-        <video ref={remoteVideoRef} autoPlay playsInline />
-      </div>
+    {/* Local Video (PiP - صغير في الزاوية) */}
+    <video
+      ref={localVideoRef}
+      autoPlay
+      muted
+      playsInline
+      className="absolute bottom-24 right-4 w-40 h-32 md:w-48 md:h-36 object-cover rounded-xl border-2 border-white shadow-2xl"
+    />
 
+    {/* Controls */}
+    <div className="absolute bottom-6 left-1/2 -translate-x-1/2 flex gap-3 bg-black/60 backdrop-blur-md rounded-full px-4 py-3">
+      <button
+        onClick={toggleMute}
+        className={`p-3 rounded-full transition ${
+          callState.isMuted
+            ? 'bg-yellow-600 hover:bg-yellow-700 text-white'
+            : 'bg-white/20 hover:bg-white/30 text-white'
+        }`}
+        title={callState.isMuted ? 'إلغاء الكتم' : 'كتم'}
+      >
+        {callState.isMuted ? '🔇' : '🎤'}
+      </button>
+
+      <button
+        onClick={endCall}
+        className="p-3 rounded-full bg-red-600 hover:bg-red-700 text-white transition"
+        title="إنهاء المكالمة"
+      >
+        📞
+      </button>
+
+      <button
+        onClick={toggleVideo}
+        className={`p-3 rounded-full transition ${
+          !callState.isVideoOn
+            ? 'bg-red-600 hover:bg-red-700 text-white'
+            : 'bg-white/20 hover:bg-white/30 text-white'
+        }`}
+        title={callState.isVideoOn ? 'إيقاف الفيديو' : 'تشغيل الفيديو'}
+      >
+        {callState.isVideoOn ? '📹' : '📷'}
+      </button>
+    </div>
+
+    {/* Info Overlay */}
+    <div className="absolute top-4 left-4 bg-black/60 backdrop-blur-md rounded-lg px-3 py-2 text-white text-sm">
+      <span className="flex items-center gap-2">
+        <span className="w-2 h-2 rounded-full bg-green-500 animate-pulse" />
+        قيد المكالمة
+      </span>
+    </div>
+  </div>
+)}
       {/* ✅ Incoming Call Modal — بدون show */}
       {incomingCall && (
         <IncomingCallModal
